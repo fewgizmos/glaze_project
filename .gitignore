@@ -1,0 +1,15 @@
+# build directories
+/cmake_build*/
+/build/
+
+# cmake generated files
+CMakeFiles/
+compile_commands.json
+
+# third patry cache
+/.cache
+/.vscode
+
+# runtime cache
+/imgui.ini
+
