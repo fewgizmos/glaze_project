@@ -1,6 +1,5 @@
 # build directories
-/cmake_build*/
-/build/
+.cmake_build/
 
 # cmake generated files
 CMakeFiles/
@@ -12,4 +11,3 @@ compile_commands.json
 
 # runtime cache
 /imgui.ini
-
