@@ -7,5 +7,5 @@ cd "$ROOT_DIR"
 ./scripts/build/release_build_linux_x64.sh
 
 echo "running.."
-./build/x64/linux/release/$glaze_bin_name
+./build/$glaze_build_id/linux/release/$glaze_bin_name
 echo "..quit"

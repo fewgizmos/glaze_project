@@ -7,5 +7,7 @@ cd "$ROOT_DIR"
 cmake -B .cmake_build/release -S . -DCMAKE_BUILD_TYPE=Release
 cmake --build .cmake_build/release
 
-mkdir -p build/x64/linux/release
-cp .cmake_build/debug/bin/glaze_exec build/x64/linux/release/$glaze_bin_name
+mkdir -p build/$glaze_build_id/linux/release
+cp .cmake_build/debug/bin/glaze_exec build/$glaze_build_id/linux/release/$glaze_bin_name
+
+echo "executable: build/$glaze_build_id/linux/release/$glaze_bin_name"
