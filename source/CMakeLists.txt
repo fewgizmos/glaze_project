@@ -15,7 +15,7 @@ add_executable(glaze_exec
 )
 
 target_include_directories(glaze_exec PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/code/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/glaze_engine/head
 )
 
 target_link_libraries(glaze_exec PRIVATE

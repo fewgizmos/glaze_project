@@ -1,4 +1,6 @@
+#include "glp/glaze/runtime/engine.h"
+
 int main()
 {
-    return 0;
+    return glaze::runtime::engine::run();
 }
