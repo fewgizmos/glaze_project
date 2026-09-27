@@ -1,8 +1,9 @@
 #include "glp/glaze/runtime/engine.h"
 
 #include "glp/glaze/platform/app.h"
-// #include "gmx/gizmox_platform/viewport.h"
 #include "glp/glaze/platform/wm.h"
+
+#include "glp/glaze/io/viewport.h"
 
 // #include "gmx/gizmox_rhi_vk/vk_context.h"
 
@@ -37,7 +38,7 @@ void startup()
 {
     platform::app::init();
 
-    // gizmox_platform::viewport::setup_vk();
+    io::viewport::setup_for_vk();
 
     // gizmox_rhi_vk::context::init();
 }
@@ -46,7 +47,7 @@ void cleanup()
 {
     // gizmox_rhi_vk::context::cleanup();
 
-    // gizmox_platform::viewport::destroy();
+    io::viewport::destroy();
 
     platform::wm::cleanup();
     platform::app::cleanup();
@@ -59,7 +60,7 @@ void tick_frame()
 
     // gizmox_rhi_vk::context::draw_frame();
 
-    if (platform::app::wants_exit) { // || io::viewport::get_wants_exit()
+    if (platform::app::wants_exit || io::viewport::get_wants_exit()) {
         wants_stop = true;
     }
 }
