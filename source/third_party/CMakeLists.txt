@@ -32,6 +32,16 @@ add_subdirectory(fastgltf EXCLUDE_FROM_ALL)
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/stb)
 
+# vkbootstrap
+add_library(vkbootstrap STATIC
+    vkbootstrap/src/VkBootstrap.cpp
+)
+target_include_directories(vkbootstrap
+    PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/vkbootstrap/include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/vkbootstrap/include/vkb
+)
+target_link_libraries(vkbootstrap PUBLIC Vulkan::Vulkan ${CMAKE_DL_LIBS})
+
 # shaderc
 find_package(glslang REQUIRED GLOBAL)
 find_package(SPIRV-Tools REQUIRED GLOBAL)

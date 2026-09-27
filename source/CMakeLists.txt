@@ -27,4 +27,5 @@ target_link_libraries(glaze_exec PRIVATE
     shaderc
     stb
     GPUOpen::VulkanMemoryAllocator
+    vkbootstrap
 )
