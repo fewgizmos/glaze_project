@@ -1,7 +1,7 @@
 #include "glp/glaze/platform/wm.h"
 
 #include "glp/glaze/platform/app.h"
-#include "glp/glaze/utilities/assert.h"
+#include "glp/glaze/utilities/core/assert.h"
 
 #include <SDL3/SDL_error.h>
 
