@@ -1,12 +1,12 @@
 add_subdirectory(third_party)
 
 file(GLOB_RECURSE GIZMOX_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/glaze_engine/impl/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/glaze_project_code/impl/*.cpp
 )
 
 file(GLOB_RECURSE GIZMOX_HEADERS CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/glaze_engine/head/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/glaze_engine/head/*.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/glaze_project_code/head/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/glaze_project_code/head/*.hpp
 )
 
 add_executable(glaze_exec
@@ -15,7 +15,7 @@ add_executable(glaze_exec
 )
 
 target_include_directories(glaze_exec PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/glaze_engine/head
+    ${CMAKE_CURRENT_SOURCE_DIR}/glaze_project_code/head
 )
 
 target_link_libraries(glaze_exec PRIVATE
