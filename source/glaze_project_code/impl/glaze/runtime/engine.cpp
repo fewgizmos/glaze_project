@@ -3,7 +3,7 @@
 #include "glp/glaze/utilities/core/timer.h"
 
 #include "glp/glaze/platform/app.h"
-#include "glp/glaze/platform/wm.h"
+#include "glp/glaze/platform/window_manager.h"
 
 #include "glp/glaze/io/viewport.h"
 
@@ -29,7 +29,7 @@ int run()
     }
 
     catch (const std::exception& error) {
-        std::cerr << "engine error: " << error.what() << "\n";
+        std::cerr << error.what() << "\n";
         return EXIT_FAILURE;
     }
 

@@ -4,7 +4,7 @@
 #include <functional>
 #include <utility>
 
-namespace glaze::rendering::vk_deletor
+namespace glaze::rendering::queue_deletor
 {
 
 inline std::deque<std::function<void()>> m_deletors;

@@ -1,4 +1,4 @@
-#include "glp/glaze/platform/wm.h"
+#include "glp/glaze/platform/window_manager.h"
 
 #include "glp/glaze/platform/app.h"
 #include "glp/glaze/utilities/core/assert.h"

@@ -93,7 +93,7 @@ void create_instance()
     m_ctx.instance  = instance_ret.value();
     m_ctx.inst_disp = m_ctx.instance.make_table();
 
-    vk_deletor::push([]() { vkb::destroy_instance(m_ctx.instance); });
+    queue_deletor::push([]() { vkb::destroy_instance(m_ctx.instance); });
 }
 
 void create_surface()
@@ -102,7 +102,7 @@ void create_surface()
 
     GLAZE_ASSERT(!created, SDL_GetError());
 
-    vk_deletor::push([]() { vkb::destroy_surface(m_ctx.instance, m_ctx.surface); });
+    queue_deletor::push([]() { vkb::destroy_surface(m_ctx.instance, m_ctx.surface); });
 }
 
 void create_device()
@@ -139,7 +139,7 @@ void create_device()
     m_ctx.device = device_ret.value();
     m_ctx.disp   = m_ctx.device.make_table();
 
-    vk_deletor::push([]() { vkb::destroy_device(m_ctx.device); });
+    queue_deletor::push([]() { vkb::destroy_device(m_ctx.device); });
 }
 
 void create_swapchain()
@@ -276,7 +276,7 @@ void create_graphics_pipeline()
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create pipeline layout");
 
-    vk_deletor::push([layout = m_state.pipeline_layout]() { m_ctx.disp.destroyPipelineLayout(layout, nullptr); });
+    queue_deletor::push([layout = m_state.pipeline_layout]() { m_ctx.disp.destroyPipelineLayout(layout, nullptr); });
 
     const VkDynamicState dynamic_states[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 
@@ -318,7 +318,7 @@ void create_graphics_pipeline()
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create graphics pipeline");
 
-    vk_deletor::push([pipeline = m_state.graphics_pipeline]() { m_ctx.disp.destroyPipeline(pipeline, nullptr); });
+    queue_deletor::push([pipeline = m_state.graphics_pipeline]() { m_ctx.disp.destroyPipeline(pipeline, nullptr); });
 }
 
 void create_command_pool()
@@ -332,7 +332,7 @@ void create_command_pool()
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create command pool");
 
-    vk_deletor::push([pool = m_state.command_pool]() { m_ctx.disp.destroyCommandPool(pool, nullptr); });
+    queue_deletor::push([pool = m_state.command_pool]() { m_ctx.disp.destroyCommandPool(pool, nullptr); });
 }
 
 void create_frame_data()
@@ -361,13 +361,13 @@ void create_frame_data()
 
         GLAZE_ASSERT(result != VK_SUCCESS, "failed to create frame semaphore");
 
-        vk_deletor::push([semaphore = frame.semaphore_available]() { m_ctx.disp.destroySemaphore(semaphore, nullptr); });
+        queue_deletor::push([semaphore = frame.semaphore_available]() { m_ctx.disp.destroySemaphore(semaphore, nullptr); });
 
         result = m_ctx.disp.createFence(&fence_info, nullptr, &frame.fence_inflight);
 
         GLAZE_ASSERT(result != VK_SUCCESS, "failed to create frame fence");
 
-        vk_deletor::push([fence = frame.fence_inflight]() { m_ctx.disp.destroyFence(fence, nullptr); });
+        queue_deletor::push([fence = frame.fence_inflight]() { m_ctx.disp.destroyFence(fence, nullptr); });
     }
 }
 
@@ -626,7 +626,7 @@ void init()
     create_frame_data();
 
     create_swapchain_image_data();
-    vk_deletor::push([]() { destroy_swapchain_image_data(); });
+    queue_deletor::push([]() { destroy_swapchain_image_data(); });
 }
 
 void init_vk()
@@ -636,7 +636,7 @@ void init_vk()
     create_device();
 
     create_swapchain();
-    vk_deletor::push([]() { vkb::destroy_swapchain(m_ctx.swapchain); });
+    queue_deletor::push([]() { vkb::destroy_swapchain(m_ctx.swapchain); });
 
     get_queues();
 }
@@ -645,7 +645,7 @@ void cleanup()
 {
     m_ctx.disp.deviceWaitIdle();
 
-    vk_deletor::clean_all();
+    queue_deletor::clean_all();
 
     m_state = {};
     m_ctx   = {};

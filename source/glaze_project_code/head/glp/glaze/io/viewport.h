@@ -1,6 +1,6 @@
 #pragma once
 
-#include "glp/glaze/platform/wm.h"
+#include "glp/glaze/platform/window_manager.h"
 
 #include <glm/vec2.hpp>
 
