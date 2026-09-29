@@ -1,6 +1,6 @@
 #include "glp/glaze/rendering/renderer.h"
 
-#include "glp/glaze/rendering/vk_deletor.h"
+#include "glp/glaze/rendering/queue_deletor.h"
 
 #include "glp/glaze/io/viewport.h"
 #include "glp/glaze/utilities/core/assert.h"
