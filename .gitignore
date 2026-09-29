@@ -11,3 +11,6 @@ compile_commands.json
 
 # runtime cache
 /imgui.ini
+
+# shaders debug cache
+*.spv

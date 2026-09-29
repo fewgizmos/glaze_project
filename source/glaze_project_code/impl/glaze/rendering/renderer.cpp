@@ -1,5 +1,7 @@
 #include "glp/glaze/rendering/renderer.h"
 
+#include "glp/glaze/rendering/vk_deletor.h"
+
 #include "glp/glaze/io/viewport.h"
 #include "glp/glaze/utilities/core/assert.h"
 
@@ -90,6 +92,8 @@ void create_instance()
 
     m_ctx.instance  = instance_ret.value();
     m_ctx.inst_disp = m_ctx.instance.make_table();
+
+    vk_deletor::push([]() { vkb::destroy_instance(m_ctx.instance); });
 }
 
 void create_surface()
@@ -97,6 +101,8 @@ void create_surface()
     const bool created = SDL_Vulkan_CreateSurface(io::viewport::get_native(), m_ctx.instance, nullptr, &m_ctx.surface);
 
     GLAZE_ASSERT(!created, SDL_GetError());
+
+    vk_deletor::push([]() { vkb::destroy_surface(m_ctx.instance, m_ctx.surface); });
 }
 
 void create_device()
@@ -132,6 +138,8 @@ void create_device()
 
     m_ctx.device = device_ret.value();
     m_ctx.disp   = m_ctx.device.make_table();
+
+    vk_deletor::push([]() { vkb::destroy_device(m_ctx.device); });
 }
 
 void create_swapchain()
@@ -268,6 +276,8 @@ void create_graphics_pipeline()
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create pipeline layout");
 
+    vk_deletor::push([layout = m_state.pipeline_layout]() { m_ctx.disp.destroyPipelineLayout(layout, nullptr); });
+
     const VkDynamicState dynamic_states[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
 
     VkPipelineDynamicStateCreateInfo dynamic_info = {};
@@ -307,6 +317,8 @@ void create_graphics_pipeline()
     m_ctx.disp.destroyShaderModule(vert_module, nullptr);
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create graphics pipeline");
+
+    vk_deletor::push([pipeline = m_state.graphics_pipeline]() { m_ctx.disp.destroyPipeline(pipeline, nullptr); });
 }
 
 void create_command_pool()
@@ -319,6 +331,8 @@ void create_command_pool()
     const VkResult result = m_ctx.disp.createCommandPool(&pool_info, nullptr, &m_state.command_pool);
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create command pool");
+
+    vk_deletor::push([pool = m_state.command_pool]() { m_ctx.disp.destroyCommandPool(pool, nullptr); });
 }
 
 void create_frame_data()
@@ -347,9 +361,13 @@ void create_frame_data()
 
         GLAZE_ASSERT(result != VK_SUCCESS, "failed to create frame semaphore");
 
+        vk_deletor::push([semaphore = frame.semaphore_available]() { m_ctx.disp.destroySemaphore(semaphore, nullptr); });
+
         result = m_ctx.disp.createFence(&fence_info, nullptr, &frame.fence_inflight);
 
         GLAZE_ASSERT(result != VK_SUCCESS, "failed to create frame fence");
+
+        vk_deletor::push([fence = frame.fence_inflight]() { m_ctx.disp.destroyFence(fence, nullptr); });
     }
 }
 
@@ -606,7 +624,9 @@ void init()
     create_graphics_pipeline();
     create_command_pool();
     create_frame_data();
+
     create_swapchain_image_data();
+    vk_deletor::push([]() { destroy_swapchain_image_data(); });
 }
 
 void init_vk()
@@ -614,7 +634,10 @@ void init_vk()
     create_instance();
     create_surface();
     create_device();
+
     create_swapchain();
+    vk_deletor::push([]() { vkb::destroy_swapchain(m_ctx.swapchain); });
+
     get_queues();
 }
 
@@ -622,22 +645,7 @@ void cleanup()
 {
     m_ctx.disp.deviceWaitIdle();
 
-    destroy_swapchain_image_data();
-
-    for (frame_data& frame : m_state.frames) {
-        m_ctx.disp.destroySemaphore(frame.semaphore_available, nullptr);
-        m_ctx.disp.destroyFence(frame.fence_inflight, nullptr);
-    }
-
-    m_ctx.disp.destroyCommandPool(m_state.command_pool, nullptr);
-
-    m_ctx.disp.destroyPipeline(m_state.graphics_pipeline, nullptr);
-    m_ctx.disp.destroyPipelineLayout(m_state.pipeline_layout, nullptr);
-
-    vkb::destroy_swapchain(m_ctx.swapchain);
-    vkb::destroy_device(m_ctx.device);
-    vkb::destroy_surface(m_ctx.instance, m_ctx.surface);
-    vkb::destroy_instance(m_ctx.instance);
+    vk_deletor::clean_all();
 
     m_state = {};
     m_ctx   = {};
@@ -645,12 +653,6 @@ void cleanup()
 
 void next_frame()
 {
-    const glm::ivec2 extent = io::viewport::get_extent();
-
-    if (extent.x == 0 || extent.y == 0) {
-        return;
-    }
-
     if (io::viewport::get_unhandle_resized()) {
         recreate_swapchain();
     }
