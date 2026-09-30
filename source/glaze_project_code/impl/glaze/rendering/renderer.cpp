@@ -1,15 +1,14 @@
 #include "glp/glaze/rendering/renderer.h"
 
-#include "glp/glaze/rendering/defines.h"
 #include "glp/glaze/rendering/types.h"
 
 #include "glp/glaze/rendering/queue_deletor.h"
+#include "glp/glaze/rendering/scene_renderer.h"
 
 #include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/device.h"
 #include "glp/glaze/rendering/vk/frame.h"
 #include "glp/glaze/rendering/vk/resources.h"
-#include "glp/glaze/rendering/vk/shaders.h"
 
 #include "glp/glaze/io/viewport.h"
 #include "glp/glaze/utilities/core/assert.h"
@@ -29,8 +28,6 @@ namespace
 {
 
 vkb::Instance m_instance;
-
-pipeline m_pipeline;
 
 void create_instance()
 {
@@ -56,24 +53,11 @@ void create_instance()
     queue_deletor::push([]() { vkb::destroy_instance(m_instance); });
 }
 
-void create_graphics_pipeline()
-{
-    graphics_pipeline_info info;
-    info.vert_file = "triangle.vert";
-    info.frag_file = "triangle.frag";
-    info.color_format = vk::frame::get_swapchain().image_format;
-
-    m_pipeline = vk::shaders::create_graphics_pipeline(info);
-
-    queue_deletor::push([]() { vk::shaders::destroy_pipeline(m_pipeline); });
-}
-
 void record_command_buffer()
 {
     frame_data& frame = vk::frame::get_current_frame();
     swapchain_image_data& image_data = vk::frame::get_current_image();
 
-    const vkb::DispatchTable& disp = vk::device::get_disp();
     const VkExtent2D extent = vk::frame::get_swapchain().extent;
 
     VkCommandBuffer cmd = frame.command_buffer;
@@ -81,56 +65,7 @@ void record_command_buffer()
     vk::commands::reset(cmd);
     vk::commands::begin(cmd);
 
-    vk::commands::transition_image(
-        cmd,
-        image_data.image,
-        VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        0,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
-    );
-
-    VkRenderingAttachmentInfo color_attachment = {};
-    color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    color_attachment.imageView = image_data.image_view;
-    color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    color_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
-    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    color_attachment.clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
-
-    VkRenderingInfo rendering_info = {};
-    rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    rendering_info.renderArea.offset = { 0, 0 };
-    rendering_info.renderArea.extent = extent;
-    rendering_info.layerCount = 1;
-    rendering_info.colorAttachmentCount = 1;
-    rendering_info.pColorAttachments = &color_attachment;
-
-    VkViewport viewport = {};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(extent.width);
-    viewport.height = static_cast<float>(extent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor = {};
-    scissor.offset = { 0, 0 };
-    scissor.extent = extent;
-
-    disp.cmdBeginRendering(cmd, &rendering_info);
-
-    disp.cmdSetViewport(cmd, 0, 1, &viewport);
-    disp.cmdSetScissor(cmd, 0, 1, &scissor);
-
-    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline.handle);
-
-    disp.cmdDraw(cmd, 3, 1, 0, 0);
-
-    disp.cmdEndRendering(cmd);
+    scene_renderer::draw_all(cmd, image_data, extent);
 
     vk::commands::transition_image(
         cmd,
@@ -178,7 +113,7 @@ void draw_frame()
     VkSemaphoreSubmitInfo wait_info = {};
     wait_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
     wait_info.semaphore = frame.semaphore_available;
-    wait_info.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+    wait_info.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_BLIT_BIT;
 
     VkSemaphoreSubmitInfo signal_info = {};
     signal_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
@@ -220,7 +155,7 @@ void init()
 
     vk::frame::create_frame_data();
 
-    create_graphics_pipeline();
+    scene_renderer::init();
 }
 
 void init_vk()
@@ -239,9 +174,10 @@ void cleanup()
 {
     vk::device::get_disp().deviceWaitIdle();
 
+    scene_renderer::cleanup();
+
     queue_deletor::clean_all();
 
-    m_pipeline = {};
     m_instance = {};
 }
 

@@ -16,9 +16,9 @@ void setup_for_vk()
     create_info.height = 1080;
 
     create_info.is_fullscreen = false;
-    create_info.is_resizable  = false;
+    create_info.is_resizable  = true;
 
-    create_info.is_bordered = false;
+    create_info.is_bordered = true;
     create_info.is_visible  = true;
 
     create_info.is_cursor_captured = false;

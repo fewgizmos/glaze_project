@@ -1,0 +1,46 @@
+#version 450
+
+layout (local_size_x = 3) in;
+
+struct vertex
+{
+    vec4 position;
+    vec4 color;
+};
+
+layout (std430, set = 0, binding = 0) buffer vertex_buffer
+{
+    vertex vertices[];
+};
+
+layout (push_constant) uniform constants
+{
+    float step;
+    uint seed;
+} pc;
+
+uint hash (uint x)
+{
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+
+    return x;
+}
+
+void main ()
+{
+    uint i = gl_GlobalInvocationID.x;
+
+    if (i >= vertices.length ()) {
+        return;
+    }
+
+    float angle = float (hash (pc.seed * 3u + i)) / 4294967296.0 * 6.2831853;
+
+    vec2 moved = vertices[i].position.xy + vec2 (cos (angle), sin (angle)) * pc.step;
+
+    vertices[i].position.xy = clamp (moved, vec2 (-0.9), vec2 (0.9));
+}

@@ -73,6 +73,17 @@ struct graphics_pipeline_info
 
     VkCullModeFlags cull_mode = VK_CULL_MODE_BACK_BIT;
     VkFrontFace front_face    = VK_FRONT_FACE_CLOCKWISE;
+
+    std::vector<VkDescriptorSetLayout> set_layouts;
+};
+
+struct compute_pipeline_info
+{
+    std::string comp_file;
+
+    std::vector<VkDescriptorSetLayout> set_layouts;
+
+    uint32_t push_constant_size = 0;
 };
 
 struct pipeline

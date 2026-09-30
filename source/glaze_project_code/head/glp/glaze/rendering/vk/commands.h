@@ -27,6 +27,24 @@ void submit(
 
 void immediate_submit(const std::function<void(VkCommandBuffer)>& record);
 
+void push_constants(VkCommandBuffer cmd, VkPipelineLayout layout, VkShaderStageFlags stages, uint32_t size, const void* data);
+
+void memory_barrier(
+    VkCommandBuffer cmd,
+    VkPipelineStageFlags2 src_stage,
+    VkAccessFlags2 src_access,
+    VkPipelineStageFlags2 dst_stage,
+    VkAccessFlags2 dst_access
+);
+
+void blit_image(
+    VkCommandBuffer cmd,
+    VkImage src,
+    VkExtent2D src_extent,
+    VkImage dst,
+    VkExtent2D dst_extent
+);
+
 void transition_image(
     VkCommandBuffer cmd,
     VkImage image,

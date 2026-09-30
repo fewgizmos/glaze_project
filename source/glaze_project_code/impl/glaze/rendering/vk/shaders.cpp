@@ -166,7 +166,8 @@ pipeline create_graphics_pipeline(const graphics_pipeline_info& info)
 
     VkPipelineLayoutCreateInfo pipeline_layout_info = {};
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_info.setLayoutCount = 0;
+    pipeline_layout_info.setLayoutCount = static_cast<uint32_t>(info.set_layouts.size());
+    pipeline_layout_info.pSetLayouts = info.set_layouts.data();
     pipeline_layout_info.pushConstantRangeCount = 0;
 
     pipeline result_pipeline;
@@ -212,6 +213,50 @@ pipeline create_graphics_pipeline(const graphics_pipeline_info& info)
     destroy_module(vert_module);
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create graphics pipeline");
+
+    return result_pipeline;
+}
+
+pipeline create_compute_pipeline(const compute_pipeline_info& info)
+{
+    const vkb::DispatchTable& disp = device::get_disp();
+
+    VkShaderModule comp_module = load_module(info.comp_file);
+
+    VkPushConstantRange push_range = {};
+    push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    push_range.offset = 0;
+    push_range.size = info.push_constant_size;
+
+    VkPipelineLayoutCreateInfo layout_info = {};
+    layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layout_info.setLayoutCount = static_cast<uint32_t>(info.set_layouts.size());
+    layout_info.pSetLayouts = info.set_layouts.data();
+    layout_info.pushConstantRangeCount = info.push_constant_size > 0 ? 1 : 0;
+    layout_info.pPushConstantRanges = &push_range;
+
+    pipeline result_pipeline;
+
+    VkResult result = disp.createPipelineLayout(&layout_info, nullptr, &result_pipeline.layout);
+
+    GLAZE_ASSERT(result != VK_SUCCESS, "failed to create compute pipeline layout");
+
+    VkPipelineShaderStageCreateInfo stage_info = {};
+    stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    stage_info.module = comp_module;
+    stage_info.pName = "main";
+
+    VkComputePipelineCreateInfo pipeline_info = {};
+    pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipeline_info.stage = stage_info;
+    pipeline_info.layout = result_pipeline.layout;
+
+    result = disp.createComputePipelines(VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &result_pipeline.handle);
+
+    destroy_module(comp_module);
+
+    GLAZE_ASSERT(result != VK_SUCCESS, "failed to create compute pipeline");
 
     return result_pipeline;
 }

@@ -127,6 +127,64 @@ void immediate_submit(const std::function<void(VkCommandBuffer)>& record)
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to wait for immediate submit");
 }
 
+void push_constants(VkCommandBuffer cmd, VkPipelineLayout layout, VkShaderStageFlags stages, uint32_t size, const void* data)
+{
+    device::get_disp().cmdPushConstants(cmd, layout, stages, 0, size, data);
+}
+
+void memory_barrier(
+    VkCommandBuffer cmd,
+    VkPipelineStageFlags2 src_stage,
+    VkAccessFlags2 src_access,
+    VkPipelineStageFlags2 dst_stage,
+    VkAccessFlags2 dst_access
+)
+{
+    VkMemoryBarrier2 barrier = {};
+    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+    barrier.srcStageMask = src_stage;
+    barrier.srcAccessMask = src_access;
+    barrier.dstStageMask = dst_stage;
+    barrier.dstAccessMask = dst_access;
+
+    VkDependencyInfo dependency_info = {};
+    dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependency_info.memoryBarrierCount = 1;
+    dependency_info.pMemoryBarriers = &barrier;
+
+    device::get_disp().cmdPipelineBarrier2(cmd, &dependency_info);
+}
+
+void blit_image(
+    VkCommandBuffer cmd,
+    VkImage src,
+    VkExtent2D src_extent,
+    VkImage dst,
+    VkExtent2D dst_extent
+)
+{
+    VkImageBlit2 region = {};
+    region.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2;
+    region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.srcSubresource.layerCount = 1;
+    region.srcOffsets[1] = { static_cast<int32_t>(src_extent.width), static_cast<int32_t>(src_extent.height), 1 };
+    region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.dstSubresource.layerCount = 1;
+    region.dstOffsets[1] = { static_cast<int32_t>(dst_extent.width), static_cast<int32_t>(dst_extent.height), 1 };
+
+    VkBlitImageInfo2 blit_info = {};
+    blit_info.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2;
+    blit_info.srcImage = src;
+    blit_info.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    blit_info.dstImage = dst;
+    blit_info.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    blit_info.regionCount = 1;
+    blit_info.pRegions = &region;
+    blit_info.filter = VK_FILTER_LINEAR;
+
+    device::get_disp().cmdBlitImage2(cmd, &blit_info);
+}
+
 void transition_image(
     VkCommandBuffer cmd,
     VkImage image,
