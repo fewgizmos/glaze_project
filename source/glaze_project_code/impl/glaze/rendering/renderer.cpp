@@ -209,8 +209,8 @@ VkShaderModule create_shader_module(const std::vector<char>& code)
 
 void create_graphics_pipeline()
 {
-    VkShaderModule vert_module = create_shader_module(read_file("source/glaze_project_assets/shaders/triangle.vert.spv"));
-    VkShaderModule frag_module = create_shader_module(read_file("source/glaze_project_assets/shaders/triangle.frag.spv"));
+    VkShaderModule vert_module = create_shader_module(read_file("source/glaze_project_resources/shaders/triangle.vert.spv"));
+    VkShaderModule frag_module = create_shader_module(read_file("source/glaze_project_resources/shaders/triangle.frag.spv"));
 
     VkPipelineShaderStageCreateInfo vert_stage_info = {};
     vert_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
