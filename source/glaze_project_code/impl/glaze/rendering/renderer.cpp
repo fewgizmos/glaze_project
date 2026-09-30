@@ -5,6 +5,12 @@
 
 #include "glp/glaze/rendering/queue_deletor.h"
 
+#include "glp/glaze/rendering/vk/commands.h"
+#include "glp/glaze/rendering/vk/device.h"
+#include "glp/glaze/rendering/vk/frame.h"
+#include "glp/glaze/rendering/vk/resources.h"
+#include "glp/glaze/rendering/vk/shaders.h"
+
 #include "glp/glaze/io/viewport.h"
 #include "glp/glaze/utilities/core/assert.h"
 
@@ -15,9 +21,6 @@
 #include <vkb/VkBootstrap.h>
 
 #include <cstdint>
-#include <fstream>
-#include <string>
-#include <vector>
 
 namespace glaze::rendering::renderer
 {
@@ -25,52 +28,9 @@ namespace glaze::rendering::renderer
 namespace
 {
 
-struct vk_context
-{
-    vkb::Instance instance;
-    vkb::InstanceDispatchTable inst_disp;
+vkb::Instance m_instance;
 
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
-
-    vkb::Device device;
-    vkb::DispatchTable disp;
-
-    vkb::Swapchain swapchain;
-};
-
-struct frame_data
-{
-    VkFence fence_inflight = VK_NULL_HANDLE;
-    VkSemaphore semaphore_available = VK_NULL_HANDLE;
-    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-};
-
-struct swapchain_image_data
-{
-    VkSemaphore semaphore_finished = VK_NULL_HANDLE;
-    VkImage image = VK_NULL_HANDLE;
-    VkImageView image_view = VK_NULL_HANDLE;
-};
-
-struct render_state
-{
-    VkQueue graphics_queue = VK_NULL_HANDLE;
-    VkQueue present_queue  = VK_NULL_HANDLE;
-
-    VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
-    VkPipeline graphics_pipeline = VK_NULL_HANDLE;
-
-    VkCommandPool command_pool = VK_NULL_HANDLE;
-    std::vector<frame_data> frames;
-
-    std::vector<swapchain_image_data> swapchain_images;
-
-    size_t current_frame = 0;
-    uint32_t current_swapchain_image = 0;
-};
-
-vk_context m_ctx;
-render_state m_state;
+pipeline m_pipeline;
 
 void create_instance()
 {
@@ -91,389 +51,37 @@ void create_instance()
 
     GLAZE_ASSERT(!instance_ret, instance_ret.error().message());
 
-    m_ctx.instance  = instance_ret.value();
-    m_ctx.inst_disp = m_ctx.instance.make_table();
+    m_instance = instance_ret.value();
 
-    queue_deletor::push([]() { vkb::destroy_instance(m_ctx.instance); });
-}
-
-void create_surface()
-{
-    const bool created = SDL_Vulkan_CreateSurface(io::viewport::get_native(), m_ctx.instance, nullptr, &m_ctx.surface);
-
-    GLAZE_ASSERT(!created, SDL_GetError());
-
-    queue_deletor::push([]() { vkb::destroy_surface(m_ctx.instance, m_ctx.surface); });
-}
-
-void create_device()
-{
-    VkPhysicalDeviceVulkan13Features features13 = {};
-    features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-    features13.dynamicRendering = VK_TRUE;
-    features13.synchronization2 = VK_TRUE;
-
-    vkb::PhysicalDeviceSelector phys_device_selector(m_ctx.instance);
-
-    auto phys_device_ret = phys_device_selector
-        .set_surface(m_ctx.surface)
-        .set_minimum_version(1, 3)
-        .set_required_features_13(features13)
-        .select();
-
-    if (!phys_device_ret) {
-        std::string message = phys_device_ret.error().message();
-
-        for (const std::string& reason : phys_device_ret.detailed_failure_reasons()) {
-            message += "\n    " + reason;
-        }
-
-        GLAZE_ASSERT(true, message);
-    }
-
-    vkb::DeviceBuilder device_builder(phys_device_ret.value());
-
-    auto device_ret = device_builder.build();
-
-    GLAZE_ASSERT(!device_ret, device_ret.error().message());
-
-    m_ctx.device = device_ret.value();
-    m_ctx.disp   = m_ctx.device.make_table();
-
-    queue_deletor::push([]() { vkb::destroy_device(m_ctx.device); });
-}
-
-void create_swapchain()
-{
-    const glm::ivec2 extent = io::viewport::get_extent();
-
-    vkb::SwapchainBuilder swapchain_builder(m_ctx.device);
-
-    auto swap_ret = swapchain_builder
-        .set_old_swapchain(m_ctx.swapchain)
-        .set_desired_extent(static_cast<uint32_t>(extent.x), static_cast<uint32_t>(extent.y))
-        .build();
-
-    GLAZE_ASSERT(!swap_ret, swap_ret.error().message());
-
-    vkb::destroy_swapchain(m_ctx.swapchain);
-
-    m_ctx.swapchain = swap_ret.value();
-}
-
-void get_queues()
-{
-    auto gq = m_ctx.device.get_queue(vkb::QueueType::graphics);
-
-    GLAZE_ASSERT(!gq.has_value(), "failed to get graphics queue: " + gq.error().message());
-
-    m_state.graphics_queue = gq.value();
-
-    auto pq = m_ctx.device.get_queue(vkb::QueueType::present);
-
-    GLAZE_ASSERT(!pq.has_value(), "failed to get present queue: " + pq.error().message());
-
-    m_state.present_queue = pq.value();
-}
-
-std::vector<char> read_file(const std::string& filename)
-{
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-    GLAZE_ASSERT(!file.is_open(), "failed to open file: " + filename);
-
-    const size_t file_size = static_cast<size_t>(file.tellg());
-    std::vector<char> buffer(file_size);
-
-    file.seekg(0);
-    file.read(buffer.data(), static_cast<std::streamsize>(file_size));
-
-    return buffer;
-}
-
-VkShaderModule create_shader_module(const std::vector<char>& code)
-{
-    VkShaderModuleCreateInfo create_info = {};
-    create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    create_info.codeSize = code.size();
-    create_info.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-    VkShaderModule shader_module = VK_NULL_HANDLE;
-
-    const VkResult result = m_ctx.disp.createShaderModule(&create_info, nullptr, &shader_module);
-
-    GLAZE_ASSERT(result != VK_SUCCESS, "failed to create shader module");
-
-    return shader_module;
+    queue_deletor::push([]() { vkb::destroy_instance(m_instance); });
 }
 
 void create_graphics_pipeline()
 {
-    VkShaderModule vert_module = create_shader_module(read_file("source/glaze_project_resources/shaders/triangle.vert.spv"));
-    VkShaderModule frag_module = create_shader_module(read_file("source/glaze_project_resources/shaders/triangle.frag.spv"));
+    graphics_pipeline_info info;
+    info.vert_file = "triangle.vert";
+    info.frag_file = "triangle.frag";
+    info.color_format = vk::frame::get_swapchain().image_format;
 
-    VkPipelineShaderStageCreateInfo vert_stage_info = {};
-    vert_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    vert_stage_info.stage = VK_SHADER_STAGE_VERTEX_BIT;
-    vert_stage_info.module = vert_module;
-    vert_stage_info.pName = "main";
+    m_pipeline = vk::shaders::create_graphics_pipeline(info);
 
-    VkPipelineShaderStageCreateInfo frag_stage_info = {};
-    frag_stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    frag_stage_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    frag_stage_info.module = frag_module;
-    frag_stage_info.pName = "main";
-
-    VkPipelineShaderStageCreateInfo shader_stages[] = { vert_stage_info, frag_stage_info };
-
-    VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
-    vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_info.vertexBindingDescriptionCount = 0;
-    vertex_input_info.vertexAttributeDescriptionCount = 0;
-
-    VkPipelineInputAssemblyStateCreateInfo input_assembly = {};
-    input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    input_assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    input_assembly.primitiveRestartEnable = VK_FALSE;
-
-    VkPipelineViewportStateCreateInfo viewport_state = {};
-    viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewport_state.viewportCount = 1;
-    viewport_state.scissorCount = 1;
-
-    VkPipelineRasterizationStateCreateInfo rasterizer = {};
-    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizer.depthClampEnable = VK_FALSE;
-    rasterizer.rasterizerDiscardEnable = VK_FALSE;
-    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
-    rasterizer.depthBiasEnable = VK_FALSE;
-
-    VkPipelineMultisampleStateCreateInfo multisampling = {};
-    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-    VkPipelineColorBlendAttachmentState color_blend_attachment = {};
-    color_blend_attachment.colorWriteMask =
-        VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    color_blend_attachment.blendEnable = VK_FALSE;
-
-    VkPipelineColorBlendStateCreateInfo color_blending = {};
-    color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    color_blending.logicOpEnable = VK_FALSE;
-    color_blending.logicOp = VK_LOGIC_OP_COPY;
-    color_blending.attachmentCount = 1;
-    color_blending.pAttachments = &color_blend_attachment;
-
-    VkPipelineLayoutCreateInfo pipeline_layout_info = {};
-    pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_info.setLayoutCount = 0;
-    pipeline_layout_info.pushConstantRangeCount = 0;
-
-    VkResult result = m_ctx.disp.createPipelineLayout(&pipeline_layout_info, nullptr, &m_state.pipeline_layout);
-
-    GLAZE_ASSERT(result != VK_SUCCESS, "failed to create pipeline layout");
-
-    queue_deletor::push([layout = m_state.pipeline_layout]() { m_ctx.disp.destroyPipelineLayout(layout, nullptr); });
-
-    const VkDynamicState dynamic_states[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-
-    VkPipelineDynamicStateCreateInfo dynamic_info = {};
-    dynamic_info.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamic_info.dynamicStateCount = 2;
-    dynamic_info.pDynamicStates = dynamic_states;
-
-    const VkFormat color_format = m_ctx.swapchain.image_format;
-
-    VkPipelineRenderingCreateInfo rendering_info = {};
-    rendering_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    rendering_info.colorAttachmentCount = 1;
-    rendering_info.pColorAttachmentFormats = &color_format;
-    rendering_info.depthAttachmentFormat = VK_FORMAT_UNDEFINED;
-    rendering_info.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
-
-    VkGraphicsPipelineCreateInfo pipeline_info = {};
-    pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipeline_info.pNext = &rendering_info;
-    pipeline_info.stageCount = 2;
-    pipeline_info.pStages = shader_stages;
-    pipeline_info.pVertexInputState = &vertex_input_info;
-    pipeline_info.pInputAssemblyState = &input_assembly;
-    pipeline_info.pViewportState = &viewport_state;
-    pipeline_info.pRasterizationState = &rasterizer;
-    pipeline_info.pMultisampleState = &multisampling;
-    pipeline_info.pColorBlendState = &color_blending;
-    pipeline_info.pDynamicState = &dynamic_info;
-    pipeline_info.layout = m_state.pipeline_layout;
-    pipeline_info.renderPass = VK_NULL_HANDLE;
-    pipeline_info.subpass = 0;
-    pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
-
-    result = m_ctx.disp.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_state.graphics_pipeline);
-
-    m_ctx.disp.destroyShaderModule(frag_module, nullptr);
-    m_ctx.disp.destroyShaderModule(vert_module, nullptr);
-
-    GLAZE_ASSERT(result != VK_SUCCESS, "failed to create graphics pipeline");
-
-    queue_deletor::push([pipeline = m_state.graphics_pipeline]() { m_ctx.disp.destroyPipeline(pipeline, nullptr); });
-}
-
-void create_command_pool()
-{
-    VkCommandPoolCreateInfo pool_info = {};
-    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    pool_info.queueFamilyIndex = m_ctx.device.get_queue_index(vkb::QueueType::graphics).value();
-
-    const VkResult result = m_ctx.disp.createCommandPool(&pool_info, nullptr, &m_state.command_pool);
-
-    GLAZE_ASSERT(result != VK_SUCCESS, "failed to create command pool");
-
-    queue_deletor::push([pool = m_state.command_pool]() { m_ctx.disp.destroyCommandPool(pool, nullptr); });
-}
-
-void create_frame_data()
-{
-    m_state.frames.resize(MAX_FRAMES_IN_FLIGHT);
-
-    for (frame_data& frame : m_state.frames) {
-        VkCommandBufferAllocateInfo alloc_info = {};
-        alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        alloc_info.commandPool = m_state.command_pool;
-        alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        alloc_info.commandBufferCount = 1;
-
-        VkResult result = m_ctx.disp.allocateCommandBuffers(&alloc_info, &frame.command_buffer);
-
-        GLAZE_ASSERT(result != VK_SUCCESS, "failed to allocate command buffer");
-
-        VkSemaphoreCreateInfo semaphore_info = {};
-        semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-        VkFenceCreateInfo fence_info = {};
-        fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-        result = m_ctx.disp.createSemaphore(&semaphore_info, nullptr, &frame.semaphore_available);
-
-        GLAZE_ASSERT(result != VK_SUCCESS, "failed to create frame semaphore");
-
-        queue_deletor::push([semaphore = frame.semaphore_available]() { m_ctx.disp.destroySemaphore(semaphore, nullptr); });
-
-        result = m_ctx.disp.createFence(&fence_info, nullptr, &frame.fence_inflight);
-
-        GLAZE_ASSERT(result != VK_SUCCESS, "failed to create frame fence");
-
-        queue_deletor::push([fence = frame.fence_inflight]() { m_ctx.disp.destroyFence(fence, nullptr); });
-    }
-}
-
-void create_swapchain_image_data()
-{
-    auto images      = m_ctx.swapchain.get_images();
-    auto image_views = m_ctx.swapchain.get_image_views();
-
-    GLAZE_ASSERT(!images || !image_views, "failed to get swapchain images");
-
-    m_state.swapchain_images.resize(m_ctx.swapchain.image_count);
-
-    for (uint32_t i = 0; i < m_ctx.swapchain.image_count; i++) {
-        swapchain_image_data& image_data = m_state.swapchain_images[i];
-
-        image_data.image      = images.value()[i];
-        image_data.image_view = image_views.value()[i];
-
-        VkSemaphoreCreateInfo semaphore_info = {};
-        semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-        const VkResult result = m_ctx.disp.createSemaphore(&semaphore_info, nullptr, &image_data.semaphore_finished);
-
-        GLAZE_ASSERT(result != VK_SUCCESS, "failed to create swapchain image semaphore");
-    }
-}
-
-void destroy_swapchain_image_data()
-{
-    for (swapchain_image_data& image_data : m_state.swapchain_images) {
-        m_ctx.disp.destroyImageView(image_data.image_view, nullptr);
-        m_ctx.disp.destroySemaphore(image_data.semaphore_finished, nullptr);
-    }
-
-    m_state.swapchain_images.clear();
-}
-
-void recreate_swapchain()
-{
-    m_ctx.disp.deviceWaitIdle();
-
-    destroy_swapchain_image_data();
-
-    create_swapchain();
-    create_swapchain_image_data();
-
-    io::viewport::clear_unhandle_resized();
-}
-
-void transition_image(
-    VkCommandBuffer cmd,
-    VkImage image,
-    VkImageLayout old_layout,
-    VkImageLayout new_layout,
-    VkPipelineStageFlags2 src_stage,
-    VkAccessFlags2 src_access,
-    VkPipelineStageFlags2 dst_stage,
-    VkAccessFlags2 dst_access
-)
-{
-    VkImageMemoryBarrier2 barrier = {};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
-    barrier.srcStageMask = src_stage;
-    barrier.srcAccessMask = src_access;
-    barrier.dstStageMask = dst_stage;
-    barrier.dstAccessMask = dst_access;
-    barrier.oldLayout = old_layout;
-    barrier.newLayout = new_layout;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
-
-    VkDependencyInfo dependency_info = {};
-    dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-    dependency_info.imageMemoryBarrierCount = 1;
-    dependency_info.pImageMemoryBarriers = &barrier;
-
-    m_ctx.disp.cmdPipelineBarrier2(cmd, &dependency_info);
+    queue_deletor::push([]() { vk::shaders::destroy_pipeline(m_pipeline); });
 }
 
 void record_command_buffer()
 {
-    frame_data& frame = m_state.frames.at(m_state.current_frame);
-    swapchain_image_data& image_data = m_state.swapchain_images.at(m_state.current_swapchain_image);
+    frame_data& frame = vk::frame::get_current_frame();
+    swapchain_image_data& image_data = vk::frame::get_current_image();
+
+    const vkb::DispatchTable& disp = vk::device::get_disp();
+    const VkExtent2D extent = vk::frame::get_swapchain().extent;
 
     VkCommandBuffer cmd = frame.command_buffer;
 
-    VkResult result = m_ctx.disp.resetCommandBuffer(cmd, 0);
+    vk::commands::reset(cmd);
+    vk::commands::begin(cmd);
 
-    GLAZE_ASSERT(result != VK_SUCCESS, "failed to reset command buffer");
-
-    VkCommandBufferBeginInfo begin_info = {};
-    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    result = m_ctx.disp.beginCommandBuffer(cmd, &begin_info);
-
-    GLAZE_ASSERT(result != VK_SUCCESS, "failed to begin command buffer");
-
-    transition_image(
+    vk::commands::transition_image(
         cmd,
         image_data.image,
         VK_IMAGE_LAYOUT_UNDEFINED,
@@ -496,7 +104,7 @@ void record_command_buffer()
     VkRenderingInfo rendering_info = {};
     rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
     rendering_info.renderArea.offset = { 0, 0 };
-    rendering_info.renderArea.extent = m_ctx.swapchain.extent;
+    rendering_info.renderArea.extent = extent;
     rendering_info.layerCount = 1;
     rendering_info.colorAttachmentCount = 1;
     rendering_info.pColorAttachments = &color_attachment;
@@ -504,27 +112,27 @@ void record_command_buffer()
     VkViewport viewport = {};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
-    viewport.width = static_cast<float>(m_ctx.swapchain.extent.width);
-    viewport.height = static_cast<float>(m_ctx.swapchain.extent.height);
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
 
     VkRect2D scissor = {};
     scissor.offset = { 0, 0 };
-    scissor.extent = m_ctx.swapchain.extent;
+    scissor.extent = extent;
 
-    m_ctx.disp.cmdBeginRendering(cmd, &rendering_info);
+    disp.cmdBeginRendering(cmd, &rendering_info);
 
-    m_ctx.disp.cmdSetViewport(cmd, 0, 1, &viewport);
-    m_ctx.disp.cmdSetScissor(cmd, 0, 1, &scissor);
+    disp.cmdSetViewport(cmd, 0, 1, &viewport);
+    disp.cmdSetScissor(cmd, 0, 1, &scissor);
 
-    m_ctx.disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_state.graphics_pipeline);
+    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline.handle);
 
-    m_ctx.disp.cmdDraw(cmd, 3, 1, 0, 0);
+    disp.cmdDraw(cmd, 3, 1, 0, 0);
 
-    m_ctx.disp.cmdEndRendering(cmd);
+    disp.cmdEndRendering(cmd);
 
-    transition_image(
+    vk::commands::transition_image(
         cmd,
         image_data.image,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -535,35 +143,35 @@ void record_command_buffer()
         0
     );
 
-    result = m_ctx.disp.endCommandBuffer(cmd);
-
-    GLAZE_ASSERT(result != VK_SUCCESS, "failed to record command buffer");
+    vk::commands::end(cmd);
 }
 
 void draw_frame()
 {
-    frame_data& frame = m_state.frames.at(m_state.current_frame);
+    const vkb::DispatchTable& disp = vk::device::get_disp();
 
-    m_ctx.disp.waitForFences(1, &frame.fence_inflight, VK_TRUE, UINT64_MAX);
+    frame_data& frame = vk::frame::get_current_frame();
 
-    VkResult result = m_ctx.disp.acquireNextImageKHR(
-        m_ctx.swapchain,
+    disp.waitForFences(1, &frame.fence_inflight, VK_TRUE, UINT64_MAX);
+
+    VkResult result = disp.acquireNextImageKHR(
+        vk::frame::get_swapchain(),
         UINT64_MAX,
         frame.semaphore_available,
         VK_NULL_HANDLE,
-        &m_state.current_swapchain_image
+        &vk::frame::get_image_index()
     );
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-        recreate_swapchain();
+        vk::frame::recreate_swapchain();
         return;
     }
 
     GLAZE_ASSERT(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR, "failed to acquire swapchain image");
 
-    m_ctx.disp.resetFences(1, &frame.fence_inflight);
+    disp.resetFences(1, &frame.fence_inflight);
 
-    swapchain_image_data& image_data = m_state.swapchain_images.at(m_state.current_swapchain_image);
+    swapchain_image_data& image_data = vk::frame::get_current_image();
 
     record_command_buffer();
 
@@ -577,24 +185,9 @@ void draw_frame()
     signal_info.semaphore = image_data.semaphore_finished;
     signal_info.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 
-    VkCommandBufferSubmitInfo cmd_info = {};
-    cmd_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-    cmd_info.commandBuffer = frame.command_buffer;
+    vk::commands::submit(frame.command_buffer, &wait_info, &signal_info, frame.fence_inflight);
 
-    VkSubmitInfo2 submit_info = {};
-    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-    submit_info.waitSemaphoreInfoCount = 1;
-    submit_info.pWaitSemaphoreInfos = &wait_info;
-    submit_info.commandBufferInfoCount = 1;
-    submit_info.pCommandBufferInfos = &cmd_info;
-    submit_info.signalSemaphoreInfoCount = 1;
-    submit_info.pSignalSemaphoreInfos = &signal_info;
-
-    result = m_ctx.disp.queueSubmit2(m_state.graphics_queue, 1, &submit_info, frame.fence_inflight);
-
-    GLAZE_ASSERT(result != VK_SUCCESS, "failed to submit draw command buffer");
-
-    VkSwapchainKHR swapchain = m_ctx.swapchain;
+    VkSwapchainKHR swapchain = vk::frame::get_swapchain();
 
     VkPresentInfoKHR present_info = {};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -602,14 +195,14 @@ void draw_frame()
     present_info.pWaitSemaphores = &image_data.semaphore_finished;
     present_info.swapchainCount = 1;
     present_info.pSwapchains = &swapchain;
-    present_info.pImageIndices = &m_state.current_swapchain_image;
+    present_info.pImageIndices = &vk::frame::get_image_index();
 
-    m_state.current_frame = (m_state.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
+    vk::frame::advance();
 
-    result = m_ctx.disp.queuePresentKHR(m_state.present_queue, &present_info);
+    result = disp.queuePresentKHR(vk::device::get_queues().present, &present_info);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-        recreate_swapchain();
+        vk::frame::recreate_swapchain();
         return;
     }
 
@@ -622,40 +215,40 @@ void init()
 {
     init_vk();
 
-    create_graphics_pipeline();
-    create_command_pool();
-    create_frame_data();
+    vk::commands::create_pool();
+    vk::resources::create_allocator(m_instance);
 
-    create_swapchain_image_data();
-    queue_deletor::push([]() { destroy_swapchain_image_data(); });
+    vk::frame::create_frame_data();
+
+    create_graphics_pipeline();
 }
 
 void init_vk()
 {
     create_instance();
-    create_surface();
-    create_device();
 
-    create_swapchain();
-    queue_deletor::push([]() { vkb::destroy_swapchain(m_ctx.swapchain); });
+    vk::device::create_surface(m_instance);
+    vk::device::create_device(m_instance);
+    vk::device::make_queues();
 
-    get_queues();
+    vk::frame::create_swapchain();
+    queue_deletor::push([]() { vk::frame::destroy_swapchain(); });
 }
 
 void cleanup()
 {
-    m_ctx.disp.deviceWaitIdle();
+    vk::device::get_disp().deviceWaitIdle();
 
     queue_deletor::clean_all();
 
-    m_state = {};
-    m_ctx   = {};
+    m_pipeline = {};
+    m_instance = {};
 }
 
 void next_frame()
 {
     if (io::viewport::get_unhandle_resized()) {
-        recreate_swapchain();
+        vk::frame::recreate_swapchain();
     }
 
     draw_frame();
