@@ -10,6 +10,8 @@
 namespace glaze::platform::wm
 {
 
+std::vector<std::unique_ptr<window>> m_windows;
+
 window* create_window(const window_create_info& create_info)
 {
     SDL_WindowFlags flags = SDL_WINDOW_HIDDEN | create_info.extra_sdl_flags;

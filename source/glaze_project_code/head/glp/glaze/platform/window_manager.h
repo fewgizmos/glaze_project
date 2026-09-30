@@ -38,8 +38,6 @@ struct window
     bool m_unhandle_resized = false;
 };
 
-inline std::vector<std::unique_ptr<window>> m_windows;
-
 window* create_window(const window_create_info& create_info);
 void destroy_window(window* win);
 

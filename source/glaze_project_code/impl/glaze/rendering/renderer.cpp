@@ -1,5 +1,8 @@
 #include "glp/glaze/rendering/renderer.h"
 
+#include "glp/glaze/rendering/defines.h"
+#include "glp/glaze/rendering/types.h"
+
 #include "glp/glaze/rendering/queue_deletor.h"
 
 #include "glp/glaze/io/viewport.h"
@@ -21,8 +24,6 @@ namespace glaze::rendering::renderer
 
 namespace
 {
-
-constexpr int MAX_FRAMES_IN_FLIGHT = 4;
 
 struct vk_context
 {

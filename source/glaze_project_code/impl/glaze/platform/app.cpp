@@ -5,6 +5,8 @@
 namespace glaze::platform::app
 {
 
+std::vector<SDL_Event> m_events_buf;
+
 void init()
 {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
@@ -32,5 +34,7 @@ void pump_events()
         m_events_buf.push_back(event);
     }
 }
+
+const std::vector<SDL_Event>& get_events() { return m_events_buf; }
 
 }
