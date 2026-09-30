@@ -42,11 +42,16 @@ void create_device(const vkb::Instance& instance)
     features13.dynamicRendering = VK_TRUE;
     features13.synchronization2 = VK_TRUE;
 
+    VkPhysicalDeviceVulkan12Features features12 = {};
+    features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    features12.bufferDeviceAddress = VK_TRUE;
+
     vkb::PhysicalDeviceSelector phys_device_selector(instance);
 
     auto phys_device_ret = phys_device_selector
         .set_surface(m_surface)
         .set_minimum_version(1, 3)
+        .set_required_features_12(features12)
         .set_required_features_13(features13)
         .select();
 

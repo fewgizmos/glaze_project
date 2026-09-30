@@ -1,7 +1,6 @@
 #include "glp/glaze/rendering/scene_renderer.h"
 
 #include "glp/glaze/rendering/vk/commands.h"
-#include "glp/glaze/rendering/vk/descriptors.h"
 #include "glp/glaze/rendering/vk/device.h"
 #include "glp/glaze/rendering/vk/frame.h"
 #include "glp/glaze/rendering/vk/resources.h"
@@ -35,17 +34,31 @@ struct face_def
     glm::vec3 corners[4];
 };
 
+struct object_data
+{
+    glm::mat4 model;
+    VkDeviceAddress faces;
+};
+
 struct render_object
 {
     const mesh* target;
-    glm::mat4 model;
+    buffer data;
 };
 
 struct object_push
 {
     glm::mat4 view_proj;
-    glm::mat4 model;
+    VkDeviceAddress object;
 };
+
+/*
+struct cube_colors_push
+{
+    VkDeviceAddress faces;
+    uint32_t count;
+};
+*/
 
 constexpr uint32_t CUBE_FACE_COUNT = 6;
 
@@ -60,10 +73,6 @@ std::vector<render_object> m_objects;
 buffer m_cube_face_buffer;
 
 image m_depth_image;
-
-VkDescriptorPool m_descriptor_pool = VK_NULL_HANDLE;
-VkDescriptorSetLayout m_cube_set_layout = VK_NULL_HANDLE;
-VkDescriptorSet m_cube_set = VK_NULL_HANDLE;
 
 void create_depth_image(VkExtent2D extent)
 {
@@ -119,20 +128,7 @@ void create_cube_mesh()
     m_cube_mesh = vk::resources::create_mesh(vertices, indices);
 }
 
-void create_objects()
-{
-    m_objects.push_back({
-        &m_cube_mesh,
-        glm::translate(glm::mat4(1.0f), glm::vec3(-0.7f, 0.0f, 0.0f))
-    });
-
-    m_objects.push_back({
-        &m_cube_mesh,
-        glm::translate(glm::mat4(1.0f), glm::vec3(0.7f, 0.4f, -1.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.8f))
-    });
-}
-
-void create_cube_resources()
+void create_cube_faces()
 {
     cube_face cube_faces[CUBE_FACE_COUNT];
 
@@ -142,32 +138,46 @@ void create_cube_resources()
 
     m_cube_face_buffer = vk::resources::create_buffer(
         sizeof(cube_faces),
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
     );
 
     vk::resources::upload_buffer(m_cube_face_buffer, cube_faces, sizeof(cube_faces));
+}
 
-    m_descriptor_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 } });
+void create_object(const mesh* target, const glm::mat4& model)
+{
+    const object_data data = { model, m_cube_face_buffer.address };
 
-    VkDescriptorSetLayoutBinding face_binding = {};
-    face_binding.binding = 0;
-    face_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    face_binding.descriptorCount = 1;
-    face_binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+    render_object object;
+    object.target = target;
 
-    m_cube_set_layout = vk::descriptors::create_set_layout({ face_binding });
+    object.data = vk::resources::create_buffer(
+        sizeof(data),
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+    );
 
-    m_cube_set = vk::descriptors::allocate_set(m_descriptor_pool, m_cube_set_layout);
+    vk::resources::upload_buffer(object.data, &data, sizeof(data));
 
-    vk::descriptors::write_buffer(m_cube_set, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, m_cube_face_buffer);
+    m_objects.push_back(object);
+}
+
+void create_objects()
+{
+    create_object(&m_cube_mesh, glm::translate(glm::mat4(1.0f), glm::vec3(-0.7f, 0.0f, 0.0f)));
+
+    create_object(
+        &m_cube_mesh,
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.7f, 0.4f, -1.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.8f))
+    );
 }
 
 void create_pipelines()
 {
     // compute_pipeline_create_info cube_colors_create_info;
     // cube_colors_create_info.comp_file = "random_cube_colors.comp";
-    // cube_colors_create_info.set_layouts = { m_cube_set_layout };
+    // cube_colors_create_info.push_constant_size = sizeof(cube_colors_push);
 
     // m_cube_colors_pipeline = vk::shaders::create_compute_pipeline(cube_colors_create_info);
 
@@ -178,7 +188,6 @@ void create_pipelines()
     cube_create_info.depth_format = DEPTH_FORMAT;
     cube_create_info.cull_mode = VK_CULL_MODE_BACK_BIT;
     cube_create_info.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    cube_create_info.set_layouts = { m_cube_set_layout };
     cube_create_info.push_constant_size = sizeof(object_push);
     cube_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT;
 
@@ -210,16 +219,9 @@ void randomize_cube_colors(VkCommandBuffer cmd)
 
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_cube_colors_pipeline.handle);
 
-    disp.cmdBindDescriptorSets(
-        cmd,
-        VK_PIPELINE_BIND_POINT_COMPUTE,
-        m_cube_colors_pipeline.layout,
-        0,
-        1,
-        &m_cube_set,
-        0,
-        nullptr
-    );
+    const cube_colors_push push = { m_cube_face_buffer.address, CUBE_FACE_COUNT };
+
+    vk::commands::push_constants(cmd, m_cube_colors_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, sizeof(push), &push);
 
     disp.cmdDispatch(cmd, 1, 1, 1);
 
@@ -317,19 +319,8 @@ void draw_objects(VkCommandBuffer cmd, const swapchain_image_data& target, VkExt
 
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_cube_pipeline.handle);
 
-    disp.cmdBindDescriptorSets(
-        cmd,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        m_cube_pipeline.layout,
-        0,
-        1,
-        &m_cube_set,
-        0,
-        nullptr
-    );
-
     for (const render_object& object : m_objects) {
-        const object_push push = { proj * view, object.model };
+        const object_push push = { proj * view, object.data.address };
 
         const VkDeviceSize offset = 0;
 
@@ -351,9 +342,9 @@ void init()
     create_depth_image(vk::frame::get_swapchain().extent);
 
     create_cube_mesh();
+    create_cube_faces();
     create_objects();
 
-    create_cube_resources();
     create_pipelines();
 }
 
@@ -362,22 +353,19 @@ void cleanup()
     vk::shaders::destroy_pipeline(m_cube_pipeline);
     // vk::shaders::destroy_pipeline(m_cube_colors_pipeline);
 
-    vk::descriptors::destroy_set_layout(m_cube_set_layout);
-    vk::descriptors::destroy_pool(m_descriptor_pool);
+    for (render_object& object : m_objects) {
+        vk::resources::destroy_buffer(object.data);
+    }
+
+    m_objects.clear();
 
     vk::resources::destroy_buffer(m_cube_face_buffer);
-
     vk::resources::destroy_mesh(m_cube_mesh);
-    m_objects.clear();
 
     vk::resources::destroy_image(m_depth_image);
 
     m_cube_pipeline = {};
     // m_cube_colors_pipeline = {};
-
-    m_descriptor_pool = VK_NULL_HANDLE;
-    m_cube_set_layout = VK_NULL_HANDLE;
-    m_cube_set = VK_NULL_HANDLE;
 }
 
 void draw_all(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)

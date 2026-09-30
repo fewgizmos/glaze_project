@@ -25,6 +25,7 @@ void create_allocator(const vkb::Instance& instance)
     functions.vkGetDeviceProcAddr   = vkGetDeviceProcAddr;
 
     VmaAllocatorCreateInfo create_info = {};
+    create_info.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     create_info.vulkanApiVersion = VK_API_VERSION_1_3;
     create_info.instance = instance.instance;
     create_info.physicalDevice = device::get_physical().physical_device;
@@ -65,6 +66,14 @@ buffer create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationC
     );
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create buffer");
+
+    if (usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+        VkBufferDeviceAddressInfo address_info = {};
+        address_info.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+        address_info.buffer = result_buffer.handle;
+
+        result_buffer.address = device::get_disp().getBufferDeviceAddress(&address_info);
+    }
 
     return result_buffer;
 }

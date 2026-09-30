@@ -1,4 +1,5 @@
 #version 450
+#extension GL_EXT_buffer_reference : require
 
 layout(location = 0) in vec3 in_pos;
 layout(location = 1) in vec3 in_normal;
@@ -13,21 +14,27 @@ struct face
     uvec4 rng;
 };
 
-layout(std430, set = 0, binding = 0) readonly buffer face_buffer
+layout(buffer_reference, std430) readonly buffer face_buffer
 {
-    face faces[];
+    face data[];
+};
+
+layout(buffer_reference, std430) readonly buffer object_buffer
+{
+    mat4 model;
+    face_buffer faces;
 };
 
 layout(push_constant) uniform constants
 {
     mat4 view_proj;
-    mat4 model;
+    object_buffer object;
 } pc;
 
 void main()
 {
-    gl_Position = pc.view_proj * pc.model * vec4(in_pos, 1.0);
+    gl_Position = pc.view_proj * pc.object.model * vec4(in_pos, 1.0);
 
-    frag_color  = faces[in_face].color.rgb;
-    frag_normal = mat3(pc.model) * in_normal;
+    frag_color  = pc.object.faces.data[in_face].color.rgb;
+    frag_normal = mat3(pc.object.model) * in_normal;
 }

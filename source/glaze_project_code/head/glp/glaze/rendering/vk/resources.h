@@ -17,6 +17,7 @@ struct buffer
     VkBuffer handle = VK_NULL_HANDLE;
     VmaAllocation allocation = VK_NULL_HANDLE;
     VkDeviceSize size = 0;
+    VkDeviceAddress address = 0;
 };
 
 struct image
