@@ -37,14 +37,6 @@ void memory_barrier(
     VkAccessFlags2 dst_access
 );
 
-void blit_image(
-    VkCommandBuffer cmd,
-    VkImage src,
-    VkExtent2D src_extent,
-    VkImage dst,
-    VkExtent2D dst_extent
-);
-
 void transition_image(
     VkCommandBuffer cmd,
     VkImage image,

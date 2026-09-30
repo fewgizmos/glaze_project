@@ -7,8 +7,13 @@
 #include "glp/glaze/rendering/vk/resources.h"
 #include "glp/glaze/rendering/vk/shaders.h"
 
-#include "glp/glaze/utilities/core/timer.h"
+// #include "glp/glaze/utilities/core/timer.h"
 
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/mat4x4.hpp>
+#include <glm/trigonometric.hpp>
+#include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
 namespace glaze::rendering::scene_renderer
@@ -17,82 +22,145 @@ namespace glaze::rendering::scene_renderer
 namespace
 {
 
-struct vertex
+struct cube_face
 {
-    glm::vec4 position;
     glm::vec4 color;
+    glm::uvec4 rng;
 };
 
-struct move_push
+struct cube_push
 {
-    float step;
-    uint32_t seed;
+    glm::mat4 mvp;
 };
 
-constexpr float MOVE_SPEED = 0.5f;
+constexpr uint32_t CUBE_VERTEX_COUNT = 36;
+constexpr uint32_t CUBE_FACE_COUNT   = 6;
 
-pipeline m_triangle_pipeline;
-pipeline m_move_pipeline;
+pipeline m_cube_pipeline;
+// pipeline m_cube_colors_pipeline;
 
-buffer m_vertex_buffer;
+buffer m_cube_pos_buffer;
+buffer m_cube_face_buffer;
+buffer m_cube_normal_buffer;
 
 VkDescriptorPool m_descriptor_pool = VK_NULL_HANDLE;
-VkDescriptorSetLayout m_vertex_set_layout = VK_NULL_HANDLE;
-VkDescriptorSet m_vertex_set = VK_NULL_HANDLE;
+VkDescriptorSetLayout m_cube_set_layout = VK_NULL_HANDLE;
+VkDescriptorSet m_cube_set = VK_NULL_HANDLE;
 
-uint32_t m_frame = 0;
+// float m_cube_rot = 0.0f;
 
-void create_vertex_resources()
+void create_cube_resources()
 {
-    const vertex vertices[3] = {
-        { {  0.0f, -0.5f, 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
-        { {  0.5f,  0.5f, 0.0f, 1.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
-        { { -0.5f,  0.5f, 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } }
+    const glm::vec4 cube_pos[CUBE_VERTEX_COUNT] = {
+        { -0.5f, -0.5f,  0.5f, 1.0f }, {  0.5f, -0.5f,  0.5f, 1.0f }, {  0.5f,  0.5f,  0.5f, 1.0f },
+        { -0.5f, -0.5f,  0.5f, 1.0f }, {  0.5f,  0.5f,  0.5f, 1.0f }, { -0.5f,  0.5f,  0.5f, 1.0f },
+
+        {  0.5f, -0.5f, -0.5f, 1.0f }, { -0.5f, -0.5f, -0.5f, 1.0f }, { -0.5f,  0.5f, -0.5f, 1.0f },
+        {  0.5f, -0.5f, -0.5f, 1.0f }, { -0.5f,  0.5f, -0.5f, 1.0f }, {  0.5f,  0.5f, -0.5f, 1.0f },
+
+        {  0.5f, -0.5f,  0.5f, 1.0f }, {  0.5f, -0.5f, -0.5f, 1.0f }, {  0.5f,  0.5f, -0.5f, 1.0f },
+        {  0.5f, -0.5f,  0.5f, 1.0f }, {  0.5f,  0.5f, -0.5f, 1.0f }, {  0.5f,  0.5f,  0.5f, 1.0f },
+
+        { -0.5f, -0.5f, -0.5f, 1.0f }, { -0.5f, -0.5f,  0.5f, 1.0f }, { -0.5f,  0.5f,  0.5f, 1.0f },
+        { -0.5f, -0.5f, -0.5f, 1.0f }, { -0.5f,  0.5f,  0.5f, 1.0f }, { -0.5f,  0.5f, -0.5f, 1.0f },
+
+        { -0.5f,  0.5f,  0.5f, 1.0f }, {  0.5f,  0.5f,  0.5f, 1.0f }, {  0.5f,  0.5f, -0.5f, 1.0f },
+        { -0.5f,  0.5f,  0.5f, 1.0f }, {  0.5f,  0.5f, -0.5f, 1.0f }, { -0.5f,  0.5f, -0.5f, 1.0f },
+
+        { -0.5f, -0.5f, -0.5f, 1.0f }, {  0.5f, -0.5f, -0.5f, 1.0f }, {  0.5f, -0.5f,  0.5f, 1.0f },
+        { -0.5f, -0.5f, -0.5f, 1.0f }, {  0.5f, -0.5f,  0.5f, 1.0f }, { -0.5f, -0.5f,  0.5f, 1.0f }
     };
 
-    m_vertex_buffer = vk::resources::create_buffer(
-        sizeof(vertices),
+    cube_face cube_faces[CUBE_FACE_COUNT];
+
+    for (uint32_t i = 0; i < CUBE_FACE_COUNT; i++) {
+        cube_faces[i] = { glm::vec4(1.0f), glm::uvec4(0x9E3779B9u * (i + 1), 0u, 0u, 0u) };
+    }
+
+    const glm::vec4 cube_normals[CUBE_FACE_COUNT] = {
+        {  0.0f,  0.0f,  1.0f, 0.0f },
+        {  0.0f,  0.0f, -1.0f, 0.0f },
+        {  1.0f,  0.0f,  0.0f, 0.0f },
+        { -1.0f,  0.0f,  0.0f, 0.0f },
+        {  0.0f,  1.0f,  0.0f, 0.0f },
+        {  0.0f, -1.0f,  0.0f, 0.0f }
+    };
+
+    m_cube_pos_buffer = vk::resources::create_buffer(
+        sizeof(cube_pos),
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
         VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
     );
 
-    vk::resources::upload_buffer(m_vertex_buffer, vertices, sizeof(vertices));
+    m_cube_face_buffer = vk::resources::create_buffer(
+        sizeof(cube_faces),
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+    );
 
-    m_descriptor_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 } });
+    vk::resources::upload_buffer(m_cube_pos_buffer, cube_pos, sizeof(cube_pos));
+    vk::resources::upload_buffer(m_cube_face_buffer, cube_faces, sizeof(cube_faces));
 
-    VkDescriptorSetLayoutBinding binding = {};
-    binding.binding = 0;
-    binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    binding.descriptorCount = 1;
-    binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+    m_cube_normal_buffer = vk::resources::create_buffer(
+        sizeof(cube_normals),
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+    );
 
-    m_vertex_set_layout = vk::descriptors::create_set_layout({ binding });
+    vk::resources::upload_buffer(m_cube_normal_buffer, cube_normals, sizeof(cube_normals));
 
-    m_vertex_set = vk::descriptors::allocate_set(m_descriptor_pool, m_vertex_set_layout);
+    m_descriptor_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3 } });
 
-    vk::descriptors::write_buffer(m_vertex_set, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, m_vertex_buffer);
+    VkDescriptorSetLayoutBinding pos_binding = {};
+    pos_binding.binding = 0;
+    pos_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    pos_binding.descriptorCount = 1;
+    pos_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkDescriptorSetLayoutBinding face_binding = {};
+    face_binding.binding = 1;
+    face_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    face_binding.descriptorCount = 1;
+    face_binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkDescriptorSetLayoutBinding normal_binding = {};
+    normal_binding.binding = 2;
+    normal_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    normal_binding.descriptorCount = 1;
+    normal_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    m_cube_set_layout = vk::descriptors::create_set_layout({ pos_binding, face_binding, normal_binding });
+
+    m_cube_set = vk::descriptors::allocate_set(m_descriptor_pool, m_cube_set_layout);
+
+    vk::descriptors::write_buffer(m_cube_set, 0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, m_cube_pos_buffer);
+    vk::descriptors::write_buffer(m_cube_set, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, m_cube_face_buffer);
+    vk::descriptors::write_buffer(m_cube_set, 2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, m_cube_normal_buffer);
 }
 
 void create_pipelines()
 {
-    compute_pipeline_info move_info;
-    move_info.comp_file = "moving_triangle_vertices.comp";
-    move_info.set_layouts = { m_vertex_set_layout };
-    move_info.push_constant_size = sizeof(move_push);
+    // compute_pipeline_info cube_colors_info;
+    // cube_colors_info.comp_file = "random_cube_colors.comp";
+    // cube_colors_info.set_layouts = { m_cube_set_layout };
 
-    m_move_pipeline = vk::shaders::create_compute_pipeline(move_info);
+    // m_cube_colors_pipeline = vk::shaders::create_compute_pipeline(cube_colors_info);
 
-    graphics_pipeline_info triangle_info;
-    triangle_info.vert_file = "triangle.vert";
-    triangle_info.frag_file = "triangle.frag";
-    triangle_info.color_format = vk::frame::get_swapchain().image_format;
-    triangle_info.cull_mode = VK_CULL_MODE_NONE;
-    triangle_info.set_layouts = { m_vertex_set_layout };
+    graphics_pipeline_info cube_info;
+    cube_info.vert_file = "cube.vert";
+    cube_info.frag_file = "cube.frag";
+    cube_info.color_format = vk::frame::get_swapchain().image_format;
+    cube_info.cull_mode = VK_CULL_MODE_BACK_BIT;
+    cube_info.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    cube_info.set_layouts = { m_cube_set_layout };
+    cube_info.push_constant_size = sizeof(cube_push);
+    cube_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT;
 
-    m_triangle_pipeline = vk::shaders::create_graphics_pipeline(triangle_info);
+    m_cube_pipeline = vk::shaders::create_graphics_pipeline(cube_info);
 }
 
-void move_vertices(VkCommandBuffer cmd)
+/*
+void randomize_cube_colors(VkCommandBuffer cmd)
 {
     const vkb::DispatchTable& disp = vk::device::get_disp();
 
@@ -104,22 +172,18 @@ void move_vertices(VkCommandBuffer cmd)
         VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
     );
 
-    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_move_pipeline.handle);
+    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_cube_colors_pipeline.handle);
 
     disp.cmdBindDescriptorSets(
         cmd,
         VK_PIPELINE_BIND_POINT_COMPUTE,
-        m_move_pipeline.layout,
+        m_cube_colors_pipeline.layout,
         0,
         1,
-        &m_vertex_set,
+        &m_cube_set,
         0,
         nullptr
     );
-
-    const move_push push = { MOVE_SPEED * utilities::core::timer::delta, m_frame++ };
-
-    vk::commands::push_constants(cmd, m_move_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, sizeof(push), &push);
 
     disp.cmdDispatch(cmd, 1, 1, 1);
 
@@ -131,10 +195,28 @@ void move_vertices(VkCommandBuffer cmd)
         VK_ACCESS_2_SHADER_STORAGE_READ_BIT
     );
 }
+*/
 
-void draw_triangle(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)
+void draw_cube(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)
 {
     const vkb::DispatchTable& disp = vk::device::get_disp();
+
+    // m_cube_rot += utilities::core::timer::delta;
+    // const glm::mat4 model = glm::rotate(glm::mat4(1.0f), m_cube_rot, glm::vec3(0.4f, 1.0f, 0.2f));
+
+    const glm::mat4 view = glm::lookAt(glm::vec3(1.5f, 1.2f, 2.5f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+    glm::mat4 proj = glm::perspectiveRH_ZO(
+        glm::radians(60.0f),
+        static_cast<float>(extent.width) / static_cast<float>(extent.height),
+        0.1f,
+        100.0f
+    );
+
+    proj[1][1] *= -1.0f;
+
+    // const cube_push push = { proj * view * model };
+    const cube_push push = { proj * view };
 
     vk::commands::transition_image(
         cmd,
@@ -181,20 +263,22 @@ void draw_triangle(VkCommandBuffer cmd, const swapchain_image_data& target, VkEx
     disp.cmdSetViewport(cmd, 0, 1, &viewport);
     disp.cmdSetScissor(cmd, 0, 1, &scissor);
 
-    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_triangle_pipeline.handle);
+    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_cube_pipeline.handle);
 
     disp.cmdBindDescriptorSets(
         cmd,
         VK_PIPELINE_BIND_POINT_GRAPHICS,
-        m_triangle_pipeline.layout,
+        m_cube_pipeline.layout,
         0,
         1,
-        &m_vertex_set,
+        &m_cube_set,
         0,
         nullptr
     );
 
-    disp.cmdDraw(cmd, 3, 1, 0, 0);
+    vk::commands::push_constants(cmd, m_cube_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(push), &push);
+
+    disp.cmdDraw(cmd, CUBE_VERTEX_COUNT, 1, 0, 0);
 
     disp.cmdEndRendering(cmd);
 }
@@ -203,34 +287,36 @@ void draw_triangle(VkCommandBuffer cmd, const swapchain_image_data& target, VkEx
 
 void init()
 {
-    create_vertex_resources();
+    create_cube_resources();
     create_pipelines();
 }
 
 void cleanup()
 {
-    vk::shaders::destroy_pipeline(m_triangle_pipeline);
-    vk::shaders::destroy_pipeline(m_move_pipeline);
+    vk::shaders::destroy_pipeline(m_cube_pipeline);
+    // vk::shaders::destroy_pipeline(m_cube_colors_pipeline);
 
-    vk::descriptors::destroy_set_layout(m_vertex_set_layout);
+    vk::descriptors::destroy_set_layout(m_cube_set_layout);
     vk::descriptors::destroy_pool(m_descriptor_pool);
 
-    vk::resources::destroy_buffer(m_vertex_buffer);
+    vk::resources::destroy_buffer(m_cube_normal_buffer);
+    vk::resources::destroy_buffer(m_cube_face_buffer);
+    vk::resources::destroy_buffer(m_cube_pos_buffer);
 
-    m_triangle_pipeline = {};
-    m_move_pipeline = {};
+    m_cube_pipeline = {};
+    // m_cube_colors_pipeline = {};
 
     m_descriptor_pool = VK_NULL_HANDLE;
-    m_vertex_set_layout = VK_NULL_HANDLE;
-    m_vertex_set = VK_NULL_HANDLE;
+    m_cube_set_layout = VK_NULL_HANDLE;
+    m_cube_set = VK_NULL_HANDLE;
 
-    m_frame = 0;
+    // m_cube_rot = 0.0f;
 }
 
 void draw_all(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)
 {
-    move_vertices(cmd);
-    draw_triangle(cmd, target, extent);
+    // randomize_cube_colors(cmd);
+    draw_cube(cmd, target, extent);
 }
 
 }

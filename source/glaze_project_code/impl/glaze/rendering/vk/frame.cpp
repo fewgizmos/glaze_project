@@ -58,7 +58,6 @@ void build_swapchain()
     vkb::SwapchainBuilder swapchain_builder(device::get_device());
 
     auto swap_ret = swapchain_builder
-        .add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
         .set_old_swapchain(m_swapchain.handle)
         .set_desired_extent(static_cast<uint32_t>(extent.x), static_cast<uint32_t>(extent.y))
         .build();

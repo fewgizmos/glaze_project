@@ -75,6 +75,9 @@ struct graphics_pipeline_info
     VkFrontFace front_face    = VK_FRONT_FACE_CLOCKWISE;
 
     std::vector<VkDescriptorSetLayout> set_layouts;
+
+    uint32_t push_constant_size = 0;
+    VkShaderStageFlags push_constant_stages = 0;
 };
 
 struct compute_pipeline_info

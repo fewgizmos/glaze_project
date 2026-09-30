@@ -164,11 +164,17 @@ pipeline create_graphics_pipeline(const graphics_pipeline_info& info)
     color_blending.attachmentCount = 1;
     color_blending.pAttachments = &color_blend_attachment;
 
+    VkPushConstantRange push_range = {};
+    push_range.stageFlags = info.push_constant_stages;
+    push_range.offset = 0;
+    push_range.size = info.push_constant_size;
+
     VkPipelineLayoutCreateInfo pipeline_layout_info = {};
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipeline_layout_info.setLayoutCount = static_cast<uint32_t>(info.set_layouts.size());
     pipeline_layout_info.pSetLayouts = info.set_layouts.data();
-    pipeline_layout_info.pushConstantRangeCount = 0;
+    pipeline_layout_info.pushConstantRangeCount = info.push_constant_size > 0 ? 1 : 0;
+    pipeline_layout_info.pPushConstantRanges = &push_range;
 
     pipeline result_pipeline;
 
