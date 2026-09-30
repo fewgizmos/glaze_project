@@ -101,12 +101,18 @@ VkShaderModule load_module(const std::string& file_name)
     return create_module(compile_glsl(source, get_stage_from_file(file_name), file_name));
 }
 
-pipeline create_graphics_pipeline(const graphics_pipeline_create_info& create_info)
+pipeline create_graphics_pipeline(
+    const std::string& vert_file,
+    const std::string& frag_file,
+    const graphics_pipeline_create_info& create_info
+)
 {
     const vkb::DispatchTable& disp = device::get_disp();
 
-    VkShaderModule vert_module = load_module(create_info.vert_file);
-    VkShaderModule frag_module = load_module(create_info.frag_file);
+    const bool has_color = create_info.color_format != VK_FORMAT_UNDEFINED;
+
+    VkShaderModule vert_module = load_module(vert_file);
+    VkShaderModule frag_module = frag_file.empty() ? VK_NULL_HANDLE : load_module(frag_file);
 
     VkPipelineShaderStageCreateInfo vert_stage_create_info = {};
     vert_stage_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -114,13 +120,17 @@ pipeline create_graphics_pipeline(const graphics_pipeline_create_info& create_in
     vert_stage_create_info.module = vert_module;
     vert_stage_create_info.pName = "main";
 
-    VkPipelineShaderStageCreateInfo frag_stage_create_info = {};
-    frag_stage_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    frag_stage_create_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-    frag_stage_create_info.module = frag_module;
-    frag_stage_create_info.pName = "main";
+    std::vector<VkPipelineShaderStageCreateInfo> shader_stages = { vert_stage_create_info };
 
-    VkPipelineShaderStageCreateInfo shader_stages[] = { vert_stage_create_info, frag_stage_create_info };
+    if (frag_module != VK_NULL_HANDLE) {
+        VkPipelineShaderStageCreateInfo frag_stage_create_info = {};
+        frag_stage_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        frag_stage_create_info.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        frag_stage_create_info.module = frag_module;
+        frag_stage_create_info.pName = "main";
+
+        shader_stages.push_back(frag_stage_create_info);
+    }
 
     VkPipelineVertexInputStateCreateInfo vertex_input_create_info = {};
     vertex_input_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -169,8 +179,8 @@ pipeline create_graphics_pipeline(const graphics_pipeline_create_info& create_in
     color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     color_blending.logicOpEnable = VK_FALSE;
     color_blending.logicOp = VK_LOGIC_OP_COPY;
-    color_blending.attachmentCount = 1;
-    color_blending.pAttachments = &color_blend_attachment;
+    color_blending.attachmentCount = has_color ? 1 : 0;
+    color_blending.pAttachments = has_color ? &color_blend_attachment : nullptr;
 
     VkPushConstantRange push_range = {};
     push_range.stageFlags = create_info.push_constant_stages;
@@ -199,16 +209,16 @@ pipeline create_graphics_pipeline(const graphics_pipeline_create_info& create_in
 
     VkPipelineRenderingCreateInfo rendering_create_info = {};
     rendering_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    rendering_create_info.colorAttachmentCount = 1;
-    rendering_create_info.pColorAttachmentFormats = &create_info.color_format;
+    rendering_create_info.colorAttachmentCount = has_color ? 1 : 0;
+    rendering_create_info.pColorAttachmentFormats = has_color ? &create_info.color_format : nullptr;
     rendering_create_info.depthAttachmentFormat = create_info.depth_format;
     rendering_create_info.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
 
     VkGraphicsPipelineCreateInfo pipeline_create_info = {};
     pipeline_create_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipeline_create_info.pNext = &rendering_create_info;
-    pipeline_create_info.stageCount = 2;
-    pipeline_create_info.pStages = shader_stages;
+    pipeline_create_info.stageCount = static_cast<uint32_t>(shader_stages.size());
+    pipeline_create_info.pStages = shader_stages.data();
     pipeline_create_info.pVertexInputState = &vertex_input_create_info;
     pipeline_create_info.pInputAssemblyState = &input_assembly;
     pipeline_create_info.pViewportState = &viewport_state;
@@ -224,7 +234,10 @@ pipeline create_graphics_pipeline(const graphics_pipeline_create_info& create_in
 
     result = disp.createGraphicsPipelines(VK_NULL_HANDLE, 1, &pipeline_create_info, nullptr, &result_pipeline.handle);
 
-    destroy_module(frag_module);
+    if (frag_module != VK_NULL_HANDLE) {
+        destroy_module(frag_module);
+    }
+
     destroy_module(vert_module);
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create graphics pipeline");
@@ -232,11 +245,11 @@ pipeline create_graphics_pipeline(const graphics_pipeline_create_info& create_in
     return result_pipeline;
 }
 
-pipeline create_compute_pipeline(const compute_pipeline_create_info& create_info)
+pipeline create_compute_pipeline(const std::string& comp_file, const compute_pipeline_create_info& create_info)
 {
     const vkb::DispatchTable& disp = device::get_disp();
 
-    VkShaderModule comp_module = load_module(create_info.comp_file);
+    VkShaderModule comp_module = load_module(comp_file);
 
     VkPushConstantRange push_range = {};
     push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;

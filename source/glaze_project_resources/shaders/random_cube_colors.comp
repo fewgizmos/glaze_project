@@ -20,6 +20,8 @@ layout(push_constant) uniform constants
     uint count;
 } pc;
 
+const float STEP = 0.004;
+
 uint next(inout uint state)
 {
     state ^= state << 13;
@@ -29,9 +31,9 @@ uint next(inout uint state)
     return state;
 }
 
-float next_float(inout uint state)
+float next_sign(inout uint state)
 {
-    return float(next(state) >> 8) / 16777216.0;
+    return (next(state) & 1u) == 0u ? -STEP : STEP;
 }
 
 void main()
@@ -44,6 +46,10 @@ void main()
 
     uint state = pc.faces.data[i].rng.x;
 
-    pc.faces.data[i].color = vec4(next_float(state), next_float(state), next_float(state), 1.0);
+    vec3 color = pc.faces.data[i].color.rgb;
+
+    color += vec3(next_sign(state), next_sign(state), next_sign(state));
+
+    pc.faces.data[i].color = vec4(clamp(color, 0.0, 1.0), 1.0);
     pc.faces.data[i].rng.x = state;
 }

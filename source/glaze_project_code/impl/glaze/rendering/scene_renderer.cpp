@@ -1,5 +1,7 @@
 #include "glp/glaze/rendering/scene_renderer.h"
 
+#include "glp/glaze/rendering/resources/material.h"
+
 #include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/device.h"
 #include "glp/glaze/rendering/vk/frame.h"
@@ -52,20 +54,17 @@ struct object_push
     VkDeviceAddress object;
 };
 
-/*
 struct cube_colors_push
 {
     VkDeviceAddress faces;
     uint32_t count;
 };
-*/
 
 constexpr uint32_t CUBE_FACE_COUNT = 6;
 
 constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D32_SFLOAT;
 
-pipeline m_cube_pipeline;
-// pipeline m_cube_colors_pipeline;
+const material* m_cube_material = nullptr;
 
 mesh m_cube_mesh;
 std::vector<render_object> m_objects;
@@ -133,7 +132,7 @@ void create_cube_faces()
     cube_face cube_faces[CUBE_FACE_COUNT];
 
     for (uint32_t i = 0; i < CUBE_FACE_COUNT; i++) {
-        cube_faces[i] = { glm::vec4(1.0f), glm::uvec4(0x9E3779B9u * (i + 1), 0u, 0u, 0u) };
+        cube_faces[i] = { glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),glm::uvec4(0x9E3779B9u * (i + 1), 0u, 0u, 0u) };
     }
 
     m_cube_face_buffer = vk::resources::create_buffer(
@@ -175,36 +174,37 @@ void create_objects()
 
 void create_pipelines()
 {
-    // compute_pipeline_create_info cube_colors_create_info;
-    // cube_colors_create_info.comp_file = "random_cube_colors.comp";
-    // cube_colors_create_info.push_constant_size = sizeof(cube_colors_push);
+    graphics_pipeline_create_info graphics_create_info;
+    graphics_create_info.color_format = vk::frame::get_swapchain().image_format;
+    graphics_create_info.depth_format = DEPTH_FORMAT;
+    graphics_create_info.cull_mode = VK_CULL_MODE_BACK_BIT;
+    graphics_create_info.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    graphics_create_info.push_constant_size = sizeof(object_push);
+    graphics_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT;
 
-    // m_cube_colors_pipeline = vk::shaders::create_compute_pipeline(cube_colors_create_info);
-
-    graphics_pipeline_create_info cube_create_info;
-    cube_create_info.vert_file = "cube.vert";
-    cube_create_info.frag_file = "cube.frag";
-    cube_create_info.color_format = vk::frame::get_swapchain().image_format;
-    cube_create_info.depth_format = DEPTH_FORMAT;
-    cube_create_info.cull_mode = VK_CULL_MODE_BACK_BIT;
-    cube_create_info.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    cube_create_info.push_constant_size = sizeof(object_push);
-    cube_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT;
-
-    cube_create_info.vertex_bindings = {
+    graphics_create_info.vertex_bindings = {
         { 0, sizeof(vertex), VK_VERTEX_INPUT_RATE_VERTEX }
     };
 
-    cube_create_info.vertex_attributes = {
+    graphics_create_info.vertex_attributes = {
         { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(vertex, pos)) },
         { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(vertex, normal)) },
         { 2, 0, VK_FORMAT_R32_UINT,         static_cast<uint32_t>(offsetof(vertex, face)) }
     };
 
-    m_cube_pipeline = vk::shaders::create_graphics_pipeline(cube_create_info);
+    compute_pipeline_create_info compute_create_info;
+    compute_create_info.push_constant_size = sizeof(cube_colors_push);
+
+    m_cube_material = resources::materials::build(
+        "cube",
+        "cube.vert",
+        "cube.frag",
+        "random_cube_colors.comp",
+        graphics_create_info,
+        compute_create_info
+    );
 }
 
-/*
 void randomize_cube_colors(VkCommandBuffer cmd)
 {
     const vkb::DispatchTable& disp = vk::device::get_disp();
@@ -217,11 +217,11 @@ void randomize_cube_colors(VkCommandBuffer cmd)
         VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
     );
 
-    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_cube_colors_pipeline.handle);
+    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_cube_material->compute.handle);
 
     const cube_colors_push push = { m_cube_face_buffer.address, CUBE_FACE_COUNT };
 
-    vk::commands::push_constants(cmd, m_cube_colors_pipeline.layout, VK_SHADER_STAGE_COMPUTE_BIT, sizeof(push), &push);
+    vk::commands::push_constants(cmd, m_cube_material->compute.layout, VK_SHADER_STAGE_COMPUTE_BIT, sizeof(push), &push);
 
     disp.cmdDispatch(cmd, 1, 1, 1);
 
@@ -233,7 +233,6 @@ void randomize_cube_colors(VkCommandBuffer cmd)
         VK_ACCESS_2_SHADER_STORAGE_READ_BIT
     );
 }
-*/
 
 void draw_objects(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)
 {
@@ -317,14 +316,14 @@ void draw_objects(VkCommandBuffer cmd, const swapchain_image_data& target, VkExt
     disp.cmdSetViewport(cmd, 0, 1, &viewport);
     disp.cmdSetScissor(cmd, 0, 1, &scissor);
 
-    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_cube_pipeline.handle);
+    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_cube_material->graphics.handle);
 
     for (const render_object& object : m_objects) {
         const object_push push = { proj * view, object.data.address };
 
         const VkDeviceSize offset = 0;
 
-        vk::commands::push_constants(cmd, m_cube_pipeline.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(push), &push);
+        vk::commands::push_constants(cmd, m_cube_material->graphics.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(push), &push);
 
         disp.cmdBindVertexBuffers(cmd, 0, 1, &object.target->vertex_buffer.handle, &offset);
         disp.cmdBindIndexBuffer(cmd, object.target->index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
@@ -350,9 +349,6 @@ void init()
 
 void cleanup()
 {
-    vk::shaders::destroy_pipeline(m_cube_pipeline);
-    // vk::shaders::destroy_pipeline(m_cube_colors_pipeline);
-
     for (render_object& object : m_objects) {
         vk::resources::destroy_buffer(object.data);
     }
@@ -364,15 +360,14 @@ void cleanup()
 
     vk::resources::destroy_image(m_depth_image);
 
-    m_cube_pipeline = {};
-    // m_cube_colors_pipeline = {};
+    m_cube_material = nullptr;
 }
 
 void draw_all(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)
 {
     ensure_depth_image(extent);
 
-    // randomize_cube_colors(cmd);
+    randomize_cube_colors(cmd);
     draw_objects(cmd, target, extent);
 }
 

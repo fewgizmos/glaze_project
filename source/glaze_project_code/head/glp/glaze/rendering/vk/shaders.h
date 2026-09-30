@@ -18,9 +18,6 @@ enum class shader_stage
 
 struct graphics_pipeline_create_info
 {
-    std::string vert_file;
-    std::string frag_file;
-
     VkFormat color_format = VK_FORMAT_UNDEFINED;
     VkFormat depth_format = VK_FORMAT_UNDEFINED;
 
@@ -38,8 +35,6 @@ struct graphics_pipeline_create_info
 
 struct compute_pipeline_create_info
 {
-    std::string comp_file;
-
     std::vector<VkDescriptorSetLayout> set_layouts;
 
     uint32_t push_constant_size = 0;
@@ -63,8 +58,13 @@ void destroy_module(VkShaderModule module);
 
 VkShaderModule load_module(const std::string& file_name);
 
-pipeline create_graphics_pipeline(const graphics_pipeline_create_info& create_info);
-pipeline create_compute_pipeline(const compute_pipeline_create_info& create_info);
+pipeline create_graphics_pipeline(
+    const std::string& vert_file,
+    const std::string& frag_file,
+    const graphics_pipeline_create_info& create_info
+);
+
+pipeline create_compute_pipeline(const std::string& comp_file, const compute_pipeline_create_info& create_info);
 
 void destroy_pipeline(const pipeline& target);
 
