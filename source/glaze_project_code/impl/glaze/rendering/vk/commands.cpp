@@ -17,12 +17,12 @@ VkCommandPool m_pool = VK_NULL_HANDLE;
 
 void create_pool()
 {
-    VkCommandPoolCreateInfo pool_info = {};
-    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    pool_info.queueFamilyIndex = device::get_queues().graphics_family;
+    VkCommandPoolCreateInfo pool_create_info = {};
+    pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    pool_create_info.queueFamilyIndex = device::get_queues().graphics_family;
 
-    const VkResult result = device::get_disp().createCommandPool(&pool_info, nullptr, &m_pool);
+    const VkResult result = device::get_disp().createCommandPool(&pool_create_info, nullptr, &m_pool);
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create command pool");
 
@@ -108,12 +108,12 @@ void immediate_submit(const std::function<void(VkCommandBuffer)>& record)
     record(cmd);
     end(cmd);
 
-    VkFenceCreateInfo fence_info = {};
-    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    VkFenceCreateInfo fence_create_info = {};
+    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 
     VkFence fence = VK_NULL_HANDLE;
 
-    VkResult result = disp.createFence(&fence_info, nullptr, &fence);
+    VkResult result = disp.createFence(&fence_create_info, nullptr, &fence);
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create immediate submit fence");
 

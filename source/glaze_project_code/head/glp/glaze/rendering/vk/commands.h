@@ -1,7 +1,8 @@
 #pragma once
 
-#include "glp/glaze/rendering/types.h"
+#include <vulkan/vulkan_core.h>
 
+#include <cstdint>
 #include <functional>
 
 namespace glaze::rendering::vk::commands

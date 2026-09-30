@@ -1,6 +1,48 @@
 #pragma once
 
-#include "glp/glaze/rendering/types.h"
+#include <vulkan/vulkan_core.h>
+#include <vkb/VkBootstrap.h>
+#include <vk_mem_alloc.h>
+
+#include <glm/vec3.hpp>
+
+#include <cstdint>
+#include <vector>
+
+namespace glaze::rendering
+{
+
+struct buffer
+{
+    VkBuffer handle = VK_NULL_HANDLE;
+    VmaAllocation allocation = VK_NULL_HANDLE;
+    VkDeviceSize size = 0;
+};
+
+struct image
+{
+    VkImage handle = VK_NULL_HANDLE;
+    VkImageView view = VK_NULL_HANDLE;
+    VmaAllocation allocation = VK_NULL_HANDLE;
+    VkExtent3D extent = {};
+    VkFormat format = VK_FORMAT_UNDEFINED;
+};
+
+struct vertex
+{
+    glm::vec3 pos;
+    glm::vec3 normal;
+    uint32_t face;
+};
+
+struct mesh
+{
+    buffer vertex_buffer;
+    buffer index_buffer;
+    uint32_t index_count = 0;
+};
+
+}
 
 namespace glaze::rendering::vk::resources
 {

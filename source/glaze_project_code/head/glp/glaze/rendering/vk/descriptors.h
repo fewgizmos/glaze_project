@@ -1,7 +1,10 @@
 #pragma once
 
-#include "glp/glaze/rendering/types.h"
+#include "glp/glaze/rendering/vk/resources.h"
 
+#include <vulkan/vulkan_core.h>
+
+#include <cstdint>
 #include <vector>
 
 namespace glaze::rendering::vk::descriptors

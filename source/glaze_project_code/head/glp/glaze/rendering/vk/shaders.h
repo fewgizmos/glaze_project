@@ -1,10 +1,57 @@
 #pragma once
 
-#include "glp/glaze/rendering/types.h"
+#include <vulkan/vulkan_core.h>
 
 #include <cstdint>
 #include <string>
 #include <vector>
+
+namespace glaze::rendering
+{
+
+enum class shader_stage
+{
+    vertex,
+    fragment,
+    compute
+};
+
+struct graphics_pipeline_create_info
+{
+    std::string vert_file;
+    std::string frag_file;
+
+    VkFormat color_format = VK_FORMAT_UNDEFINED;
+    VkFormat depth_format = VK_FORMAT_UNDEFINED;
+
+    VkCullModeFlags cull_mode = VK_CULL_MODE_BACK_BIT;
+    VkFrontFace front_face    = VK_FRONT_FACE_CLOCKWISE;
+
+    std::vector<VkDescriptorSetLayout> set_layouts;
+
+    uint32_t push_constant_size = 0;
+    VkShaderStageFlags push_constant_stages = 0;
+
+    std::vector<VkVertexInputBindingDescription> vertex_bindings;
+    std::vector<VkVertexInputAttributeDescription> vertex_attributes;
+};
+
+struct compute_pipeline_create_info
+{
+    std::string comp_file;
+
+    std::vector<VkDescriptorSetLayout> set_layouts;
+
+    uint32_t push_constant_size = 0;
+};
+
+struct pipeline
+{
+    VkPipeline handle = VK_NULL_HANDLE;
+    VkPipelineLayout layout = VK_NULL_HANDLE;
+};
+
+}
 
 namespace glaze::rendering::vk::shaders
 {
@@ -16,8 +63,8 @@ void destroy_module(VkShaderModule module);
 
 VkShaderModule load_module(const std::string& file_name);
 
-pipeline create_graphics_pipeline(const graphics_pipeline_info& info);
-pipeline create_compute_pipeline(const compute_pipeline_info& info);
+pipeline create_graphics_pipeline(const graphics_pipeline_create_info& create_info);
+pipeline create_compute_pipeline(const compute_pipeline_create_info& create_info);
 
 void destroy_pipeline(const pipeline& target);
 

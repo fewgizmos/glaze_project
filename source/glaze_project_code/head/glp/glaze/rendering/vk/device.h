@@ -1,6 +1,23 @@
 #pragma once
 
-#include "glp/glaze/rendering/types.h"
+#include <vulkan/vulkan_core.h>
+#include <vkb/VkBootstrap.h>
+
+#include <cstdint>
+
+namespace glaze::rendering
+{
+
+struct queue_set
+{
+    VkQueue graphics = VK_NULL_HANDLE;
+    VkQueue present  = VK_NULL_HANDLE;
+
+    uint32_t graphics_family = 0;
+    uint32_t present_family  = 0;
+};
+
+}
 
 namespace glaze::rendering::vk::device
 {

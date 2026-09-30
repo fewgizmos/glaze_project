@@ -1,6 +1,8 @@
 #pragma once
 
-#include "glp/glaze/rendering/types.h"
+#include "glp/glaze/rendering/vk/frame.h"
+
+#include <vulkan/vulkan_core.h>
 
 namespace glaze::rendering::scene_renderer
 {

@@ -9,15 +9,15 @@ namespace glaze::rendering::vk::descriptors
 
 VkDescriptorPool create_pool(uint32_t max_sets, const std::vector<VkDescriptorPoolSize>& sizes)
 {
-    VkDescriptorPoolCreateInfo pool_info = {};
-    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.maxSets = max_sets;
-    pool_info.poolSizeCount = static_cast<uint32_t>(sizes.size());
-    pool_info.pPoolSizes = sizes.data();
+    VkDescriptorPoolCreateInfo pool_create_info = {};
+    pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_create_info.maxSets = max_sets;
+    pool_create_info.poolSizeCount = static_cast<uint32_t>(sizes.size());
+    pool_create_info.pPoolSizes = sizes.data();
 
     VkDescriptorPool pool = VK_NULL_HANDLE;
 
-    const VkResult result = device::get_disp().createDescriptorPool(&pool_info, nullptr, &pool);
+    const VkResult result = device::get_disp().createDescriptorPool(&pool_create_info, nullptr, &pool);
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create descriptor pool");
 
@@ -31,14 +31,14 @@ void destroy_pool(VkDescriptorPool pool)
 
 VkDescriptorSetLayout create_set_layout(const std::vector<VkDescriptorSetLayoutBinding>& bindings)
 {
-    VkDescriptorSetLayoutCreateInfo layout_info = {};
-    layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
-    layout_info.pBindings = bindings.data();
+    VkDescriptorSetLayoutCreateInfo layout_create_info = {};
+    layout_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layout_create_info.bindingCount = static_cast<uint32_t>(bindings.size());
+    layout_create_info.pBindings = bindings.data();
 
     VkDescriptorSetLayout layout = VK_NULL_HANDLE;
 
-    const VkResult result = device::get_disp().createDescriptorSetLayout(&layout_info, nullptr, &layout);
+    const VkResult result = device::get_disp().createDescriptorSetLayout(&layout_create_info, nullptr, &layout);
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create descriptor set layout");
 

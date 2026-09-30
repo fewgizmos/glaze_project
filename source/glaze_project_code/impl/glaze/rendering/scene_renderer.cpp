@@ -165,34 +165,34 @@ void create_cube_resources()
 
 void create_pipelines()
 {
-    // compute_pipeline_info cube_colors_info;
-    // cube_colors_info.comp_file = "random_cube_colors.comp";
-    // cube_colors_info.set_layouts = { m_cube_set_layout };
+    // compute_pipeline_create_info cube_colors_create_info;
+    // cube_colors_create_info.comp_file = "random_cube_colors.comp";
+    // cube_colors_create_info.set_layouts = { m_cube_set_layout };
 
-    // m_cube_colors_pipeline = vk::shaders::create_compute_pipeline(cube_colors_info);
+    // m_cube_colors_pipeline = vk::shaders::create_compute_pipeline(cube_colors_create_info);
 
-    graphics_pipeline_info cube_info;
-    cube_info.vert_file = "cube.vert";
-    cube_info.frag_file = "cube.frag";
-    cube_info.color_format = vk::frame::get_swapchain().image_format;
-    cube_info.depth_format = DEPTH_FORMAT;
-    cube_info.cull_mode = VK_CULL_MODE_BACK_BIT;
-    cube_info.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    cube_info.set_layouts = { m_cube_set_layout };
-    cube_info.push_constant_size = sizeof(object_push);
-    cube_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT;
+    graphics_pipeline_create_info cube_create_info;
+    cube_create_info.vert_file = "cube.vert";
+    cube_create_info.frag_file = "cube.frag";
+    cube_create_info.color_format = vk::frame::get_swapchain().image_format;
+    cube_create_info.depth_format = DEPTH_FORMAT;
+    cube_create_info.cull_mode = VK_CULL_MODE_BACK_BIT;
+    cube_create_info.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    cube_create_info.set_layouts = { m_cube_set_layout };
+    cube_create_info.push_constant_size = sizeof(object_push);
+    cube_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT;
 
-    cube_info.vertex_bindings = {
+    cube_create_info.vertex_bindings = {
         { 0, sizeof(vertex), VK_VERTEX_INPUT_RATE_VERTEX }
     };
 
-    cube_info.vertex_attributes = {
+    cube_create_info.vertex_attributes = {
         { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(vertex, pos)) },
         { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(vertex, normal)) },
         { 2, 0, VK_FORMAT_R32_UINT,         static_cast<uint32_t>(offsetof(vertex, face)) }
     };
 
-    m_cube_pipeline = vk::shaders::create_graphics_pipeline(cube_info);
+    m_cube_pipeline = vk::shaders::create_graphics_pipeline(cube_create_info);
 }
 
 /*

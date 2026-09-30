@@ -15,6 +15,12 @@ namespace glaze::rendering::vk::frame
 namespace
 {
 
+struct swapchain_state
+{
+    vkb::Swapchain handle;
+    std::vector<swapchain_image_data> images;
+};
+
 swapchain_state m_swapchain;
 
 std::vector<frame_data> m_frames;
@@ -24,12 +30,12 @@ uint32_t m_image_index = 0;
 
 VkSemaphore make_semaphore()
 {
-    VkSemaphoreCreateInfo semaphore_info = {};
-    semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    VkSemaphoreCreateInfo semaphore_create_info = {};
+    semaphore_create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
     VkSemaphore semaphore = VK_NULL_HANDLE;
 
-    const VkResult result = device::get_disp().createSemaphore(&semaphore_info, nullptr, &semaphore);
+    const VkResult result = device::get_disp().createSemaphore(&semaphore_create_info, nullptr, &semaphore);
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create semaphore");
 
@@ -38,13 +44,13 @@ VkSemaphore make_semaphore()
 
 VkFence make_fence(VkFenceCreateFlags flags)
 {
-    VkFenceCreateInfo fence_info = {};
-    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fence_info.flags = flags;
+    VkFenceCreateInfo fence_create_info = {};
+    fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_create_info.flags = flags;
 
     VkFence fence = VK_NULL_HANDLE;
 
-    const VkResult result = device::get_disp().createFence(&fence_info, nullptr, &fence);
+    const VkResult result = device::get_disp().createFence(&fence_create_info, nullptr, &fence);
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create fence");
 
