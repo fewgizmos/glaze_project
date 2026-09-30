@@ -5,9 +5,7 @@
 
 #include <glm/vec2.hpp>
 
-#include <memory>
 #include <string>
-#include <vector>
 
 namespace glaze::platform::wm
 {

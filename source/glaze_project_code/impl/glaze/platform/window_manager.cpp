@@ -6,6 +6,8 @@
 #include <SDL3/SDL_error.h>
 
 #include <algorithm>
+#include <memory>
+#include <vector>
 
 namespace glaze::platform::wm
 {
