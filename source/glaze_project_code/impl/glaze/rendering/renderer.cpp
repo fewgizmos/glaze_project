@@ -183,6 +183,12 @@ void cleanup()
 
 void next_frame()
 {
+    const glm::ivec2 extent = io::viewport::get_extent();
+
+    if (extent.x == 0 || extent.y == 0) {
+        return;
+    }
+
     if (io::viewport::get_unhandle_resized()) {
         vk::frame::recreate_swapchain();
     }

@@ -242,8 +242,8 @@ void draw_objects(VkCommandBuffer cmd, const swapchain_image_data& target, VkExt
     glm::mat4 proj = glm::perspectiveRH_ZO(
         glm::radians(60.0f),
         static_cast<float>(extent.width) / static_cast<float>(extent.height),
-        0.1f,
-        100.0f
+        100.0f,
+        0.1f
     );
 
     proj[1][1] *= -1.0f;
@@ -287,7 +287,7 @@ void draw_objects(VkCommandBuffer cmd, const swapchain_image_data& target, VkExt
     depth_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
     depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depth_attachment.clearValue.depthStencil = { 1.0f, 0 };
+    depth_attachment.clearValue.depthStencil = { 0.0f, 0 };
 
     VkRenderingInfo rendering_info = {};
     rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
