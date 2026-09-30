@@ -15,10 +15,10 @@ namespace glaze::utilities::sm
             explicit State(enum_type initial_state)
                 : m_state(static_cast<storage>(initial_state)) {}
 
-            void SetState(enum_type state_flag)    { m_state |= static_cast<storage>(state_flag); }
-            void ToggleState(enum_type state_flag) { m_state ^= static_cast<storage>(state_flag); }
+            void set_state(enum_type state_flag)    { m_state |= static_cast<storage>(state_flag); }
+            void toggle_state(enum_type state_flag) { m_state ^= static_cast<storage>(state_flag); }
 
-            void ClearState(enum_type state_flag)
+            void clear_state(enum_type state_flag)
             {
                 m_state &= static_cast<storage>(~static_cast<storage>(state_flag));
             }
