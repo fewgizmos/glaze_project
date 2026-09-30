@@ -124,8 +124,10 @@ pipeline create_graphics_pipeline(const graphics_pipeline_info& info)
 
     VkPipelineVertexInputStateCreateInfo vertex_input_info = {};
     vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_info.vertexBindingDescriptionCount = 0;
-    vertex_input_info.vertexAttributeDescriptionCount = 0;
+    vertex_input_info.vertexBindingDescriptionCount = static_cast<uint32_t>(info.vertex_bindings.size());
+    vertex_input_info.pVertexBindingDescriptions = info.vertex_bindings.data();
+    vertex_input_info.vertexAttributeDescriptionCount = static_cast<uint32_t>(info.vertex_attributes.size());
+    vertex_input_info.pVertexAttributeDescriptions = info.vertex_attributes.data();
 
     VkPipelineInputAssemblyStateCreateInfo input_assembly = {};
     input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -151,6 +153,12 @@ pipeline create_graphics_pipeline(const graphics_pipeline_info& info)
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable = VK_FALSE;
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineDepthStencilStateCreateInfo depth_stencil = {};
+    depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depth_stencil.depthTestEnable = VK_TRUE;
+    depth_stencil.depthWriteEnable = VK_TRUE;
+    depth_stencil.depthCompareOp = VK_COMPARE_OP_LESS;
 
     VkPipelineColorBlendAttachmentState color_blend_attachment = {};
     color_blend_attachment.colorWriteMask =
@@ -206,6 +214,7 @@ pipeline create_graphics_pipeline(const graphics_pipeline_info& info)
     pipeline_info.pViewportState = &viewport_state;
     pipeline_info.pRasterizationState = &rasterizer;
     pipeline_info.pMultisampleState = &multisampling;
+    pipeline_info.pDepthStencilState = info.depth_format != VK_FORMAT_UNDEFINED ? &depth_stencil : nullptr;
     pipeline_info.pColorBlendState = &color_blending;
     pipeline_info.pDynamicState = &dynamic_info;
     pipeline_info.layout = result_pipeline.layout;

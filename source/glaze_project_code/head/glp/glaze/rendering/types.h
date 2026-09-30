@@ -4,6 +4,8 @@
 #include <vkb/VkBootstrap.h>
 #include <vk_mem_alloc.h>
 
+#include <glm/vec3.hpp>
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -56,6 +58,20 @@ struct image
     VkFormat format = VK_FORMAT_UNDEFINED;
 };
 
+struct vertex
+{
+    glm::vec3 pos;
+    glm::vec3 normal;
+    uint32_t face;
+};
+
+struct mesh
+{
+    buffer vertex_buffer;
+    buffer index_buffer;
+    uint32_t index_count = 0;
+};
+
 enum class shader_stage
 {
     vertex,
@@ -78,6 +94,9 @@ struct graphics_pipeline_info
 
     uint32_t push_constant_size = 0;
     VkShaderStageFlags push_constant_stages = 0;
+
+    std::vector<VkVertexInputBindingDescription> vertex_bindings;
+    std::vector<VkVertexInputAttributeDescription> vertex_attributes;
 };
 
 struct compute_pipeline_info

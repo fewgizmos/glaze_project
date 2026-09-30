@@ -163,7 +163,8 @@ void transition_image(
     VkPipelineStageFlags2 src_stage,
     VkAccessFlags2 src_access,
     VkPipelineStageFlags2 dst_stage,
-    VkAccessFlags2 dst_access
+    VkAccessFlags2 dst_access,
+    VkImageAspectFlags aspect
 )
 {
     VkImageMemoryBarrier2 barrier = {};
@@ -177,7 +178,7 @@ void transition_image(
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.aspectMask = aspect;
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.baseArrayLayer = 0;

@@ -14,6 +14,11 @@ void destroy_buffer(buffer& target);
 
 void upload_buffer(const buffer& target, const void* data, VkDeviceSize size);
 
+buffer create_device_buffer(const void* data, VkDeviceSize size, VkBufferUsageFlags usage);
+
+mesh create_mesh(const std::vector<vertex>& vertices, const std::vector<uint32_t>& indices);
+void destroy_mesh(mesh& target);
+
 image create_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspect);
 void destroy_image(image& target);
 

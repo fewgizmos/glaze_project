@@ -2,6 +2,7 @@
 
 #include "glp/glaze/rendering/vk/resources.h"
 
+#include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/device.h"
 #include "glp/glaze/rendering/queue_deletor.h"
 
@@ -82,6 +83,59 @@ void upload_buffer(const buffer& target, const void* data, VkDeviceSize size)
     const VkResult result = vmaCopyMemoryToAllocation(m_allocator, data, target.allocation, 0, size);
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to upload buffer");
+}
+
+buffer create_device_buffer(const void* data, VkDeviceSize size, VkBufferUsageFlags usage)
+{
+    buffer staging = create_buffer(
+        size,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+    );
+
+    upload_buffer(staging, data, size);
+
+    buffer target = create_buffer(size, usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+
+    commands::immediate_submit([&](VkCommandBuffer cmd) {
+        VkBufferCopy region = {};
+        region.size = size;
+
+        device::get_disp().cmdCopyBuffer(cmd, staging.handle, target.handle, 1, &region);
+    });
+
+    destroy_buffer(staging);
+
+    return target;
+}
+
+mesh create_mesh(const std::vector<vertex>& vertices, const std::vector<uint32_t>& indices)
+{
+    mesh result;
+
+    result.vertex_buffer = create_device_buffer(
+        vertices.data(),
+        sizeof(vertex) * vertices.size(),
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+    );
+
+    result.index_buffer = create_device_buffer(
+        indices.data(),
+        sizeof(uint32_t) * indices.size(),
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+    );
+
+    result.index_count = static_cast<uint32_t>(indices.size());
+
+    return result;
+}
+
+void destroy_mesh(mesh& target)
+{
+    destroy_buffer(target.index_buffer);
+    destroy_buffer(target.vertex_buffer);
+
+    target = {};
 }
 
 image create_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspect)
