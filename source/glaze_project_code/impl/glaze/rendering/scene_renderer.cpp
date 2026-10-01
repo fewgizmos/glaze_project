@@ -12,10 +12,11 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/trigonometric.hpp>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
-#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 namespace glaze::rendering::scene_renderer
@@ -24,206 +25,90 @@ namespace glaze::rendering::scene_renderer
 namespace
 {
 
-struct cube_face
+struct helix_point
 {
+    glm::vec4 pos;
     glm::vec4 color;
-    glm::uvec4 rng;
 };
 
-struct face_def
-{
-    glm::vec3 normal;
-    glm::vec3 corners[4];
-};
-
-struct object_data
-{
-    glm::mat4 model;
-    VkDeviceAddress faces;
-};
-
-struct render_object
-{
-    const mesh* target;
-    buffer data;
-};
-
-struct object_push
+struct helix_push
 {
     glm::mat4 view_proj;
-    VkDeviceAddress object;
+    VkDeviceAddress points;
+    float size;
+    float aspect;
 };
 
-struct cube_colors_push
+struct helix_compute_push
 {
-    VkDeviceAddress faces;
-    uint32_t count;
+    VkDeviceAddress points;
 };
 
-constexpr uint32_t CUBE_FACE_COUNT = 6;
+constexpr uint32_t HELIX_PAIRS = 96;
+constexpr uint32_t HELIX_POINTS_PER_PAIR = 3;
+constexpr uint32_t HELIX_POINT_COUNT = HELIX_PAIRS * HELIX_POINTS_PER_PAIR;
 
-constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_D32_SFLOAT;
+constexpr uint32_t COMPUTE_GROUP_SIZE = 64;
 
-const material* m_cube_material = nullptr;
+constexpr float HELIX_POINT_SIZE = 0.01f;
 
-mesh m_cube_mesh;
-std::vector<render_object> m_objects;
+const material* m_helix_material = nullptr;
 
-buffer m_cube_face_buffer;
+buffer m_helix_buffer;
 
-image m_depth_image;
-
-void create_depth_image(VkExtent2D extent)
+void create_helix_buffer()
 {
-    m_depth_image = vk::resources::create_image(
-        { extent.width, extent.height, 1 },
-        DEPTH_FORMAT,
-        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-        VK_IMAGE_ASPECT_DEPTH_BIT
-    );
-}
+    const std::vector<helix_point> zeroed(HELIX_POINT_COUNT);
 
-void ensure_depth_image(VkExtent2D extent)
-{
-    if (m_depth_image.extent.width == extent.width && m_depth_image.extent.height == extent.height) {
-        return;
-    }
-
-    vk::device::get_disp().deviceWaitIdle();
-
-    vk::resources::destroy_image(m_depth_image);
-
-    create_depth_image(extent);
-}
-
-void create_cube_mesh()
-{
-    const face_def faces[CUBE_FACE_COUNT] = {
-        { {  0.0f,  0.0f,  1.0f }, { { -0.5f, -0.5f,  0.5f }, {  0.5f, -0.5f,  0.5f }, {  0.5f,  0.5f,  0.5f }, { -0.5f,  0.5f,  0.5f } } },
-        { {  0.0f,  0.0f, -1.0f }, { {  0.5f, -0.5f, -0.5f }, { -0.5f, -0.5f, -0.5f }, { -0.5f,  0.5f, -0.5f }, {  0.5f,  0.5f, -0.5f } } },
-        { {  1.0f,  0.0f,  0.0f }, { {  0.5f, -0.5f,  0.5f }, {  0.5f, -0.5f, -0.5f }, {  0.5f,  0.5f, -0.5f }, {  0.5f,  0.5f,  0.5f } } },
-        { { -1.0f,  0.0f,  0.0f }, { { -0.5f, -0.5f, -0.5f }, { -0.5f, -0.5f,  0.5f }, { -0.5f,  0.5f,  0.5f }, { -0.5f,  0.5f, -0.5f } } },
-        { {  0.0f,  1.0f,  0.0f }, { { -0.5f,  0.5f,  0.5f }, {  0.5f,  0.5f,  0.5f }, {  0.5f,  0.5f, -0.5f }, { -0.5f,  0.5f, -0.5f } } },
-        { {  0.0f, -1.0f,  0.0f }, { { -0.5f, -0.5f, -0.5f }, {  0.5f, -0.5f, -0.5f }, {  0.5f, -0.5f,  0.5f }, { -0.5f, -0.5f,  0.5f } } }
-    };
-
-    const uint32_t face_indices[6] = { 0, 1, 2, 0, 2, 3 };
-
-    std::vector<vertex> vertices;
-    std::vector<uint32_t> indices;
-
-    for (uint32_t f = 0; f < CUBE_FACE_COUNT; f++) {
-        const uint32_t base = static_cast<uint32_t>(vertices.size());
-
-        for (const glm::vec3& corner : faces[f].corners) {
-            vertices.push_back({ corner, faces[f].normal, f });
-        }
-
-        for (const uint32_t index : face_indices) {
-            indices.push_back(base + index);
-        }
-    }
-
-    m_cube_mesh = vk::resources::create_mesh(vertices, indices);
-}
-
-void create_cube_faces()
-{
-    cube_face cube_faces[CUBE_FACE_COUNT];
-
-    for (uint32_t i = 0; i < CUBE_FACE_COUNT; i++) {
-        cube_faces[i] = { glm::vec4(0.5f, 0.5f, 0.5f, 1.0f),glm::uvec4(0x9E3779B9u * (i + 1), 0u, 0u, 0u) };
-    }
-
-    m_cube_face_buffer = vk::resources::create_buffer(
-        sizeof(cube_faces),
+    m_helix_buffer = vk::resources::create_buffer(
+        sizeof(helix_point) * HELIX_POINT_COUNT,
         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
     );
 
-    vk::resources::upload_buffer(m_cube_face_buffer, cube_faces, sizeof(cube_faces));
-}
-
-void create_object(const mesh* target, const glm::mat4& model)
-{
-    const object_data data = { model, m_cube_face_buffer.address };
-
-    render_object object;
-    object.target = target;
-
-    object.data = vk::resources::create_buffer(
-        sizeof(data),
-        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-    );
-
-    vk::resources::upload_buffer(object.data, &data, sizeof(data));
-
-    m_objects.push_back(object);
-}
-
-void create_objects()
-{
-    create_object(&m_cube_mesh, glm::translate(glm::mat4(1.0f), glm::vec3(-0.7f, 0.0f, 0.0f)));
-
-    create_object(
-        &m_cube_mesh,
-        glm::translate(glm::mat4(1.0f), glm::vec3(0.7f, 0.4f, -1.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.8f))
-    );
+    vk::resources::upload_buffer(m_helix_buffer, zeroed.data(), sizeof(helix_point) * HELIX_POINT_COUNT);
 }
 
 void create_pipelines()
 {
     graphics_pipeline_create_info graphics_create_info;
     graphics_create_info.color_format = vk::frame::get_swapchain().image_format;
-    graphics_create_info.depth_format = DEPTH_FORMAT;
-    graphics_create_info.cull_mode = VK_CULL_MODE_BACK_BIT;
-    graphics_create_info.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    graphics_create_info.push_constant_size = sizeof(object_push);
+    graphics_create_info.cull_mode = VK_CULL_MODE_NONE;
+    graphics_create_info.push_constant_size = sizeof(helix_push);
     graphics_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT;
 
-    graphics_create_info.vertex_bindings = {
-        { 0, sizeof(vertex), VK_VERTEX_INPUT_RATE_VERTEX }
-    };
-
-    graphics_create_info.vertex_attributes = {
-        { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(vertex, pos)) },
-        { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, static_cast<uint32_t>(offsetof(vertex, normal)) },
-        { 2, 0, VK_FORMAT_R32_UINT,         static_cast<uint32_t>(offsetof(vertex, face)) }
-    };
-
     compute_pipeline_create_info compute_create_info;
-    compute_create_info.push_constant_size = sizeof(cube_colors_push);
+    compute_create_info.push_constant_size = sizeof(helix_compute_push);
 
-    m_cube_material = resources::materials::build(
-        "cube",
-        "cube.vert",
-        "cube.frag",
-        "random_cube_colors.comp",
+    m_helix_material = resources::materials::build(
+        "helix",
+        "helix.vert",
+        "helix.frag",
+        "helix.comp",
         graphics_create_info,
         compute_create_info
     );
 }
 
-void randomize_cube_colors(VkCommandBuffer cmd)
+void update_helix(VkCommandBuffer cmd)
 {
     const vkb::DispatchTable& disp = vk::device::get_disp();
 
     vk::commands::memory_barrier(
         cmd,
         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
         VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
     );
 
-    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_cube_material->compute.handle);
+    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_helix_material->compute.handle);
 
-    const cube_colors_push push = { m_cube_face_buffer.address, CUBE_FACE_COUNT };
+    const helix_compute_push push = { m_helix_buffer.address };
 
-    vk::commands::push_constants(cmd, m_cube_material->compute.layout, VK_SHADER_STAGE_COMPUTE_BIT, sizeof(push), &push);
+    vk::commands::push_constants(cmd, m_helix_material->compute.layout, VK_SHADER_STAGE_COMPUTE_BIT, sizeof(push), &push);
 
-    disp.cmdDispatch(cmd, 1, 1, 1);
+    disp.cmdDispatch(cmd, (HELIX_POINT_COUNT + COMPUTE_GROUP_SIZE - 1) / COMPUTE_GROUP_SIZE, 1, 1);
 
     vk::commands::memory_barrier(
         cmd,
@@ -234,18 +119,15 @@ void randomize_cube_colors(VkCommandBuffer cmd)
     );
 }
 
-void draw_objects(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)
+void draw_helix(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)
 {
     const vkb::DispatchTable& disp = vk::device::get_disp();
 
-    const glm::mat4 view = glm::lookAt(glm::vec3(1.5f, 1.2f, 2.5f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
 
-    glm::mat4 proj = glm::perspectiveRH_ZO(
-        glm::radians(60.0f),
-        static_cast<float>(extent.width) / static_cast<float>(extent.height),
-        100.0f,
-        0.1f
-    );
+    const glm::mat4 view = glm::lookAt(glm::vec3(2.5f, 3.0f, 2.5f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+    glm::mat4 proj = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, 0.1f, 100.0f);
 
     proj[1][1] *= -1.0f;
 
@@ -260,18 +142,6 @@ void draw_objects(VkCommandBuffer cmd, const swapchain_image_data& target, VkExt
         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
     );
 
-    vk::commands::transition_image(
-        cmd,
-        m_depth_image.handle,
-        VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-        VK_IMAGE_ASPECT_DEPTH_BIT
-    );
-
     VkRenderingAttachmentInfo color_attachment = {};
     color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     color_attachment.imageView = target.image_view;
@@ -281,15 +151,6 @@ void draw_objects(VkCommandBuffer cmd, const swapchain_image_data& target, VkExt
     color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     color_attachment.clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
-    VkRenderingAttachmentInfo depth_attachment = {};
-    depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    depth_attachment.imageView = m_depth_image.view;
-    depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-    depth_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
-    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depth_attachment.clearValue.depthStencil = { 0.0f, 0 };
-
     VkRenderingInfo rendering_info = {};
     rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
     rendering_info.renderArea.offset = { 0, 0 };
@@ -297,7 +158,6 @@ void draw_objects(VkCommandBuffer cmd, const swapchain_image_data& target, VkExt
     rendering_info.layerCount = 1;
     rendering_info.colorAttachmentCount = 1;
     rendering_info.pColorAttachments = &color_attachment;
-    rendering_info.pDepthAttachment = &depth_attachment;
 
     VkViewport viewport = {};
     viewport.x = 0.0f;
@@ -316,20 +176,13 @@ void draw_objects(VkCommandBuffer cmd, const swapchain_image_data& target, VkExt
     disp.cmdSetViewport(cmd, 0, 1, &viewport);
     disp.cmdSetScissor(cmd, 0, 1, &scissor);
 
-    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_cube_material->graphics.handle);
+    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_helix_material->graphics.handle);
 
-    for (const render_object& object : m_objects) {
-        const object_push push = { proj * view, object.data.address };
+    const helix_push push = { proj * view, m_helix_buffer.address, HELIX_POINT_SIZE, aspect };
 
-        const VkDeviceSize offset = 0;
+    vk::commands::push_constants(cmd, m_helix_material->graphics.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(push), &push);
 
-        vk::commands::push_constants(cmd, m_cube_material->graphics.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(push), &push);
-
-        disp.cmdBindVertexBuffers(cmd, 0, 1, &object.target->vertex_buffer.handle, &offset);
-        disp.cmdBindIndexBuffer(cmd, object.target->index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
-
-        disp.cmdDrawIndexed(cmd, object.target->index_count, 1, 0, 0, 0);
-    }
+    disp.cmdDraw(cmd, 3 * 16, HELIX_POINT_COUNT, 0, 0);
 
     disp.cmdEndRendering(cmd);
 }
@@ -338,37 +191,22 @@ void draw_objects(VkCommandBuffer cmd, const swapchain_image_data& target, VkExt
 
 void init()
 {
-    create_depth_image(vk::frame::get_swapchain().extent);
-
-    create_cube_mesh();
-    create_cube_faces();
-    create_objects();
+    create_helix_buffer();
 
     create_pipelines();
 }
 
 void cleanup()
 {
-    for (render_object& object : m_objects) {
-        vk::resources::destroy_buffer(object.data);
-    }
+    vk::resources::destroy_buffer(m_helix_buffer);
 
-    m_objects.clear();
-
-    vk::resources::destroy_buffer(m_cube_face_buffer);
-    vk::resources::destroy_mesh(m_cube_mesh);
-
-    vk::resources::destroy_image(m_depth_image);
-
-    m_cube_material = nullptr;
+    m_helix_material = nullptr;
 }
 
 void draw_all(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)
 {
-    ensure_depth_image(extent);
-
-    randomize_cube_colors(cmd);
-    draw_objects(cmd, target, extent);
+    update_helix(cmd);
+    draw_helix(cmd, target, extent);
 }
 
 }
