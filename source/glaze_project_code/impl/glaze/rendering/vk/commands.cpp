@@ -132,6 +132,27 @@ void push_constants(VkCommandBuffer cmd, VkPipelineLayout layout, VkShaderStageF
     device::get_disp().cmdPushConstants(cmd, layout, stages, 0, size, data);
 }
 
+void dispatch(
+    VkCommandBuffer cmd,
+    const pipeline& target,
+    const void* push,
+    uint32_t push_size,
+    uint32_t groups_x,
+    uint32_t groups_y,
+    uint32_t groups_z
+)
+{
+    const vkb::DispatchTable& disp = device::get_disp();
+
+    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, target.handle);
+
+    if (push_size > 0) {
+        push_constants(cmd, target.layout, VK_SHADER_STAGE_COMPUTE_BIT, push_size, push);
+    }
+
+    disp.cmdDispatch(cmd, groups_x, groups_y, groups_z);
+}
+
 void memory_barrier(
     VkCommandBuffer cmd,
     VkPipelineStageFlags2 src_stage,

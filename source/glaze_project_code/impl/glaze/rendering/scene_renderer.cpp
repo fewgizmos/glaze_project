@@ -92,8 +92,6 @@ void create_pipelines()
 
 void update_helix(VkCommandBuffer cmd)
 {
-    const vkb::DispatchTable& disp = vk::device::get_disp();
-
     vk::commands::memory_barrier(
         cmd,
         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
@@ -102,13 +100,17 @@ void update_helix(VkCommandBuffer cmd)
         VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
     );
 
-    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_helix_material->compute.handle);
-
     const helix_compute_push push = { m_helix_buffer.address };
 
-    vk::commands::push_constants(cmd, m_helix_material->compute.layout, VK_SHADER_STAGE_COMPUTE_BIT, sizeof(push), &push);
-
-    disp.cmdDispatch(cmd, (HELIX_POINT_COUNT + COMPUTE_GROUP_SIZE - 1) / COMPUTE_GROUP_SIZE, 1, 1);
+    vk::commands::dispatch(
+        cmd,
+        m_helix_material->compute,
+        &push,
+        sizeof(push),
+        (HELIX_POINT_COUNT + COMPUTE_GROUP_SIZE - 1) / COMPUTE_GROUP_SIZE,
+        1,
+        1
+    );
 
     vk::commands::memory_barrier(
         cmd,
@@ -119,7 +121,7 @@ void update_helix(VkCommandBuffer cmd)
     );
 }
 
-void draw_helix(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)
+void draw_helix(VkCommandBuffer cmd, VkExtent2D extent)
 {
     const vkb::DispatchTable& disp = vk::device::get_disp();
 
@@ -131,51 +133,6 @@ void draw_helix(VkCommandBuffer cmd, const swapchain_image_data& target, VkExten
 
     proj[1][1] *= -1.0f;
 
-    vk::commands::transition_image(
-        cmd,
-        target.image,
-        VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        0,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
-    );
-
-    VkRenderingAttachmentInfo color_attachment = {};
-    color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    color_attachment.imageView = target.image_view;
-    color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    color_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
-    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    color_attachment.clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
-
-    VkRenderingInfo rendering_info = {};
-    rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    rendering_info.renderArea.offset = { 0, 0 };
-    rendering_info.renderArea.extent = extent;
-    rendering_info.layerCount = 1;
-    rendering_info.colorAttachmentCount = 1;
-    rendering_info.pColorAttachments = &color_attachment;
-
-    VkViewport viewport = {};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(extent.width);
-    viewport.height = static_cast<float>(extent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor = {};
-    scissor.offset = { 0, 0 };
-    scissor.extent = extent;
-
-    disp.cmdBeginRendering(cmd, &rendering_info);
-
-    disp.cmdSetViewport(cmd, 0, 1, &viewport);
-    disp.cmdSetScissor(cmd, 0, 1, &scissor);
-
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_helix_material->graphics.handle);
 
     const helix_push push = { proj * view, m_helix_buffer.address, HELIX_POINT_SIZE, aspect };
@@ -183,8 +140,6 @@ void draw_helix(VkCommandBuffer cmd, const swapchain_image_data& target, VkExten
     vk::commands::push_constants(cmd, m_helix_material->graphics.layout, VK_SHADER_STAGE_VERTEX_BIT, sizeof(push), &push);
 
     disp.cmdDraw(cmd, 3 * 16, HELIX_POINT_COUNT, 0, 0);
-
-    disp.cmdEndRendering(cmd);
 }
 
 }
@@ -203,10 +158,14 @@ void cleanup()
     m_helix_material = nullptr;
 }
 
-void draw_all(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)
+void update_all(VkCommandBuffer cmd)
 {
     update_helix(cmd);
-    draw_helix(cmd, target, extent);
+}
+
+void draw_all(VkCommandBuffer cmd, VkExtent2D extent)
+{
+    draw_helix(cmd, extent);
 }
 
 }

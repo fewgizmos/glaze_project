@@ -51,6 +51,56 @@ void create_instance()
     queue_deletor::push([]() { vkb::destroy_instance(m_instance); });
 }
 
+void begin_rendering(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)
+{
+    const vkb::DispatchTable& disp = vk::device::get_disp();
+
+    vk::commands::transition_image(
+        cmd,
+        target.image,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        0,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
+    );
+
+    VkRenderingAttachmentInfo color_attachment = {};
+    color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    color_attachment.imageView = target.image_view;
+    color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    color_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    color_attachment.clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+
+    VkRenderingInfo rendering_info = {};
+    rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    rendering_info.renderArea.offset = { 0, 0 };
+    rendering_info.renderArea.extent = extent;
+    rendering_info.layerCount = 1;
+    rendering_info.colorAttachmentCount = 1;
+    rendering_info.pColorAttachments = &color_attachment;
+
+    VkViewport viewport = {};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor = {};
+    scissor.offset = { 0, 0 };
+    scissor.extent = extent;
+
+    disp.cmdBeginRendering(cmd, &rendering_info);
+
+    disp.cmdSetViewport(cmd, 0, 1, &viewport);
+    disp.cmdSetScissor(cmd, 0, 1, &scissor);
+}
+
 void record_command_buffer()
 {
     frame_data& frame = vk::frame::get_current_frame();
@@ -63,7 +113,13 @@ void record_command_buffer()
     vk::commands::reset(cmd);
     vk::commands::begin(cmd);
 
-    scene_renderer::draw_all(cmd, image_data, extent);
+    scene_renderer::update_all(cmd);
+
+    begin_rendering(cmd, image_data, extent);
+
+    scene_renderer::draw_all(cmd, extent);
+
+    vk::device::get_disp().cmdEndRendering(cmd);
 
     vk::commands::transition_image(
         cmd,

@@ -33,7 +33,6 @@ struct vertex
 {
     glm::vec3 pos;
     glm::vec3 normal;
-    uint32_t face;
 };
 
 struct mesh

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "glp/glaze/rendering/vk/shaders.h"
+
 #include <vulkan/vulkan_core.h>
 
 #include <cstdint>
@@ -29,6 +31,16 @@ void submit(
 void immediate_submit(const std::function<void(VkCommandBuffer)>& record);
 
 void push_constants(VkCommandBuffer cmd, VkPipelineLayout layout, VkShaderStageFlags stages, uint32_t size, const void* data);
+
+void dispatch(
+    VkCommandBuffer cmd,
+    const pipeline& target,
+    const void* push,
+    uint32_t push_size,
+    uint32_t groups_x,
+    uint32_t groups_y,
+    uint32_t groups_z
+);
 
 void memory_barrier(
     VkCommandBuffer cmd,

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "glp/glaze/rendering/vk/frame.h"
-
 #include <vulkan/vulkan_core.h>
 
 namespace glaze::rendering::scene_renderer
@@ -10,6 +8,7 @@ namespace glaze::rendering::scene_renderer
 void init();
 void cleanup();
 
-void draw_all(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent);
+void update_all(VkCommandBuffer cmd);
+void draw_all(VkCommandBuffer cmd, VkExtent2D extent);
 
 }
