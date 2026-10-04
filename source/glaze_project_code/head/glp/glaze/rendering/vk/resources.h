@@ -4,11 +4,6 @@
 #include <vkb/VkBootstrap.h>
 #include <vk_mem_alloc.h>
 
-#include <glm/vec3.hpp>
-
-#include <cstdint>
-#include <vector>
-
 namespace glaze::rendering
 {
 
@@ -29,19 +24,6 @@ struct image
     VkFormat format = VK_FORMAT_UNDEFINED;
 };
 
-struct vertex
-{
-    glm::vec3 pos;
-    glm::vec3 normal;
-};
-
-struct mesh
-{
-    buffer vertex_buffer;
-    buffer index_buffer;
-    uint32_t index_count = 0;
-};
-
 }
 
 namespace glaze::rendering::vk::resources
@@ -56,10 +38,10 @@ void destroy_buffer(buffer& target);
 
 void upload_buffer(const buffer& target, const void* data, VkDeviceSize size);
 
-buffer create_device_buffer(const void* data, VkDeviceSize size, VkBufferUsageFlags usage);
+void queue_upload(const buffer& target, const void* data, VkDeviceSize size);
 
-mesh create_mesh(const std::vector<vertex>& vertices, const std::vector<uint32_t>& indices);
-void destroy_mesh(mesh& target);
+void flush_uploads();
+void destroy_used_staging();
 
 image create_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspect);
 void destroy_image(image& target);

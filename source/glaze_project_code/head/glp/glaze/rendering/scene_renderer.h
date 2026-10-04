@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vulkan/vulkan_core.h>
+#include "glp/glaze/rendering/vk/resources.h"
 
 namespace glaze::rendering::scene_renderer
 {
@@ -8,7 +8,9 @@ namespace glaze::rendering::scene_renderer
 void init();
 void cleanup();
 
-void update_all(VkCommandBuffer cmd);
-void draw_all(VkCommandBuffer cmd, VkExtent2D extent);
+void update_all();
+void draw_all();
+
+const image& get_depth_image();
 
 }

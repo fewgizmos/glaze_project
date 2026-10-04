@@ -51,9 +51,16 @@ void create_instance()
     queue_deletor::push([]() { vkb::destroy_instance(m_instance); });
 }
 
-void begin_rendering(VkCommandBuffer cmd, const swapchain_image_data& target, VkExtent2D extent)
+void begin_rendering()
 {
     const vkb::DispatchTable& disp = vk::device::get_disp();
+
+    VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
+
+    const swapchain_image_data& target = vk::frame::get_current_image();
+    const image& depth = scene_renderer::get_depth_image();
+
+    const VkExtent2D extent = vk::frame::get_swapchain().extent;
 
     vk::commands::transition_image(
         cmd,
@@ -66,6 +73,18 @@ void begin_rendering(VkCommandBuffer cmd, const swapchain_image_data& target, Vk
         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
     );
 
+    vk::commands::transition_image(
+        cmd,
+        depth.handle,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT
+    );
+
     VkRenderingAttachmentInfo color_attachment = {};
     color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     color_attachment.imageView = target.image_view;
@@ -75,6 +94,15 @@ void begin_rendering(VkCommandBuffer cmd, const swapchain_image_data& target, Vk
     color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     color_attachment.clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
 
+    VkRenderingAttachmentInfo depth_attachment = {};
+    depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    depth_attachment.imageView = depth.view;
+    depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    depth_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
+    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth_attachment.clearValue.depthStencil = { 0.0f, 0 };
+
     VkRenderingInfo rendering_info = {};
     rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
     rendering_info.renderArea.offset = { 0, 0 };
@@ -82,6 +110,7 @@ void begin_rendering(VkCommandBuffer cmd, const swapchain_image_data& target, Vk
     rendering_info.layerCount = 1;
     rendering_info.colorAttachmentCount = 1;
     rendering_info.pColorAttachments = &color_attachment;
+    rendering_info.pDepthAttachment = &depth_attachment;
 
     VkViewport viewport = {};
     viewport.x = 0.0f;
@@ -106,18 +135,19 @@ void record_command_buffer()
     frame_data& frame = vk::frame::get_current_frame();
     swapchain_image_data& image_data = vk::frame::get_current_image();
 
-    const VkExtent2D extent = vk::frame::get_swapchain().extent;
-
     VkCommandBuffer cmd = frame.command_buffer;
 
     vk::commands::reset(cmd);
     vk::commands::begin(cmd);
 
-    scene_renderer::update_all(cmd);
+    vk::resources::destroy_used_staging();
+    vk::resources::flush_uploads();
 
-    begin_rendering(cmd, image_data, extent);
+    scene_renderer::update_all();
 
-    scene_renderer::draw_all(cmd, extent);
+    begin_rendering();
+
+    scene_renderer::draw_all();
 
     vk::device::get_disp().cmdEndRendering(cmd);
 

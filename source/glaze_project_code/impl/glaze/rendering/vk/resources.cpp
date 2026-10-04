@@ -4,9 +4,14 @@
 
 #include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/device.h"
+#include "glp/glaze/rendering/vk/frame.h"
+
+#include "glp/glaze/rendering/defines.h"
 #include "glp/glaze/rendering/queue_deletor.h"
 
 #include "glp/glaze/utilities/core/assert.h"
+
+#include <vector>
 
 namespace glaze::rendering::vk::resources
 {
@@ -14,7 +19,36 @@ namespace glaze::rendering::vk::resources
 namespace
 {
 
+struct pending_upload
+{
+    buffer staging;
+    VkBuffer target = VK_NULL_HANDLE;
+};
+
+struct used_staging
+{
+    buffer staging;
+    int frames_left = 0;
+};
+
 VmaAllocator m_allocator = VK_NULL_HANDLE;
+
+std::vector<pending_upload> m_pending_uploads;
+std::vector<used_staging> m_used_staging;
+
+void destroy_all_uploads()
+{
+    for (pending_upload& upload : m_pending_uploads) {
+        destroy_buffer(upload.staging);
+    }
+
+    for (used_staging& used : m_used_staging) {
+        destroy_buffer(used.staging);
+    }
+
+    m_pending_uploads.clear();
+    m_used_staging.clear();
+}
 
 }
 
@@ -37,6 +71,7 @@ void create_allocator(const vkb::Instance& instance)
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create vma allocator");
 
     queue_deletor::push([allocator = m_allocator]() { vmaDestroyAllocator(allocator); });
+    queue_deletor::push([]() { destroy_all_uploads(); });
 }
 
 VmaAllocator get_allocator() { return m_allocator; }
@@ -94,57 +129,65 @@ void upload_buffer(const buffer& target, const void* data, VkDeviceSize size)
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to upload buffer");
 }
 
-buffer create_device_buffer(const void* data, VkDeviceSize size, VkBufferUsageFlags usage)
+void queue_upload(const buffer& target, const void* data, VkDeviceSize size)
 {
-    buffer staging = create_buffer(
+    pending_upload upload;
+
+    upload.staging = create_buffer(
         size,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
     );
 
-    upload_buffer(staging, data, size);
+    upload.target = target.handle;
 
-    buffer target = create_buffer(size, usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+    upload_buffer(upload.staging, data, size);
 
-    commands::immediate_submit([&](VkCommandBuffer cmd) {
+    m_pending_uploads.push_back(upload);
+}
+
+void flush_uploads()
+{
+    if (m_pending_uploads.empty()) {
+        return;
+    }
+
+    VkCommandBuffer cmd = frame::get_current_frame().command_buffer;
+
+    for (const pending_upload& upload : m_pending_uploads) {
         VkBufferCopy region = {};
-        region.size = size;
+        region.size = upload.staging.size;
 
-        device::get_disp().cmdCopyBuffer(cmd, staging.handle, target.handle, 1, &region);
-    });
+        device::get_disp().cmdCopyBuffer(cmd, upload.staging.handle, upload.target, 1, &region);
 
-    destroy_buffer(staging);
+        m_used_staging.push_back({ upload.staging, MAX_FRAMES_IN_FLIGHT });
+    }
 
-    return target;
+    m_pending_uploads.clear();
+
+    commands::memory_barrier(
+        cmd,
+        VK_PIPELINE_STAGE_2_COPY_BIT,
+        VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        VK_ACCESS_2_MEMORY_READ_BIT
+    );
 }
 
-mesh create_mesh(const std::vector<vertex>& vertices, const std::vector<uint32_t>& indices)
+void destroy_used_staging()
 {
-    mesh result;
+    for (auto it = m_used_staging.begin(); it != m_used_staging.end();) {
+        if (it->frames_left > 0) {
+            it->frames_left--;
+            it++;
 
-    result.vertex_buffer = create_device_buffer(
-        vertices.data(),
-        sizeof(vertex) * vertices.size(),
-        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
-    );
+            continue;
+        }
 
-    result.index_buffer = create_device_buffer(
-        indices.data(),
-        sizeof(uint32_t) * indices.size(),
-        VK_BUFFER_USAGE_INDEX_BUFFER_BIT
-    );
+        destroy_buffer(it->staging);
 
-    result.index_count = static_cast<uint32_t>(indices.size());
-
-    return result;
-}
-
-void destroy_mesh(mesh& target)
-{
-    destroy_buffer(target.index_buffer);
-    destroy_buffer(target.vertex_buffer);
-
-    target = {};
+        it = m_used_staging.erase(it);
+    }
 }
 
 image create_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspect)

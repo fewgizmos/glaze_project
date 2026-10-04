@@ -32,4 +32,8 @@ const material* get(const std::string& name);
 
 std::vector<std::string> get_all_names();
 
+void erase_all();
+
+void destroy_replaced();
+
 }
