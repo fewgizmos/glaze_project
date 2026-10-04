@@ -24,6 +24,9 @@ struct graphics_pipeline_create_info
     VkCullModeFlags cull_mode = VK_CULL_MODE_BACK_BIT;
     VkFrontFace front_face    = VK_FRONT_FACE_CLOCKWISE;
 
+    bool depth_write = true;
+    bool alpha_blend = false;
+
     std::vector<VkDescriptorSetLayout> set_layouts;
 
     uint32_t push_constant_size = 0;
