@@ -7,10 +7,15 @@
 namespace glaze::rendering::vk::descriptors
 {
 
-VkDescriptorPool create_pool(uint32_t max_sets, const std::vector<VkDescriptorPoolSize>& sizes)
+VkDescriptorPool create_pool(
+    uint32_t max_sets,
+    const std::vector<VkDescriptorPoolSize>& sizes,
+    VkDescriptorPoolCreateFlags flags
+)
 {
     VkDescriptorPoolCreateInfo pool_create_info = {};
     pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_create_info.flags = flags;
     pool_create_info.maxSets = max_sets;
     pool_create_info.poolSizeCount = static_cast<uint32_t>(sizes.size());
     pool_create_info.pPoolSizes = sizes.data();
@@ -29,12 +34,25 @@ void destroy_pool(VkDescriptorPool pool)
     device::get_disp().destroyDescriptorPool(pool, nullptr);
 }
 
-VkDescriptorSetLayout create_set_layout(const std::vector<VkDescriptorSetLayoutBinding>& bindings)
+VkDescriptorSetLayout create_set_layout(
+    const std::vector<VkDescriptorSetLayoutBinding>& bindings,
+    const std::vector<VkDescriptorBindingFlags>& binding_flags
+)
 {
+    VkDescriptorSetLayoutBindingFlagsCreateInfo flags_create_info = {};
+    flags_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+    flags_create_info.bindingCount = static_cast<uint32_t>(binding_flags.size());
+    flags_create_info.pBindingFlags = binding_flags.data();
+
     VkDescriptorSetLayoutCreateInfo layout_create_info = {};
     layout_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layout_create_info.bindingCount = static_cast<uint32_t>(bindings.size());
     layout_create_info.pBindings = bindings.data();
+
+    if (!binding_flags.empty()) {
+        layout_create_info.pNext = &flags_create_info;
+        layout_create_info.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+    }
 
     VkDescriptorSetLayout layout = VK_NULL_HANDLE;
 
@@ -73,7 +91,8 @@ void write_image(
     VkDescriptorType type,
     VkImageView view,
     VkImageLayout layout,
-    VkSampler sampler
+    VkSampler sampler,
+    uint32_t element
 )
 {
     VkDescriptorImageInfo image_info = {};
@@ -85,6 +104,7 @@ void write_image(
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
     write.dstSet = set;
     write.dstBinding = binding;
+    write.dstArrayElement = element;
     write.descriptorCount = 1;
     write.descriptorType = type;
     write.pImageInfo = &image_info;

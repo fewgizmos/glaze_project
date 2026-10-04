@@ -13,11 +13,15 @@ layout(buffer_reference, std430) buffer vertex_buffer
     vertex data[];
 };
 
+const uint NO_TEXTURE = 0xFFFFFFFFu;
+
 struct object_data
 {
     mat4 model;
     vertex_buffer vertices;
     uint vertex_count;
+    uint texture_index;
+    uint sampler_index;
 };
 
 layout(buffer_reference, std430) readonly buffer object_buffer

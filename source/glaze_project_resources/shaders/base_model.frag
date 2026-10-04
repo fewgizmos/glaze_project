@@ -1,11 +1,16 @@
 #version 450
 #extension GL_EXT_buffer_reference : require
+#extension GL_EXT_nonuniform_qualifier : require
 
 #include "util/scene_head.glsl"
+#include "util/scene_textures.glsl"
 
 layout(location = 0) in vec3 frag_color;
 layout(location = 1) in vec3 frag_normal;
 layout(location = 2) in vec2 frag_uv;
+
+layout(location = 3) flat in uint frag_texture_index;
+layout(location = 4) flat in uint frag_sampler_index;
 
 layout(location = 0) out vec4 out_color;
 
@@ -30,7 +35,13 @@ void main()
 
     float diffuse = wrapped * wrapped;
 
-    vec3 albedo = frag_color * checker_at(frag_uv);
+    vec3 surface = vec3(checker_at(frag_uv));
+
+    if (frag_texture_index != NO_TEXTURE) {
+        surface = sample_scene_texture(frag_texture_index, frag_sampler_index, frag_uv).rgb;
+    }
+
+    vec3 albedo = frag_color * surface;
 
     out_color = vec4(albedo * (AMBIENT + diffuse * (1.0 - AMBIENT)), 1.0);
 }

@@ -11,6 +11,7 @@
 
 #include "glp/glaze/utilities/core/assert.h"
 
+#include <algorithm>
 #include <vector>
 
 namespace glaze::rendering::vk::resources
@@ -31,9 +32,19 @@ struct used_staging
     int frames_left = 0;
 };
 
+struct pending_image_upload
+{
+    buffer staging;
+    VkImage target = VK_NULL_HANDLE;
+    VkExtent3D extent = {};
+    uint32_t mip_levels = 1;
+};
+
 VmaAllocator m_allocator = VK_NULL_HANDLE;
 
 std::vector<pending_upload> m_pending_uploads;
+std::vector<pending_image_upload> m_pending_image_uploads;
+
 std::vector<used_staging> m_used_staging;
 
 void destroy_all_uploads()
@@ -42,12 +53,165 @@ void destroy_all_uploads()
         destroy_buffer(upload.staging);
     }
 
+    for (pending_image_upload& upload : m_pending_image_uploads) {
+        destroy_buffer(upload.staging);
+    }
+
     for (used_staging& used : m_used_staging) {
         destroy_buffer(used.staging);
     }
 
     m_pending_uploads.clear();
+    m_pending_image_uploads.clear();
+
     m_used_staging.clear();
+}
+
+void transition_mips(
+    VkCommandBuffer cmd,
+    VkImage target,
+    uint32_t base_mip,
+    uint32_t mip_count,
+    VkImageLayout old_layout,
+    VkImageLayout new_layout,
+    VkPipelineStageFlags2 src_stage,
+    VkAccessFlags2 src_access,
+    VkPipelineStageFlags2 dst_stage,
+    VkAccessFlags2 dst_access
+)
+{
+    VkImageMemoryBarrier2 barrier = {};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+    barrier.srcStageMask = src_stage;
+    barrier.srcAccessMask = src_access;
+    barrier.dstStageMask = dst_stage;
+    barrier.dstAccessMask = dst_access;
+    barrier.oldLayout = old_layout;
+    barrier.newLayout = new_layout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = target;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = base_mip;
+    barrier.subresourceRange.levelCount = mip_count;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    VkDependencyInfo dependency_info = {};
+    dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependency_info.imageMemoryBarrierCount = 1;
+    dependency_info.pImageMemoryBarriers = &barrier;
+
+    device::get_disp().cmdPipelineBarrier2(cmd, &dependency_info);
+}
+
+void flush_image_upload(VkCommandBuffer cmd, const pending_image_upload& upload)
+{
+    const vkb::DispatchTable& disp = device::get_disp();
+
+    transition_mips(
+        cmd,
+        upload.target,
+        0,
+        upload.mip_levels,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_PIPELINE_STAGE_2_NONE,
+        0,
+        VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+        VK_ACCESS_2_TRANSFER_WRITE_BIT
+    );
+
+    VkBufferImageCopy region = {};
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageExtent = upload.extent;
+
+    disp.cmdCopyBufferToImage(
+        cmd,
+        upload.staging.handle,
+        upload.target,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1,
+        &region
+    );
+
+    int32_t mip_width  = static_cast<int32_t>(upload.extent.width);
+    int32_t mip_height = static_cast<int32_t>(upload.extent.height);
+
+    for (uint32_t mip = 1; mip < upload.mip_levels; mip++) {
+        const int32_t next_width  = std::max(mip_width / 2, 1);
+        const int32_t next_height = std::max(mip_height / 2, 1);
+
+        transition_mips(
+            cmd,
+            upload.target,
+            mip - 1,
+            1,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+            VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+            VK_ACCESS_2_TRANSFER_READ_BIT
+        );
+
+        VkImageBlit blit = {};
+        blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.srcSubresource.mipLevel = mip - 1;
+        blit.srcSubresource.baseArrayLayer = 0;
+        blit.srcSubresource.layerCount = 1;
+        blit.srcOffsets[1] = { mip_width, mip_height, 1 };
+        blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        blit.dstSubresource.mipLevel = mip;
+        blit.dstSubresource.baseArrayLayer = 0;
+        blit.dstSubresource.layerCount = 1;
+        blit.dstOffsets[1] = { next_width, next_height, 1 };
+
+        disp.cmdBlitImage(
+            cmd,
+            upload.target,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            upload.target,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1,
+            &blit,
+            VK_FILTER_LINEAR
+        );
+
+        mip_width  = next_width;
+        mip_height = next_height;
+    }
+
+    if (upload.mip_levels > 1) {
+        transition_mips(
+            cmd,
+            upload.target,
+            0,
+            upload.mip_levels - 1,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+            VK_ACCESS_2_TRANSFER_READ_BIT,
+            VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+            VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
+        );
+    }
+
+    transition_mips(
+        cmd,
+        upload.target,
+        upload.mip_levels - 1,
+        1,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+        VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
+    );
 }
 
 }
@@ -146,13 +310,40 @@ void queue_upload(const buffer& target, const void* data, VkDeviceSize size)
     m_pending_uploads.push_back(upload);
 }
 
+void queue_image_upload(const image& target, const void* pixels, VkDeviceSize size)
+{
+    pending_image_upload upload;
+
+    upload.staging = create_buffer(
+        size,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+    );
+
+    upload.target     = target.handle;
+    upload.extent     = target.extent;
+    upload.mip_levels = target.mip_levels;
+
+    upload_buffer(upload.staging, pixels, size);
+
+    m_pending_image_uploads.push_back(upload);
+}
+
 void flush_uploads()
 {
+    VkCommandBuffer cmd = frame::get_current_frame().command_buffer;
+
+    for (const pending_image_upload& upload : m_pending_image_uploads) {
+        flush_image_upload(cmd, upload);
+
+        m_used_staging.push_back({ upload.staging, MAX_FRAMES_IN_FLIGHT });
+    }
+
+    m_pending_image_uploads.clear();
+
     if (m_pending_uploads.empty()) {
         return;
     }
-
-    VkCommandBuffer cmd = frame::get_current_frame().command_buffer;
 
     for (const pending_upload& upload : m_pending_uploads) {
         VkBufferCopy region = {};
@@ -190,14 +381,20 @@ void destroy_used_staging()
     }
 }
 
-image create_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspect)
+image create_image(
+    VkExtent3D extent,
+    VkFormat format,
+    VkImageUsageFlags usage,
+    VkImageAspectFlags aspect,
+    uint32_t mip_levels
+)
 {
     VkImageCreateInfo image_create_info = {};
     image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     image_create_info.imageType = VK_IMAGE_TYPE_2D;
     image_create_info.format = format;
     image_create_info.extent = extent;
-    image_create_info.mipLevels = 1;
+    image_create_info.mipLevels = mip_levels;
     image_create_info.arrayLayers = 1;
     image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -212,6 +409,7 @@ image create_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, 
     image result_image;
     result_image.extent = extent;
     result_image.format = format;
+    result_image.mip_levels = mip_levels;
 
     VkResult result = vmaCreateImage(
         m_allocator,
@@ -231,7 +429,7 @@ image create_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, 
     view_create_info.format = format;
     view_create_info.subresourceRange.aspectMask = aspect;
     view_create_info.subresourceRange.baseMipLevel = 0;
-    view_create_info.subresourceRange.levelCount = 1;
+    view_create_info.subresourceRange.levelCount = mip_levels;
     view_create_info.subresourceRange.baseArrayLayer = 0;
     view_create_info.subresourceRange.layerCount = 1;
 

@@ -46,12 +46,22 @@ void create_device(const vkb::Instance& instance)
     VkPhysicalDeviceVulkan12Features features12 = {};
     features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     features12.bufferDeviceAddress = VK_TRUE;
+    features12.descriptorIndexing = VK_TRUE;
+    features12.runtimeDescriptorArray = VK_TRUE;
+    features12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
+    features12.descriptorBindingPartiallyBound = VK_TRUE;
+    features12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+
+    VkPhysicalDeviceFeatures features = {};
+    features.samplerAnisotropy = VK_TRUE;
+    features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
 
     vkb::PhysicalDeviceSelector phys_device_selector(instance);
 
     auto phys_device_ret = phys_device_selector
         .set_surface(m_surface)
         .set_minimum_version(1, 3)
+        .set_required_features(features)
         .set_required_features_12(features12)
         .set_required_features_13(features13)
         .select();

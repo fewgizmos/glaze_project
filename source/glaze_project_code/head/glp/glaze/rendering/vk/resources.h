@@ -4,6 +4,8 @@
 #include <vkb/VkBootstrap.h>
 #include <vk_mem_alloc.h>
 
+#include <cstdint>
+
 namespace glaze::rendering
 {
 
@@ -22,6 +24,7 @@ struct image
     VmaAllocation allocation = VK_NULL_HANDLE;
     VkExtent3D extent = {};
     VkFormat format = VK_FORMAT_UNDEFINED;
+    uint32_t mip_levels = 1;
 };
 
 }
@@ -39,11 +42,19 @@ void destroy_buffer(buffer& target);
 void upload_buffer(const buffer& target, const void* data, VkDeviceSize size);
 
 void queue_upload(const buffer& target, const void* data, VkDeviceSize size);
+void queue_image_upload(const image& target, const void* pixels, VkDeviceSize size);
 
 void flush_uploads();
 void destroy_used_staging();
 
-image create_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage, VkImageAspectFlags aspect);
+image create_image(
+    VkExtent3D extent,
+    VkFormat format,
+    VkImageUsageFlags usage,
+    VkImageAspectFlags aspect,
+    uint32_t mip_levels = 1
+);
+
 void destroy_image(image& target);
 
 }

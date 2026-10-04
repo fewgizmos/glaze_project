@@ -4,10 +4,13 @@
 
 #include "glp/glaze/rendering/scene_render/resources/material.h"
 #include "glp/glaze/rendering/scene_render/resources/mesh.h"
+#include "glp/glaze/rendering/scene_render/resources/texture.h"
 
 #include "glp/glaze/rendering/vk/commands.h"
+#include "glp/glaze/rendering/vk/descriptors.h"
 #include "glp/glaze/rendering/vk/device.h"
 #include "glp/glaze/rendering/vk/frame.h"
+#include "glp/glaze/rendering/vk/samplers.h"
 #include "glp/glaze/rendering/vk/shaders.h"
 
 #include "glp/glaze/rendering/defines.h"
@@ -57,8 +60,14 @@ struct object_data
     glm::mat4 model;
     VkDeviceAddress vertices;
     uint32_t vertex_count;
-    uint32_t padding;
+    uint32_t texture_index;
+    uint32_t sampler_index;
+    uint32_t padding[3];
 };
+
+constexpr uint32_t NO_TEXTURE = 0xFFFFFFFF;
+
+constexpr const char* SPHERE_TEXTURE_PATH = "source/glaze_project_resources/textures/some_texture.png";
 
 constexpr uint32_t SPHERE_SEGMENTS = 512;
 constexpr uint32_t SPHERE_RINGS    = 256;
@@ -78,9 +87,18 @@ const material* m_base_model_material = nullptr;
 
 const mesh* m_sphere_mesh = nullptr;
 
-uint32_t m_sphere_object = 0;
+const texture* m_sphere_texture = nullptr;
+
+uint32_t m_sphere_sampler = 0;
+uint32_t m_sphere_object  = 0;
 
 image m_depth_image;
+
+VkDescriptorSetLayout m_scene_set_layout = VK_NULL_HANDLE;
+VkDescriptorPool m_scene_pool = VK_NULL_HANDLE;
+VkDescriptorSet m_scene_set = VK_NULL_HANDLE;
+
+uint32_t m_bound_samplers = 0;
 
 buffer m_frame_buffers[MAX_FRAMES_IN_FLIGHT];
 buffer m_object_buffers[MAX_FRAMES_IN_FLIGHT];
@@ -135,6 +153,77 @@ void destroy_frame_buffers()
         vk::resources::destroy_buffer(m_object_buffers[i]);
         vk::resources::destroy_buffer(m_frame_buffers[i]);
     }
+}
+
+void create_scene_set()
+{
+    const VkDescriptorBindingFlags flags =
+        VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+
+    m_scene_set_layout = vk::descriptors::create_set_layout(
+        {
+            { 0, VK_DESCRIPTOR_TYPE_SAMPLER,       MAX_SAMPLERS, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+            { 1, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, MAX_TEXTURES, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
+        },
+        { flags, flags }
+    );
+
+    m_scene_pool = vk::descriptors::create_pool(
+        1,
+        {
+            { VK_DESCRIPTOR_TYPE_SAMPLER,       MAX_SAMPLERS },
+            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, MAX_TEXTURES }
+        },
+        VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT
+    );
+
+    m_scene_set = vk::descriptors::allocate_set(m_scene_pool, m_scene_set_layout);
+}
+
+void destroy_scene_set()
+{
+    vk::descriptors::destroy_pool(m_scene_pool);
+    vk::descriptors::destroy_set_layout(m_scene_set_layout);
+
+    m_scene_set_layout = VK_NULL_HANDLE;
+    m_scene_pool       = VK_NULL_HANDLE;
+    m_scene_set        = VK_NULL_HANDLE;
+
+    m_bound_samplers = 0;
+}
+
+void handle_scene_set()
+{
+    for (const texture* built : resources::textures::take_built()) {
+        vk::descriptors::write_image(
+            m_scene_set,
+            1,
+            VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            built->target.view,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_NULL_HANDLE,
+            built->index
+        );
+    }
+
+    for (; m_bound_samplers < vk::samplers::get_count(); m_bound_samplers++) {
+        vk::descriptors::write_image(
+            m_scene_set,
+            0,
+            VK_DESCRIPTOR_TYPE_SAMPLER,
+            VK_NULL_HANDLE,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            vk::samplers::get(m_bound_samplers),
+            m_bound_samplers
+        );
+    }
+}
+
+void create_sphere_texture()
+{
+    m_sphere_texture = resources::textures::build_stb(SPHERE_TEXTURE_PATH, true, 0);
+
+    m_sphere_sampler = vk::samplers::make({});
 }
 
 void create_sphere_mesh()
@@ -192,6 +281,7 @@ void create_pipelines()
     base_model_create_info.depth_format = DEPTH_FORMAT;
     base_model_create_info.cull_mode = VK_CULL_MODE_BACK_BIT;
     base_model_create_info.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    base_model_create_info.set_layouts = { m_scene_set_layout };
     base_model_create_info.push_constant_size = sizeof(VkDeviceAddress);
     base_model_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
@@ -208,9 +298,17 @@ void create_pipelines()
     );
 }
 
-uint32_t add_object(const glm::mat4& model, const mesh* target)
+uint32_t add_object(const glm::mat4& model, const mesh* target, const texture* surface, uint32_t sampler_index)
 {
-    m_objects.push_back({ model, target->vertex_buffer.address, target->vertex_count, 0 });
+    object_data object = {};
+
+    object.model         = model;
+    object.vertices      = target->vertex_buffer.address;
+    object.vertex_count  = target->vertex_count;
+    object.texture_index = surface != nullptr ? surface->index : NO_TEXTURE;
+    object.sampler_index = sampler_index;
+
+    m_objects.push_back(object);
 
     return static_cast<uint32_t>(m_objects.size() - 1);
 }
@@ -219,7 +317,7 @@ void handle_objects()
 {
     m_objects.clear();
 
-    m_sphere_object = add_object(glm::mat4(1.0f), m_sphere_mesh);
+    m_sphere_object = add_object(glm::mat4(1.0f), m_sphere_mesh, m_sphere_texture, m_sphere_sampler);
 
     buffer& target = m_object_buffers[vk::frame::get_current_frame_index()];
 
@@ -326,6 +424,17 @@ void draw_sphere()
         &push
     );
 
+    disp.cmdBindDescriptorSets(
+        cmd,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        m_base_model_material->graphics.layout,
+        0,
+        1,
+        &m_scene_set,
+        0,
+        nullptr
+    );
+
     disp.cmdBindIndexBuffer(cmd, m_sphere_mesh->index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
 
     disp.cmdDrawIndexed(cmd, m_sphere_mesh->index_count, 1, 0, 0, m_sphere_object);
@@ -337,12 +446,17 @@ void init()
 {
     queue_deletor::push([]() { resources::materials::erase_all(); });
     queue_deletor::push([]() { resources::meshes::erase_all(); });
+    queue_deletor::push([]() { resources::textures::erase_all(); });
+    queue_deletor::push([]() { vk::samplers::destroy_all(); });
 
     create_depth_image(vk::frame::get_swapchain().extent);
 
     create_frame_buffers();
 
+    create_scene_set();
+
     create_sphere_mesh();
+    create_sphere_texture();
 
     create_pipelines();
 
@@ -358,8 +472,12 @@ void cleanup()
 #endif
 
     resources::meshes::erase(m_sphere_mesh);
+    resources::textures::erase(m_sphere_texture);
 
-    m_sphere_mesh = nullptr;
+    m_sphere_mesh    = nullptr;
+    m_sphere_texture = nullptr;
+
+    destroy_scene_set();
 
     destroy_frame_buffers();
 
@@ -372,8 +490,11 @@ void handle_all()
 {
     resources::meshes::destroy_erased();
     resources::materials::destroy_replaced();
+    resources::textures::destroy_erased();
 
     ensure_depth_image();
+
+    handle_scene_set();
 
     handle_objects();
     handle_frame_data();
