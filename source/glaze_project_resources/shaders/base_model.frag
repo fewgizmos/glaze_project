@@ -9,7 +9,8 @@ layout(location = 2) in vec2 frag_uv;
 
 layout(location = 0) out vec4 out_color;
 
-const float AMBIENT = 0.04;
+const float AMBIENT    = 0.01;
+const float LIGHT_WRAP = 0.5;
 
 const vec2  CHECKER_CELLS = vec2(16.0, 8.0);
 const float CHECKER_DARK  = 0.35;
@@ -23,7 +24,11 @@ float checker_at(vec2 uv)
 
 void main()
 {
-    float diffuse = max(dot(normalize(frag_normal), normalize(pc.frame.light_dir)), 0.0);
+    float facing = dot(normalize(frag_normal), normalize(pc.frame.light_dir));
+
+    float wrapped = clamp((facing + LIGHT_WRAP) / (1.0 + LIGHT_WRAP), 0.0, 1.0);
+
+    float diffuse = wrapped * wrapped;
 
     vec3 albedo = frag_color * checker_at(frag_uv);
 

@@ -8,7 +8,7 @@ struct vertex
     vec4 color;
 };
 
-layout(buffer_reference, std430) readonly buffer vertex_buffer
+layout(buffer_reference, std430) buffer vertex_buffer
 {
     vertex data[];
 };
@@ -17,6 +17,7 @@ struct object_data
 {
     mat4 model;
     vertex_buffer vertices;
+    uint vertex_count;
 };
 
 layout(buffer_reference, std430) readonly buffer object_buffer

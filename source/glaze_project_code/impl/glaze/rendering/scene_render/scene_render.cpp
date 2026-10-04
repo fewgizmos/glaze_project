@@ -25,6 +25,7 @@
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -55,13 +56,16 @@ struct object_data
 {
     glm::mat4 model;
     VkDeviceAddress vertices;
-    uint64_t padding;
+    uint32_t vertex_count;
+    uint32_t padding;
 };
 
-constexpr uint32_t SPHERE_SEGMENTS = 32;
-constexpr uint32_t SPHERE_RINGS    = 16;
+constexpr uint32_t SPHERE_SEGMENTS = 512;
+constexpr uint32_t SPHERE_RINGS    = 256;
 
 constexpr float SPHERE_RADIUS = 1.0f;
+
+constexpr uint32_t COMPUTE_GROUP_SIZE = 64;
 
 constexpr uint32_t OBJECTS_START_CAPACITY = 64;
 
@@ -191,19 +195,22 @@ void create_pipelines()
     base_model_create_info.push_constant_size = sizeof(VkDeviceAddress);
     base_model_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
+    compute_pipeline_create_info base_model_compute_create_info;
+    base_model_compute_create_info.push_constant_size = sizeof(VkDeviceAddress);
+
     m_base_model_material = resources::materials::build(
         "base_model",
         "base_model.vert",
         "base_model.frag",
-        "",
+        "relief.comp",
         base_model_create_info,
-        {}
+        base_model_compute_create_info
     );
 }
 
 uint32_t add_object(const glm::mat4& model, const mesh* target)
 {
-    m_objects.push_back({ model, target->vertex_buffer.address, 0 });
+    m_objects.push_back({ model, target->vertex_buffer.address, target->vertex_count, 0 });
 
     return static_cast<uint32_t>(m_objects.size() - 1);
 }
@@ -260,6 +267,45 @@ void handle_frame_data()
     data.objects = m_object_buffers[frame_index].address;
 
     vk::resources::upload_buffer(m_frame_buffers[frame_index], &data, sizeof(data));
+}
+
+void handle_compute()
+{
+    VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
+
+    uint32_t max_vertex_count = 0;
+
+    for (const object_data& object : m_objects) {
+        max_vertex_count = std::max(max_vertex_count, object.vertex_count);
+    }
+
+    vk::commands::memory_barrier(
+        cmd,
+        VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+        VK_ACCESS_2_TRANSFER_WRITE_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
+    );
+
+    const VkDeviceAddress push = get_frame_data_address();
+
+    vk::commands::dispatch(
+        cmd,
+        m_base_model_material->compute,
+        &push,
+        sizeof(push),
+        (max_vertex_count + COMPUTE_GROUP_SIZE - 1) / COMPUTE_GROUP_SIZE,
+        static_cast<uint32_t>(m_objects.size()),
+        1
+    );
+
+    vk::commands::memory_barrier(
+        cmd,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+        VK_ACCESS_2_SHADER_STORAGE_READ_BIT
+    );
 }
 
 void draw_sphere()
@@ -331,6 +377,8 @@ void handle_all()
 
     handle_objects();
     handle_frame_data();
+
+    handle_compute();
 }
 
 void draw_all()
