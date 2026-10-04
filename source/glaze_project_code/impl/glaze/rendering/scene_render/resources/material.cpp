@@ -1,4 +1,4 @@
-#include "glp/glaze/rendering/resources/material.h"
+#include "glp/glaze/rendering/scene_render/resources/material.h"
 
 #include "glp/glaze/rendering/defines.h"
 
@@ -6,7 +6,7 @@
 
 #include <unordered_map>
 
-namespace glaze::rendering::resources::materials
+namespace glaze::rendering::scene_render::resources::materials
 {
 
 namespace

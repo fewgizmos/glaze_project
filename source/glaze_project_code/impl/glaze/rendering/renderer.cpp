@@ -1,7 +1,8 @@
 #include "glp/glaze/rendering/renderer.h"
 
 #include "glp/glaze/rendering/queue_deletor.h"
-#include "glp/glaze/rendering/scene_renderer.h"
+
+#include "glp/glaze/rendering/scene_render/scene_render.h"
 
 #include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/device.h"
@@ -58,7 +59,7 @@ void begin_rendering()
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
     const swapchain_image_data& target = vk::frame::get_current_image();
-    const image& depth = scene_renderer::get_depth_image();
+    const image& depth = scene_render::get_depth_image();
 
     const VkExtent2D extent = vk::frame::get_swapchain().extent;
 
@@ -143,11 +144,11 @@ void record_command_buffer()
     vk::resources::destroy_used_staging();
     vk::resources::flush_uploads();
 
-    scene_renderer::update_all();
+    scene_render::update_all();
 
     begin_rendering();
 
-    scene_renderer::draw_all();
+    scene_render::draw_all();
 
     vk::device::get_disp().cmdEndRendering(cmd);
 
@@ -239,7 +240,7 @@ void init()
 
     vk::frame::create_frame_data();
 
-    scene_renderer::init();
+    scene_render::init();
 }
 
 void init_vk()
@@ -258,7 +259,7 @@ void cleanup()
 {
     vk::device::get_disp().deviceWaitIdle();
 
-    scene_renderer::cleanup();
+    scene_render::cleanup();
 
     queue_deletor::clean_all();
 

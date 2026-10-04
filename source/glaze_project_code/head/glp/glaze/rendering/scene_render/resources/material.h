@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace glaze::rendering
+namespace glaze::rendering::scene_render
 {
 
 struct material
@@ -16,7 +16,7 @@ struct material
 
 }
 
-namespace glaze::rendering::resources::materials
+namespace glaze::rendering::scene_render::resources::materials
 {
 
 const material* build(

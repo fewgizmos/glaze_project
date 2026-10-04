@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace glaze::rendering
+namespace glaze::rendering::scene_render
 {
 
 struct vertex
@@ -35,7 +35,7 @@ struct mesh
 
 }
 
-namespace glaze::rendering::resources::meshes
+namespace glaze::rendering::scene_render::resources::meshes
 {
 
 const mesh* build(const std::vector<vertex>& vertices, const std::vector<uint32_t>& indices);

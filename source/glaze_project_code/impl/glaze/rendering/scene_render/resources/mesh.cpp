@@ -1,4 +1,4 @@
-#include "glp/glaze/rendering/resources/mesh.h"
+#include "glp/glaze/rendering/scene_render/resources/mesh.h"
 
 #include "glp/glaze/rendering/defines.h"
 
@@ -8,7 +8,7 @@
 #include <memory>
 #include <unordered_map>
 
-namespace glaze::rendering::resources::meshes
+namespace glaze::rendering::scene_render::resources::meshes
 {
 
 namespace

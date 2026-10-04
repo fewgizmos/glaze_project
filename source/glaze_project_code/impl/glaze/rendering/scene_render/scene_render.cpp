@@ -1,7 +1,9 @@
-#include "glp/glaze/rendering/scene_renderer.h"
+#include "glp/glaze/rendering/scene_render/scene_render.h"
 
-#include "glp/glaze/rendering/resources/material.h"
-#include "glp/glaze/rendering/resources/mesh.h"
+#include "glp/glaze/rendering/scene_render/debug_gizmos.h"
+
+#include "glp/glaze/rendering/scene_render/resources/material.h"
+#include "glp/glaze/rendering/scene_render/resources/mesh.h"
 
 #include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/device.h"
@@ -14,8 +16,6 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/scalar_constants.hpp>
-#include <glm/mat4x4.hpp>
-#include <glm/matrix.hpp>
 #include <glm/trigonometric.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
@@ -24,7 +24,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace glaze::rendering::scene_renderer
+namespace glaze::rendering::scene_render
 {
 
 namespace
@@ -36,19 +36,12 @@ struct base_model_push
     VkDeviceAddress vertices;
 };
 
-struct debug_grid_push
-{
-    glm::mat4 view_proj;
-    glm::mat4 inv_view_proj;
-};
-
 constexpr uint32_t SPHERE_SEGMENTS = 32;
 constexpr uint32_t SPHERE_RINGS    = 16;
 
 constexpr float SPHERE_RADIUS = 1.0f;
 
 const material* m_base_model_material = nullptr;
-const material* m_debug_grid_material = nullptr;
 
 const mesh* m_sphere_mesh = nullptr;
 
@@ -145,43 +138,6 @@ void create_pipelines()
         base_model_create_info,
         {}
     );
-
-    if (!GRID_IS_ACTIVE) {
-        return;
-    }
-
-    graphics_pipeline_create_info debug_grid_create_info;
-    debug_grid_create_info.color_format = vk::frame::get_swapchain().image_format;
-    debug_grid_create_info.depth_format = DEPTH_FORMAT;
-    debug_grid_create_info.cull_mode = VK_CULL_MODE_NONE;
-    debug_grid_create_info.depth_write = false;
-    debug_grid_create_info.alpha_blend = true;
-    debug_grid_create_info.push_constant_size = sizeof(debug_grid_push);
-    debug_grid_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-
-    m_debug_grid_material = resources::materials::build(
-        "debug_grid",
-        "debug_grid.vert",
-        "debug_grid.frag",
-        "",
-        debug_grid_create_info,
-        {}
-    );
-}
-
-glm::mat4 get_view_proj()
-{
-    const VkExtent2D extent = vk::frame::get_swapchain().extent;
-
-    const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
-
-    const glm::mat4 view = glm::lookAt(glm::vec3(2.5f, 3.0f, 2.5f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-
-    glm::mat4 proj = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, 100.0f, 0.1f);
-
-    proj[1][1] *= -1.0f;
-
-    return proj * view;
 }
 
 void draw_sphere()
@@ -209,29 +165,6 @@ void draw_sphere()
     disp.cmdDrawIndexed(cmd, m_sphere_mesh->index_count, 1, 0, 0, 0);
 }
 
-void draw_grid()
-{
-    const vkb::DispatchTable& disp = vk::device::get_disp();
-
-    VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
-
-    const glm::mat4 view_proj = get_view_proj();
-
-    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_debug_grid_material->graphics.handle);
-
-    const debug_grid_push push = { view_proj, glm::inverse(view_proj) };
-
-    vk::commands::push_constants(
-        cmd,
-        m_debug_grid_material->graphics.layout,
-        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-        sizeof(push),
-        &push
-    );
-
-    disp.cmdDraw(cmd, 3, 1, 0, 0);
-}
-
 }
 
 void init()
@@ -244,10 +177,18 @@ void init()
     create_sphere_mesh();
 
     create_pipelines();
+
+#ifndef NDEBUG
+    debug_gizmos::init_all();
+#endif
 }
 
 void cleanup()
 {
+#ifndef NDEBUG
+    debug_gizmos::clean_all();
+#endif
+
     resources::meshes::erase(m_sphere_mesh);
 
     m_sphere_mesh = nullptr;
@@ -255,7 +196,6 @@ void cleanup()
     vk::resources::destroy_image(m_depth_image);
 
     m_base_model_material = nullptr;
-    m_debug_grid_material = nullptr;
 }
 
 void update_all()
@@ -270,11 +210,26 @@ void draw_all()
 {
     draw_sphere();
 
-    if (GRID_IS_ACTIVE) {
-        draw_grid();
-    }
+#ifndef NDEBUG
+    debug_gizmos::draw_all();
+#endif
 }
 
 const image& get_depth_image() { return m_depth_image; }
+
+glm::mat4 get_view_proj()
+{
+    const VkExtent2D extent = vk::frame::get_swapchain().extent;
+
+    const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+
+    const glm::mat4 view = glm::lookAt(glm::vec3(2.5f, 3.0f, 2.5f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+
+    glm::mat4 proj = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, 100.0f, 0.1f);
+
+    proj[1][1] *= -1.0f;
+
+    return proj * view;
+}
 
 }
