@@ -8,7 +8,7 @@
 namespace glaze::utilities::file
 {
 
-inline std::string read_bytes(const std::string& path)
+inline std::string read_raw(const std::string& path)
 {
     std::ifstream file(path, std::ios::ate | std::ios::binary);
 
