@@ -6,13 +6,13 @@ namespace glaze::utilities::sm
 {
 
 template <typename enum_type>
-class State
+class state
 {
     public:
         using storage = typename std::underlying_type<enum_type>::type;
 
-        State() = default;
-        explicit State(enum_type initial_state)
+        state() = default;
+        explicit state(enum_type initial_state)
             : m_state(static_cast<storage>(initial_state)) {}
 
         void set_state(enum_type state_flag)    { m_state |= static_cast<storage>(state_flag); }

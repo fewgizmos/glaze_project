@@ -30,6 +30,8 @@ void next_frame()
 
     delta = std::min(delta_ms / 1000.0f, MAX_DELTA);
     delta_ms = delta * 1000.0f;
+
+    timestamp += delta;
 }
 
 }

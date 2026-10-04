@@ -1,13 +1,10 @@
 #version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "util/scene_head.glsl"
 
 layout(location = 0) out vec3 near_point;
 layout(location = 1) out vec3 far_point;
-
-layout(push_constant) uniform constants
-{
-    mat4 view_proj;
-    mat4 inv_view_proj;
-} pc;
 
 const vec2 CORNERS[3] = vec2[](
     vec2(-1.0, -1.0),
@@ -17,7 +14,7 @@ const vec2 CORNERS[3] = vec2[](
 
 vec3 unproject(vec2 xy, float depth)
 {
-    vec4 point = pc.inv_view_proj * vec4(xy, depth, 1.0);
+    vec4 point = pc.frame.inv_view_proj * vec4(xy, depth, 1.0);
 
     return point.xyz / point.w;
 }

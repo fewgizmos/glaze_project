@@ -13,20 +13,11 @@
 
 #include "glp/glaze/rendering/defines.h"
 
-#include <glm/mat4x4.hpp>
-#include <glm/matrix.hpp>
-
 namespace glaze::rendering::scene_render::debug_gizmos
 {
 
 namespace
 {
-
-struct debug_grid_push
-{
-    glm::mat4 view_proj;
-    glm::mat4 inv_view_proj;
-};
 
 const material* m_debug_grid_material = nullptr;
 
@@ -38,7 +29,7 @@ void create_pipelines()
     debug_grid_create_info.cull_mode = VK_CULL_MODE_NONE;
     debug_grid_create_info.depth_write = false;
     debug_grid_create_info.alpha_blend = true;
-    debug_grid_create_info.push_constant_size = sizeof(debug_grid_push);
+    debug_grid_create_info.push_constant_size = sizeof(VkDeviceAddress);
     debug_grid_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
     m_debug_grid_material = resources::materials::build(
@@ -57,11 +48,9 @@ void draw_grid()
 
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
-    const glm::mat4 view_proj = scene_render::get_view_proj();
-
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_debug_grid_material->graphics.handle);
 
-    const debug_grid_push push = { view_proj, glm::inverse(view_proj) };
+    const VkDeviceAddress push = scene_render::get_frame_data_address();
 
     vk::commands::push_constants(
         cmd,

@@ -163,4 +163,6 @@ swapchain_image_data& get_current_image()   { return m_swapchain.images.at(m_ima
 
 uint32_t& get_image_index() { return m_image_index; }
 
+uint32_t get_current_frame_index() { return static_cast<uint32_t>(m_current_frame); }
+
 }

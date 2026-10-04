@@ -1,15 +1,12 @@
 #version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "util/scene_head.glsl"
 
 layout(location = 0) in vec3 near_point;
 layout(location = 1) in vec3 far_point;
 
 layout(location = 0) out vec4 out_color;
-
-layout(push_constant) uniform constants
-{
-    mat4 view_proj;
-    mat4 inv_view_proj;
-} pc;
 
 const float CELL_SIZE                = 0.5;
 const float MIN_PIXELS_BETWEEN_CELLS = 2.0;
@@ -96,7 +93,7 @@ void main()
         discard;
     }
 
-    vec4 clip = pc.view_proj * vec4(hit, 1.0);
+    vec4 clip = pc.frame.view_proj * vec4(hit, 1.0);
 
     gl_FragDepth = clip.z / clip.w;
 

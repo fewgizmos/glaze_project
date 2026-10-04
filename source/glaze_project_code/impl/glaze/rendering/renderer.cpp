@@ -144,7 +144,7 @@ void record_command_buffer()
     vk::resources::destroy_used_staging();
     vk::resources::flush_uploads();
 
-    scene_render::update_all();
+    scene_render::handle_all();
 
     begin_rendering();
 

@@ -42,4 +42,6 @@ swapchain_image_data& get_current_image();
 
 uint32_t& get_image_index();
 
+uint32_t get_current_frame_index();
+
 }

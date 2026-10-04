@@ -13,9 +13,14 @@
 #include "glp/glaze/rendering/defines.h"
 #include "glp/glaze/rendering/queue_deletor.h"
 
+#include "glp/glaze/utilities/core/timer.h"
+
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/scalar_constants.hpp>
+#include <glm/geometric.hpp>
+#include <glm/mat4x4.hpp>
+#include <glm/matrix.hpp>
 #include <glm/trigonometric.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
@@ -30,10 +35,27 @@ namespace glaze::rendering::scene_render
 namespace
 {
 
-struct base_model_push
+struct frame_scene_data
 {
-    glm::mat4 transform;
+    glm::mat4 view;
+    glm::mat4 proj;
+    glm::mat4 view_proj;
+    glm::mat4 inv_view_proj;
+
+    glm::vec3 camera_pos;
+    float timestamp;
+
+    glm::vec3 light_dir;
+    float padding;
+
+    VkDeviceAddress objects;
+};
+
+struct object_data
+{
+    glm::mat4 model;
     VkDeviceAddress vertices;
+    uint64_t padding;
 };
 
 constexpr uint32_t SPHERE_SEGMENTS = 32;
@@ -41,11 +63,25 @@ constexpr uint32_t SPHERE_RINGS    = 16;
 
 constexpr float SPHERE_RADIUS = 1.0f;
 
+constexpr uint32_t OBJECTS_START_CAPACITY = 64;
+
+const glm::vec3 CAMERA_POS    = glm::vec3(2.5f, 3.0f, 2.5f);
+const glm::vec3 CAMERA_TARGET = glm::vec3(0.0f);
+
+const glm::vec3 LIGHT_DIR = glm::vec3(-0.8f, 0.6f, 0.3f);
+
 const material* m_base_model_material = nullptr;
 
 const mesh* m_sphere_mesh = nullptr;
 
+uint32_t m_sphere_object = 0;
+
 image m_depth_image;
+
+buffer m_frame_buffers[MAX_FRAMES_IN_FLIGHT];
+buffer m_object_buffers[MAX_FRAMES_IN_FLIGHT];
+
+std::vector<object_data> m_objects;
 
 void create_depth_image(VkExtent2D extent)
 {
@@ -70,6 +106,31 @@ void ensure_depth_image()
     vk::resources::destroy_image(m_depth_image);
 
     create_depth_image(extent);
+}
+
+buffer create_shader_buffer(VkDeviceSize size)
+{
+    return vk::resources::create_buffer(
+        size,
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+    );
+}
+
+void create_frame_buffers()
+{
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        m_frame_buffers[i]  = create_shader_buffer(sizeof(frame_scene_data));
+        m_object_buffers[i] = create_shader_buffer(sizeof(object_data) * OBJECTS_START_CAPACITY);
+    }
+}
+
+void destroy_frame_buffers()
+{
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vk::resources::destroy_buffer(m_object_buffers[i]);
+        vk::resources::destroy_buffer(m_frame_buffers[i]);
+    }
 }
 
 void create_sphere_mesh()
@@ -127,8 +188,8 @@ void create_pipelines()
     base_model_create_info.depth_format = DEPTH_FORMAT;
     base_model_create_info.cull_mode = VK_CULL_MODE_BACK_BIT;
     base_model_create_info.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    base_model_create_info.push_constant_size = sizeof(base_model_push);
-    base_model_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT;
+    base_model_create_info.push_constant_size = sizeof(VkDeviceAddress);
+    base_model_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
     m_base_model_material = resources::materials::build(
         "base_model",
@@ -140,29 +201,88 @@ void create_pipelines()
     );
 }
 
+uint32_t add_object(const glm::mat4& model, const mesh* target)
+{
+    m_objects.push_back({ model, target->vertex_buffer.address, 0 });
+
+    return static_cast<uint32_t>(m_objects.size() - 1);
+}
+
+void handle_objects()
+{
+    m_objects.clear();
+
+    m_sphere_object = add_object(glm::mat4(1.0f), m_sphere_mesh);
+
+    buffer& target = m_object_buffers[vk::frame::get_current_frame_index()];
+
+    const VkDeviceSize size = sizeof(object_data) * m_objects.size();
+
+    if (size > target.size) {
+        VkDeviceSize grown = target.size;
+
+        while (grown < size) {
+            grown *= 2;
+        }
+
+        vk::resources::destroy_buffer(target);
+
+        target = create_shader_buffer(grown);
+    }
+
+    vk::resources::upload_buffer(target, m_objects.data(), size);
+}
+
+void handle_frame_data()
+{
+    const uint32_t frame_index = vk::frame::get_current_frame_index();
+
+    const VkExtent2D extent = vk::frame::get_swapchain().extent;
+
+    const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+
+    frame_scene_data data;
+
+    data.view = glm::lookAt(CAMERA_POS, CAMERA_TARGET, glm::vec3(0.0f, 1.0f, 0.0f));
+    data.proj = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, 100.0f, 0.1f);
+
+    data.proj[1][1] *= -1.0f;
+
+    data.view_proj     = data.proj * data.view;
+    data.inv_view_proj = glm::inverse(data.view_proj);
+
+    data.camera_pos = CAMERA_POS;
+    data.timestamp  = utilities::core::timer::timestamp;
+
+    data.light_dir = glm::normalize(LIGHT_DIR);
+    data.padding   = 0.0f;
+
+    data.objects = m_object_buffers[frame_index].address;
+
+    vk::resources::upload_buffer(m_frame_buffers[frame_index], &data, sizeof(data));
+}
+
 void draw_sphere()
 {
     const vkb::DispatchTable& disp = vk::device::get_disp();
 
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
-    const glm::mat4 model = glm::mat4(1.0f);
-
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_base_model_material->graphics.handle);
 
-    const base_model_push push = { get_view_proj() * model, m_sphere_mesh->vertex_buffer.address };
+    const VkDeviceAddress push = get_frame_data_address();
 
     vk::commands::push_constants(
         cmd,
         m_base_model_material->graphics.layout,
-        VK_SHADER_STAGE_VERTEX_BIT,
+        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         sizeof(push),
         &push
     );
 
     disp.cmdBindIndexBuffer(cmd, m_sphere_mesh->index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
 
-    disp.cmdDrawIndexed(cmd, m_sphere_mesh->index_count, 1, 0, 0, 0);
+    disp.cmdDrawIndexed(cmd, m_sphere_mesh->index_count, 1, 0, 0, m_sphere_object);
 }
 
 }
@@ -173,6 +293,8 @@ void init()
     queue_deletor::push([]() { resources::meshes::erase_all(); });
 
     create_depth_image(vk::frame::get_swapchain().extent);
+
+    create_frame_buffers();
 
     create_sphere_mesh();
 
@@ -193,17 +315,22 @@ void cleanup()
 
     m_sphere_mesh = nullptr;
 
+    destroy_frame_buffers();
+
     vk::resources::destroy_image(m_depth_image);
 
     m_base_model_material = nullptr;
 }
 
-void update_all()
+void handle_all()
 {
     resources::meshes::destroy_erased();
     resources::materials::destroy_replaced();
 
     ensure_depth_image();
+
+    handle_objects();
+    handle_frame_data();
 }
 
 void draw_all()
@@ -217,19 +344,9 @@ void draw_all()
 
 const image& get_depth_image() { return m_depth_image; }
 
-glm::mat4 get_view_proj()
+VkDeviceAddress get_frame_data_address()
 {
-    const VkExtent2D extent = vk::frame::get_swapchain().extent;
-
-    const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
-
-    const glm::mat4 view = glm::lookAt(glm::vec3(2.5f, 3.0f, 2.5f), glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-
-    glm::mat4 proj = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, 100.0f, 0.1f);
-
-    proj[1][1] *= -1.0f;
-
-    return proj * view;
+    return m_frame_buffers[vk::frame::get_current_frame_index()].address;
 }
 
 }

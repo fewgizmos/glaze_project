@@ -8,7 +8,9 @@
 
 #include <shaderc/shaderc.hpp>
 
+#include <exception>
 #include <filesystem>
+#include <memory>
 
 namespace glaze::rendering::vk::shaders
 {
@@ -40,6 +42,50 @@ shader_stage get_stage_from_file(const std::string& file_name)
     return shader_stage::vertex;
 }
 
+struct include_data
+{
+    shaderc_include_result result = {};
+
+    std::string name;
+    std::string content;
+};
+
+class shader_includer : public shaderc::CompileOptions::IncluderInterface
+{
+    public:
+        shaderc_include_result* GetInclude(
+            const char* requested_source,
+            shaderc_include_type type,
+            const char* requesting_source,
+            size_t include_depth
+        ) override
+        {
+            include_data* data = new include_data;
+
+            try {
+                data->content = utilities::file::read_raw(std::string(SHADERS_DIR) + requested_source);
+                data->name    = requested_source;
+            }
+
+            catch (const std::exception& error) {
+                data->content = error.what();
+            }
+
+            data->result.source_name        = data->name.c_str();
+            data->result.source_name_length = data->name.size();
+            data->result.content            = data->content.c_str();
+            data->result.content_length     = data->content.size();
+            data->result.user_data          = data;
+
+            return &data->result;
+        }
+
+        void ReleaseInclude(shaderc_include_result* result) override
+        {
+            delete static_cast<include_data*>(result->user_data);
+        }
+};
+
 }
 
 std::vector<uint32_t> compile_glsl(const std::string& source, shader_stage stage, const std::string& name)
@@ -50,6 +96,7 @@ std::vector<uint32_t> compile_glsl(const std::string& source, shader_stage stage
     options.SetSourceLanguage(shaderc_source_language_glsl);
     options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
     options.SetTargetSpirv(shaderc_spirv_version_1_6);
+    options.SetIncluder(std::make_unique<shader_includer>());
 
 #ifdef NDEBUG
     options.SetOptimizationLevel(shaderc_optimization_level_performance);
