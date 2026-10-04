@@ -4,7 +4,7 @@
 #include "glp/glaze/rendering/defines.h"
 
 #include "glp/glaze/utilities/core/assert.h"
-#include "glp/glaze/utilities/fs.h"
+#include "glp/glaze/utilities/file.h"
 
 #include <shaderc/shaderc.hpp>
 
@@ -96,7 +96,7 @@ void destroy_module(VkShaderModule module)
 
 VkShaderModule load_module(const std::string& file_name)
 {
-    const std::string source = utilities::fs::read_file(std::string(SHADERS_DIR) + file_name);
+    const std::string source = utilities::file::read_bytes(std::string(SHADERS_DIR) + file_name);
 
     return create_module(compile_glsl(source, get_stage_from_file(file_name), file_name));
 }
