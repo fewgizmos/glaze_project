@@ -4,7 +4,7 @@
 
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
-#include "glp/glaze/rendering/scene_render/resources/material.h"
+#include "glp/glaze/rendering/scene_render/resources/shaders.h"
 
 #include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/device.h"
@@ -19,7 +19,7 @@ namespace glaze::rendering::scene_render::debug_gizmos
 namespace
 {
 
-const material* m_debug_grid_material = nullptr;
+const shader* m_debug_grid_shader = nullptr;
 
 void create_pipelines()
 {
@@ -32,7 +32,7 @@ void create_pipelines()
     debug_grid_create_info.push_constant_size = sizeof(VkDeviceAddress);
     debug_grid_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    m_debug_grid_material = resources::materials::build(
+    m_debug_grid_shader = resources::shaders::build(
         "debug_grid",
         "debug_grid.vert",
         "debug_grid.frag",
@@ -48,13 +48,13 @@ void draw_grid()
 
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
-    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_debug_grid_material->graphics.handle);
+    disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_debug_grid_shader->graphics.handle);
 
     const VkDeviceAddress push = scene_render::get_frame_data_address();
 
     vk::commands::push_constants(
         cmd,
-        m_debug_grid_material->graphics.layout,
+        m_debug_grid_shader->graphics.layout,
         VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         sizeof(push),
         &push
@@ -72,7 +72,7 @@ void init_all()
 
 void clean_all()
 {
-    m_debug_grid_material = nullptr;
+    m_debug_grid_shader = nullptr;
 }
 
 void draw_all()

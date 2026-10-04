@@ -1,4 +1,4 @@
-#include "glp/glaze/rendering/scene_render/resources/mesh.h"
+#include "glp/glaze/rendering/scene_render/resources/meshes.h"
 
 #include "glp/glaze/rendering/defines.h"
 

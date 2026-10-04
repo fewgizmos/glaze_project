@@ -1,6 +1,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 
-#include "glp/glaze/rendering/scene_render/resources/texture.h"
+#include "glp/glaze/rendering/scene_render/resources/textures.h"
 
 #include "glp/glaze/rendering/defines.h"
 

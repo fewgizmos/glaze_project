@@ -8,7 +8,7 @@
 namespace glaze::rendering::scene_render
 {
 
-struct material
+struct shader
 {
     pipeline graphics;
     pipeline compute;
@@ -16,10 +16,10 @@ struct material
 
 }
 
-namespace glaze::rendering::scene_render::resources::materials
+namespace glaze::rendering::scene_render::resources::shaders
 {
 
-const material* build(
+const shader* build(
     const std::string& name,
     const std::string& vert_file,
     const std::string& frag_file,
@@ -28,7 +28,7 @@ const material* build(
     const compute_pipeline_create_info& compute_create_info
 );
 
-const material* get(const std::string& name);
+const shader* get(const std::string& name);
 
 std::vector<std::string> get_all_names();
 

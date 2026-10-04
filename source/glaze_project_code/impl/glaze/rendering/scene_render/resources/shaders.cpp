@@ -1,4 +1,4 @@
-#include "glp/glaze/rendering/scene_render/resources/material.h"
+#include "glp/glaze/rendering/scene_render/resources/shaders.h"
 
 #include "glp/glaze/rendering/defines.h"
 
@@ -6,23 +6,23 @@
 
 #include <unordered_map>
 
-namespace glaze::rendering::scene_render::resources::materials
+namespace glaze::rendering::scene_render::resources::shaders
 {
 
 namespace
 {
 
-struct replaced_material
+struct replaced_shader
 {
-    material target;
+    shader target;
     int frames_left = 0;
 };
 
-std::unordered_map<std::string, material> m_materials;
+std::unordered_map<std::string, shader> m_shaders;
 
-std::vector<replaced_material> m_replaced;
+std::vector<replaced_shader> m_replaced;
 
-void destroy_pipelines(const material& target)
+void destroy_pipelines(const shader& target)
 {
     vk::shaders::destroy_pipeline(target.graphics);
     vk::shaders::destroy_pipeline(target.compute);
@@ -30,7 +30,7 @@ void destroy_pipelines(const material& target)
 
 }
 
-const material* build(
+const shader* build(
     const std::string& name,
     const std::string& vert_file,
     const std::string& frag_file,
@@ -39,9 +39,9 @@ const material* build(
     const compute_pipeline_create_info& compute_create_info
 )
 {
-    GLAZE_ASSERT(vert_file.empty() && comp_file.empty(), "material has no vertex or compute shader: " + name);
+    GLAZE_ASSERT(vert_file.empty() && comp_file.empty(), "shader has no vertex or compute shader: " + name);
 
-    material result;
+    shader result;
 
     if (!vert_file.empty()) {
         result.graphics = vk::shaders::create_graphics_pipeline(vert_file, frag_file, graphics_create_info);
@@ -51,10 +51,10 @@ const material* build(
         result.compute = vk::shaders::create_compute_pipeline(comp_file, compute_create_info);
     }
 
-    const auto found = m_materials.find(name);
+    const auto found = m_shaders.find(name);
 
-    if (found == m_materials.end()) {
-        return &m_materials.emplace(name, result).first->second;
+    if (found == m_shaders.end()) {
+        return &m_shaders.emplace(name, result).first->second;
     }
 
     m_replaced.push_back({ found->second, MAX_FRAMES_IN_FLIGHT });
@@ -64,20 +64,20 @@ const material* build(
     return &found->second;
 }
 
-const material* get(const std::string& name)
+const shader* get(const std::string& name)
 {
-    const auto found = m_materials.find(name);
+    const auto found = m_shaders.find(name);
 
-    return found != m_materials.end() ? &found->second : nullptr;
+    return found != m_shaders.end() ? &found->second : nullptr;
 }
 
 std::vector<std::string> get_all_names()
 {
     std::vector<std::string> names;
 
-    names.reserve(m_materials.size());
+    names.reserve(m_shaders.size());
 
-    for (const auto& entry : m_materials) {
+    for (const auto& entry : m_shaders) {
         names.push_back(entry.first);
     }
 
@@ -86,15 +86,15 @@ std::vector<std::string> get_all_names()
 
 void erase_all()
 {
-    for (const auto& entry : m_materials) {
+    for (const auto& entry : m_shaders) {
         destroy_pipelines(entry.second);
     }
 
-    for (const replaced_material& replaced : m_replaced) {
+    for (const replaced_shader& replaced : m_replaced) {
         destroy_pipelines(replaced.target);
     }
 
-    m_materials.clear();
+    m_shaders.clear();
     m_replaced.clear();
 }
 

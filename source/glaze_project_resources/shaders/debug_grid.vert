@@ -1,7 +1,7 @@
 #version 450
 #extension GL_EXT_buffer_reference : require
 
-#include "util/scene_head.glsl"
+#include "util/scene.glsl"
 
 layout(location = 0) out vec3 near_point;
 layout(location = 1) out vec3 far_point;

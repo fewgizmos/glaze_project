@@ -1,7 +1,7 @@
 #version 450
 #extension GL_EXT_buffer_reference : require
 
-#include "util/scene_head.glsl"
+#include "util/scene.glsl"
 
 layout(local_size_x = 64) in;
 

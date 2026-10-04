@@ -15,4 +15,7 @@ const image& get_depth_image();
 
 VkDeviceAddress get_frame_data_address();
 
+VkDescriptorSetLayout get_scene_set_layout();
+VkDescriptorSet get_scene_set();
+
 }
