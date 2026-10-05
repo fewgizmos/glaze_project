@@ -5,6 +5,7 @@
 #include "glp/glaze/platform/app.h"
 #include "glp/glaze/platform/window_manager.h"
 
+#include "glp/glaze/io/input.h"
 #include "glp/glaze/io/viewport.h"
 
 #include "glp/glaze/rendering/renderer.h"
@@ -61,6 +62,12 @@ void tick_frame()
 
     platform::app::pump_events();
     platform::wm::pump_events_to_windows();
+
+    io::input::parse_frame_inputs();
+
+    if (io::input::key_is_pressed(io::input::keyboard_input_codes::f8)) {
+        wants_stop = true;
+    }
 
     rendering::renderer::next_frame();
 
