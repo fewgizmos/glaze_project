@@ -10,7 +10,7 @@ void setup_for_vk()
 {
     platform::wm::window_create_info create_info;
 
-    create_info.title = "wh";
+    create_info.title = "glazeproject";
 
     create_info.width  = 1920;
     create_info.height = 1080;

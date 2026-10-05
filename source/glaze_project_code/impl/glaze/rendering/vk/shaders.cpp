@@ -60,7 +60,7 @@ class shader_includer : public shaderc::CompileOptions::IncluderInterface
             size_t include_depth
         ) override
         {
-            include_data* data = new include_data;
+            std::unique_ptr<include_data> data = std::make_unique<include_data>();
 
             try {
                 data->content = utilities::file::read_raw(std::string(SHADERS_DIR) + requested_source);
@@ -75,15 +75,24 @@ class shader_includer : public shaderc::CompileOptions::IncluderInterface
             data->result.source_name_length = data->name.size();
             data->result.content            = data->content.c_str();
             data->result.content_length     = data->content.size();
-            data->result.user_data          = data;
+            data->result.user_data          = data.get();
 
-            return &data->result;
+            shaderc_include_result* result = &data->result;
+
+            m_includes.push_back(std::move(data));
+
+            return result;
         }
 
         void ReleaseInclude(shaderc_include_result* result) override
         {
-            delete static_cast<include_data*>(result->user_data);
+            std::erase_if(m_includes, [result](const std::unique_ptr<include_data>& stored) {
+                return stored.get() == result->user_data;
+            });
         }
+
+    private:
+        std::vector<std::unique_ptr<include_data>> m_includes;
 };
 
 }

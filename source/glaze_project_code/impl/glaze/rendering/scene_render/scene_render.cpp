@@ -5,6 +5,7 @@
 
 #include "glp/glaze/rendering/scene_render/resources/materials.h"
 #include "glp/glaze/rendering/scene_render/resources/meshes.h"
+#include "glp/glaze/rendering/scene_render/resources/models.h"
 #include "glp/glaze/rendering/scene_render/resources/shaders.h"
 #include "glp/glaze/rendering/scene_render/resources/textures.h"
 
@@ -210,6 +211,7 @@ void init()
     queue_deletor::push([]() { resources::materials::erase_all(); });
     queue_deletor::push([]() { resources::textures::erase_all(); });
     queue_deletor::push([]() { vk::samplers::destroy_all(); });
+    queue_deletor::push([]() { resources::models::erase_all(); });
 
     create_depth_image(vk::frame::get_swapchain().extent);
 
@@ -241,6 +243,8 @@ void cleanup()
 
 void handle_all()
 {
+    resources::models::erase_unused();
+
     resources::meshes::destroy_erased();
     resources::shaders::destroy_replaced();
     resources::textures::destroy_erased();
