@@ -1,6 +1,6 @@
 #ifndef NDEBUG
 
-#include "glp/glaze/rendering/scene_render/debug_gizmos.h"
+#include "glp/glaze/rendering/scene_render/debug_grid.h"
 
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
@@ -13,7 +13,7 @@
 
 #include "glp/glaze/rendering/defines.h"
 
-namespace glaze::rendering::scene_render::debug_gizmos
+namespace glaze::rendering::scene_render::debug_grid
 {
 
 namespace
@@ -21,7 +21,9 @@ namespace
 
 const shader* m_debug_grid_shader = nullptr;
 
-void create_pipelines()
+}
+
+void init()
 {
     graphics_pipeline_create_info debug_grid_create_info;
     debug_grid_create_info.color_format = vk::frame::get_swapchain().image_format;
@@ -42,7 +44,12 @@ void create_pipelines()
     );
 }
 
-void draw_grid()
+void clean()
+{
+    m_debug_grid_shader = nullptr;
+}
+
+void draw()
 {
     const vkb::DispatchTable& disp = vk::device::get_disp();
 
@@ -61,23 +68,6 @@ void draw_grid()
     );
 
     disp.cmdDraw(cmd, 3, 1, 0, 0);
-}
-
-}
-
-void init_all()
-{
-    create_pipelines();
-}
-
-void clean_all()
-{
-    m_debug_grid_shader = nullptr;
-}
-
-void draw_all()
-{
-    draw_grid();
 }
 
 }

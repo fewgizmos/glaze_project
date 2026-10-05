@@ -1,6 +1,6 @@
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
-#include "glp/glaze/rendering/scene_render/debug_gizmos.h"
+#include "glp/glaze/rendering/scene_render/debug_grid.h"
 #include "glp/glaze/rendering/scene_render/objects_pipeline.h"
 
 #include "glp/glaze/rendering/scene_render/resources/materials.h"
@@ -222,14 +222,14 @@ void init()
     objects_pipeline::init_all();
 
 #ifndef NDEBUG
-    debug_gizmos::init_all();
+    debug_grid::init();
 #endif
 }
 
 void cleanup()
 {
 #ifndef NDEBUG
-    debug_gizmos::clean_all();
+    debug_grid::clean();
 #endif
 
     objects_pipeline::clean_all();
@@ -263,7 +263,7 @@ void draw_all()
     objects_pipeline::draw_all();
 
 #ifndef NDEBUG
-    debug_gizmos::draw_all();
+    debug_grid::draw();
 #endif
 }
 
