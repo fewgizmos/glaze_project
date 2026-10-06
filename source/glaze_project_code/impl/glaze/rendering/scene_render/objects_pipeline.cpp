@@ -18,7 +18,9 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
+#include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace glaze::rendering::scene_render::objects_pipeline
@@ -46,6 +48,12 @@ struct object_data
 constexpr const char* FOX_MODEL_PATH = "source/glaze_project_resources/gltf/fox/Fox.gltf";
 
 constexpr float FOX_SCALE = 0.02f;
+
+const glm::vec3 FOX_POSITIONS[] = {
+    glm::vec3(-1.0f, 0.0f, 0.0f),
+    glm::vec3( 1.0f, 0.0f, 0.0f),
+    glm::vec3( 6.0f, 0.0f, 6.0f)
+};
 
 constexpr uint32_t OBJECTS_START_CAPACITY   = 64;
 constexpr uint32_t MATERIALS_START_CAPACITY = 64;
@@ -149,7 +157,22 @@ void handle_objects()
 {
     m_objects.clear();
 
-    add_model(m_fox_model, glm::scale(glm::mat4(1.0f), glm::vec3(FOX_SCALE)));
+    for (const glm::vec3& position : FOX_POSITIONS) {
+        const glm::mat4 placed = glm::translate(glm::mat4(1.0f), position);
+
+        add_model(m_fox_model, glm::scale(placed, glm::vec3(FOX_SCALE)));
+    }
+
+    std::sort(m_objects.begin(), m_objects.end(), [](const render_object& left, const render_object& right) {
+        const shader* left_shader  = left.target_material->target_shader;
+        const shader* right_shader = right.target_material->target_shader;
+
+        if (left_shader != right_shader) {
+            return std::less<const shader*>()(left_shader, right_shader);
+        }
+
+        return std::less<const mesh*>()(left.target_mesh, right.target_mesh);
+    });
 }
 
 void handle_buffers()
@@ -248,20 +271,40 @@ void draw_all()
 
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
+    const uint32_t objects_count = static_cast<uint32_t>(m_objects.size());
+
     const shader* bound_shader = nullptr;
 
-    for (uint32_t i = 0; i < m_objects.size(); i++) {
-        const render_object& target = m_objects[i];
+    uint32_t first = 0;
 
-        if (target.target_material->target_shader != bound_shader) {
-            bound_shader = target.target_material->target_shader;
+    while (first < objects_count) {
+        const render_object& target = m_objects[first];
+
+        const shader* target_shader = target.target_material->target_shader;
+
+        uint32_t count = 1;
+
+        while (first + count < objects_count) {
+            const render_object& next = m_objects[first + count];
+
+            if (next.target_mesh != target.target_mesh || next.target_material->target_shader != target_shader) {
+                break;
+            }
+
+            count++;
+        }
+
+        if (target_shader != bound_shader) {
+            bound_shader = target_shader;
 
             bind_shader(bound_shader);
         }
 
         disp.cmdBindIndexBuffer(cmd, target.target_mesh->index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
 
-        disp.cmdDrawIndexed(cmd, target.target_mesh->index_count, 1, 0, 0, i);
+        disp.cmdDrawIndexed(cmd, target.target_mesh->index_count, count, 0, 0, first);
+
+        first += count;
     }
 }
 
