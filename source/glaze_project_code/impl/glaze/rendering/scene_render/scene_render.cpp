@@ -29,7 +29,7 @@
 
 #include <cstdint>
 
-namespace glaze::rendering::scene_render
+namespace glaze::rendering::scene_render::it
 {
 
 namespace

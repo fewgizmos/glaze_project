@@ -2,7 +2,7 @@
 
 #include "glp/glaze/rendering/vk/resources.h"
 
-namespace glaze::rendering::scene_render
+namespace glaze::rendering::scene_render::it
 {
 
 void init();

@@ -43,12 +43,12 @@ void startup()
 
     io::viewport::setup_for_vk();
 
-    rendering::renderer::init();
+    rendering::it::init();
 }
 
 void cleanup()
 {
-    rendering::renderer::cleanup();
+    rendering::it::cleanup();
 
     io::viewport::destroy();
 
@@ -69,7 +69,7 @@ void tick_frame()
         wants_stop = true;
     }
 
-    rendering::renderer::next_frame();
+    rendering::it::render_frame();
 
     if (platform::app::wants_exit || io::viewport::get_wants_exit()) {
         wants_stop = true;

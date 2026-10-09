@@ -116,7 +116,7 @@ const texture* build_image_texture(
 
     std::visit(fastgltf::visitor {
         [&](const fastgltf::sources::URI& file) {
-            result = textures::build_stb((directory / file.uri.fspath()).string(), is_srgb, 0);
+            result = textures::build_from_file((directory / file.uri.fspath()).string(), is_srgb, 0);
         },
         [&](const fastgltf::sources::Array& array) {
             result = build_encoded_texture(array.bytes.data(), array.bytes.size_bytes(), is_srgb);

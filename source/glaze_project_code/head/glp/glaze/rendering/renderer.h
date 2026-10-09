@@ -1,6 +1,6 @@
 #pragma once
 
-namespace glaze::rendering::renderer
+namespace glaze::rendering::it
 {
 
 void init();
@@ -9,6 +9,6 @@ void init_vk();
 
 void cleanup();
 
-void next_frame();
+void render_frame();
 
 }

@@ -2,9 +2,18 @@
 
 #include <algorithm>
 #include <thread>
+#include <chrono>
 
 namespace glaze::utilities::core::timer
 {
+
+namespace
+{
+
+std::chrono::high_resolution_clock m_timer{};
+
+std::chrono::high_resolution_clock::time_point m_last_frame_end = m_timer.now();
+std::chrono::high_resolution_clock::time_point m_frame_start    = m_timer.now();
 
 using ms = std::chrono::duration<float, std::milli>;
 
@@ -12,6 +21,8 @@ constexpr int   MAX_FPS   = 120;
 constexpr float MAX_DELTA = 0.1f;
 
 constexpr float MIN_FRAME_MS = 1000.0f / MAX_FPS;
+
+}
 
 void next_frame()
 {

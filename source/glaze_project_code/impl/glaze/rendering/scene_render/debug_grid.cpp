@@ -57,7 +57,7 @@ void draw()
 
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_debug_grid_shader->graphics.handle);
 
-    const VkDeviceAddress push = scene_render::get_frame_data_address();
+    const VkDeviceAddress push = scene_render::it::get_frame_data_address();
 
     vk::commands::push_constants(
         cmd,

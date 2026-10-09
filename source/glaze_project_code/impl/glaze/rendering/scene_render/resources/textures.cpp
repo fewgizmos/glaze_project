@@ -95,7 +95,7 @@ const texture* build_raw(const void* pixels, uint32_t width, uint32_t height, bo
     return result;
 }
 
-const texture* build_stb(const std::string& path, bool is_srgb, uint32_t mip_levels)
+const texture* build_from_file(const std::string& path, bool is_srgb, uint32_t mip_levels)
 {
     int width    = 0;
     int height   = 0;

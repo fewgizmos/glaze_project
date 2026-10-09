@@ -124,7 +124,7 @@ void create_shaders()
     base_model_create_info.depth_format = DEPTH_FORMAT;
     base_model_create_info.cull_mode = VK_CULL_MODE_BACK_BIT;
     base_model_create_info.front_face = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    base_model_create_info.set_layouts = { scene_render::get_scene_set_layout() };
+    base_model_create_info.set_layouts = { scene_render::it::get_scene_set_layout() };
     base_model_create_info.push_constant_size = sizeof(VkDeviceAddress);
     base_model_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
@@ -207,9 +207,9 @@ void bind_shader(const shader* target)
 
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
-    const VkDescriptorSet scene_set = scene_render::get_scene_set();
+    const VkDescriptorSet scene_set = scene_render::it::get_scene_set();
 
-    const VkDeviceAddress push = scene_render::get_frame_data_address();
+    const VkDeviceAddress push = scene_render::it::get_frame_data_address();
 
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, target->graphics.handle);
 

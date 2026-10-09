@@ -20,13 +20,13 @@
 
 #include <cstdint>
 
-namespace glaze::rendering::renderer
+namespace glaze::rendering::it
 {
 
 namespace
 {
 
-vkb::Instance m_instance;
+vkb::Instance m_vk_instance;
 
 void create_instance()
 {
@@ -47,9 +47,9 @@ void create_instance()
 
     GLAZE_ASSERT(!instance_ret, instance_ret.error().message());
 
-    m_instance = instance_ret.value();
+    m_vk_instance = instance_ret.value();
 
-    queue_deletor::push([]() { vkb::destroy_instance(m_instance); });
+    queue_deletor::push([]() { vkb::destroy_instance(m_vk_instance); });
 }
 
 void begin_rendering()
@@ -59,7 +59,7 @@ void begin_rendering()
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
     const swapchain_image_data& target = vk::frame::get_current_image();
-    const image& depth = scene_render::get_depth_image();
+    const image& depth = scene_render::it::get_depth_image();
 
     const VkExtent2D extent = vk::frame::get_swapchain().extent;
 
@@ -144,11 +144,11 @@ void record_command_buffer()
     vk::resources::destroy_used_staging();
     vk::resources::flush_uploads();
 
-    scene_render::handle_all();
+    scene_render::it::handle_all();
 
     begin_rendering();
 
-    scene_render::draw_all();
+    scene_render::it::draw_all();
 
     vk::device::get_disp().cmdEndRendering(cmd);
 
@@ -236,19 +236,19 @@ void init()
     init_vk();
 
     vk::commands::create_pool();
-    vk::resources::create_allocator(m_instance);
+    vk::resources::create_allocator(m_vk_instance);
 
     vk::frame::create_frame_data();
 
-    scene_render::init();
+    scene_render::it::init();
 }
 
 void init_vk()
 {
     create_instance();
 
-    vk::device::create_surface(m_instance);
-    vk::device::create_device(m_instance);
+    vk::device::create_surface(m_vk_instance);
+    vk::device::create_device(m_vk_instance);
     vk::device::make_queues();
 
     vk::frame::create_swapchain();
@@ -259,14 +259,14 @@ void cleanup()
 {
     vk::device::get_disp().deviceWaitIdle();
 
-    scene_render::cleanup();
+    scene_render::it::cleanup();
 
     queue_deletor::clean_all();
 
-    m_instance = {};
+    m_vk_instance = {};
 }
 
-void next_frame()
+void render_frame()
 {
     const glm::ivec2 extent = io::viewport::get_extent();
 

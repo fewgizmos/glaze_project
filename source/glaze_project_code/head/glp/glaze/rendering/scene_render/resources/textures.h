@@ -21,7 +21,7 @@ namespace glaze::rendering::scene_render::resources::textures
 {
 
 const texture* build_raw(const void* pixels, uint32_t width, uint32_t height, bool is_srgb, uint32_t mip_levels);
-const texture* build_stb(const std::string& path, bool is_srgb, uint32_t mip_levels);
+const texture* build_from_file(const std::string& path, bool is_srgb, uint32_t mip_levels);
 
 void erase(const texture* target);
 void erase_all();
