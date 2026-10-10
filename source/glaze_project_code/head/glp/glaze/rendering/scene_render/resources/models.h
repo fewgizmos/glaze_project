@@ -44,9 +44,7 @@ struct model
     uint32_t references = 0;
 };
 
-}
-
-namespace glaze::rendering::scene_render::resources::models
+namespace resources::models
 {
 
 const model* make(const std::string& gltf_path, const shader* target_shader = nullptr);
@@ -55,5 +53,17 @@ void set_unused(const model* target);
 
 void erase_unused();
 void erase_all();
+
+}
+
+class model_ref
+{
+public:
+    model_ref(const std::string& gltf_path, const shader* target_shader = nullptr) { m_model_handle = resources::models::make(gltf_path, target_shader); }
+    ~model_ref() { resources::models::set_unused(m_model_handle); }
+
+private:
+    const model* m_model_handle;
+};
 
 }
