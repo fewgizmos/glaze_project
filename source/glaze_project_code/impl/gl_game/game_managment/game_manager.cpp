@@ -49,7 +49,7 @@ void init_session()
     if (!m_is_session_started) {
         m_is_session_started = true;
 
-        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(0), "source/glaze_project_resources/gltf/fox/Fox.gltf");
+        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 45.0f),"source/glaze_project_resources/gltf/fox/Fox.gltf");
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0), "source/glaze_project_resources/gltf/fox/Fox.gltf");
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(6.0f, 0.0f, 6.0f), glm::vec3(0), "source/glaze_project_resources/gltf/fox/Fox.gltf");
     }
