@@ -23,7 +23,7 @@
 #include <utility>
 #include <variant>
 
-namespace glaze::rendering::scene_render::resources::models
+namespace glaze::rendering::scene_render::res::models
 {
 
 namespace

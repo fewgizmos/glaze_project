@@ -8,7 +8,7 @@
 #include <memory>
 #include <unordered_map>
 
-namespace glaze::rendering::scene_render::resources::meshes
+namespace glaze::rendering::scene_render::res::meshes
 {
 
 namespace

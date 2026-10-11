@@ -16,7 +16,7 @@ struct shader
 
 }
 
-namespace glaze::rendering::scene_render::resources::shaders
+namespace glaze::rendering::scene_render::res::shaders
 {
 
 const shader* build(

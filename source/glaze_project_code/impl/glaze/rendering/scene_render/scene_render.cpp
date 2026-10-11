@@ -149,7 +149,7 @@ void destroy_scene_set()
 
 void handle_scene_set()
 {
-    for (const texture* built : resources::textures::take_built()) {
+    for (const texture* built : res::textures::take_built()) {
         vk::descriptors::write_image(
             m_scene_set,
             1,
@@ -206,12 +206,12 @@ void handle_frame_data()
 
 void init()
 {
-    queue_deletor::push([]() { resources::shaders::erase_all(); });
-    queue_deletor::push([]() { resources::meshes::erase_all(); });
-    queue_deletor::push([]() { resources::materials::erase_all(); });
-    queue_deletor::push([]() { resources::textures::erase_all(); });
+    queue_deletor::push([]() { res::shaders::erase_all(); });
+    queue_deletor::push([]() { res::meshes::erase_all(); });
+    queue_deletor::push([]() { res::materials::erase_all(); });
+    queue_deletor::push([]() { res::textures::erase_all(); });
     queue_deletor::push([]() { vk::samplers::destroy_all(); });
-    queue_deletor::push([]() { resources::models::erase_all(); });
+    queue_deletor::push([]() { res::models::erase_all(); });
 
     create_depth_image(vk::frame::get_swapchain().extent);
 
@@ -243,11 +243,11 @@ void cleanup()
 
 void handle_all()
 {
-    resources::models::erase_unused();
+    res::models::erase_unused();
 
-    resources::meshes::destroy_erased();
-    resources::shaders::destroy_replaced();
-    resources::textures::destroy_erased();
+    res::meshes::destroy_erased();
+    res::shaders::destroy_replaced();
+    res::textures::destroy_erased();
 
     ensure_depth_image();
 

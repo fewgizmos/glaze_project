@@ -17,7 +17,7 @@ struct texture
 
 }
 
-namespace glaze::rendering::scene_render::resources::textures
+namespace glaze::rendering::scene_render::res::textures
 {
 
 const texture* build_raw(const void* pixels, uint32_t width, uint32_t height, bool is_srgb, uint32_t mip_levels);

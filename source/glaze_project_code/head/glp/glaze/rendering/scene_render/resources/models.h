@@ -44,7 +44,7 @@ struct model
     uint32_t references = 0;
 };
 
-namespace resources::models
+namespace res::models
 {
 
 const model* make(const std::string& gltf_path, const shader* target_shader = nullptr);
@@ -59,8 +59,10 @@ void erase_all();
 class model_ref
 {
 public:
-    model_ref(const std::string& gltf_path, const shader* target_shader = nullptr) { m_model_handle = resources::models::make(gltf_path, target_shader); }
-    ~model_ref() { resources::models::set_unused(m_model_handle); }
+    model_ref(const std::string& gltf_path, const shader* target_shader = nullptr) { m_model_handle = res::models::make(gltf_path, target_shader); }
+    ~model_ref() { res::models::set_unused(m_model_handle); }
+
+    const model* get_handle() { return m_model_handle; }
 
 private:
     const model* m_model_handle;

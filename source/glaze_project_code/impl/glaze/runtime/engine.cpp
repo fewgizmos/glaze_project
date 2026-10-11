@@ -10,6 +10,8 @@
 
 #include "glp/glaze/rendering/renderer.h"
 
+#include "glp/gl_game/game_managment/game_manager.h"
+
 #include <cstdlib>
 #include <exception>
 #include <iostream>
@@ -44,10 +46,16 @@ void startup()
     io::viewport::setup_for_vk();
 
     rendering::it::init();
+
+    gl_game::game_managment::it::statup();
+    gl_game::game_managment::it::init_session();
 }
 
 void cleanup()
 {
+    gl_game::game_managment::it::cleanup_session();
+    gl_game::game_managment::it::shutdown();
+
     rendering::it::cleanup();
 
     io::viewport::destroy();
@@ -65,9 +73,7 @@ void tick_frame()
 
     io::input::parse_frame_inputs();
 
-    if (io::input::key_is_pressed(io::input::keyboard_input_codes::f8)) {
-        wants_stop = true;
-    }
+    gl_game::game_managment::it::update_frame();
 
     rendering::it::render_frame();
 

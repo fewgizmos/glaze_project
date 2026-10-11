@@ -79,7 +79,7 @@ struct material
 
 }
 
-namespace glaze::rendering::scene_render::resources::materials
+namespace glaze::rendering::scene_render::res::materials
 {
 
 const material* build(const material_create_info& create_info);

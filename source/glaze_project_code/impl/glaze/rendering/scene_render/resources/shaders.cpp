@@ -6,7 +6,7 @@
 
 #include <unordered_map>
 
-namespace glaze::rendering::scene_render::resources::shaders
+namespace glaze::rendering::scene_render::res::shaders
 {
 
 namespace

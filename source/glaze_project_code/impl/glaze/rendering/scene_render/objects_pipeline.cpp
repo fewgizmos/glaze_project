@@ -128,7 +128,7 @@ void create_shaders()
     base_model_create_info.push_constant_size = sizeof(VkDeviceAddress);
     base_model_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    m_base_model_shader = resources::shaders::build(
+    m_base_model_shader = res::shaders::build(
         "base_model",
         "base_model.vert",
         "base_model.frag",
@@ -190,7 +190,7 @@ void handle_buffers()
         });
     }
 
-    const std::vector<material_data>& materials_data = resources::materials::get_data();
+    const std::vector<material_data>& materials_data = res::materials::get_data();
 
     upload_grown(m_object_buffers[frame_index], m_objects_data.data(), sizeof(object_data) * m_objects_data.size());
 
@@ -241,12 +241,12 @@ void init_all()
 
     create_shaders();
 
-    m_fox_model = resources::models::make(FOX_MODEL_PATH);
+    m_fox_model = res::models::make(FOX_MODEL_PATH);
 }
 
 void clean_all()
 {
-    resources::models::set_unused(m_fox_model);
+    res::models::set_unused(m_fox_model);
 
     m_fox_model = nullptr;
 

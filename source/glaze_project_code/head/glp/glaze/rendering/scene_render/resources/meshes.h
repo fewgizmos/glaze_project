@@ -35,7 +35,7 @@ struct mesh
 
 }
 
-namespace glaze::rendering::scene_render::resources::meshes
+namespace glaze::rendering::scene_render::res::meshes
 {
 
 const mesh* build(const std::vector<vertex>& vertices, const std::vector<uint32_t>& indices);

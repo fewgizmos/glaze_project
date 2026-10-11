@@ -34,7 +34,7 @@ void init()
     debug_grid_create_info.push_constant_size = sizeof(VkDeviceAddress);
     debug_grid_create_info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    m_debug_grid_shader = resources::shaders::build(
+    m_debug_grid_shader = res::shaders::build(
         "debug_grid",
         "debug_grid.vert",
         "debug_grid.frag",

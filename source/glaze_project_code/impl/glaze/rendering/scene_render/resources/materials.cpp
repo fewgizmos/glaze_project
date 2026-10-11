@@ -3,7 +3,7 @@
 #include <memory>
 #include <unordered_map>
 
-namespace glaze::rendering::scene_render::resources::materials
+namespace glaze::rendering::scene_render::res::materials
 {
 
 namespace

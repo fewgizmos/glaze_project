@@ -12,7 +12,7 @@
 #include <memory>
 #include <unordered_map>
 
-namespace glaze::rendering::scene_render::resources::textures
+namespace glaze::rendering::scene_render::res::textures
 {
 
 namespace
