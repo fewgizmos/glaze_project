@@ -45,6 +45,8 @@ const shader* build(
 
     if (!vert_file.empty()) {
         result.graphics = vk::shaders::create_graphics_pipeline(vert_file, frag_file, graphics_create_info);
+
+        result.is_blended = graphics_create_info.alpha_blend;
     }
 
     if (!comp_file.empty()) {

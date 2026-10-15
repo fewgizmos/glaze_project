@@ -15,8 +15,10 @@ class scene_entity
 public:
     virtual ~scene_entity() = default;
 
-    const vol::scene_volume& scene_volume() { return d_scene_volume; }
-    const vol::scene_volume& scene_gizmo_volume() { return d_gizmo_scene_volume; }
+    virtual void update() {}
+
+    const vol::scene_volume& scene_volume() const { return d_scene_volume; }
+    const vol::scene_volume& scene_gizmo_volume() const { return d_gizmo_scene_volume; }
 
 protected:
     vol::scene_volume& m_scene_volume() { return d_scene_volume; }
@@ -30,14 +32,14 @@ private:
 namespace it
 {
 
-scene_entity* push_builded_entity(std::unique_ptr<scene_entity>&& ent);
+scene_entity* u_push_builded_entity(std::unique_ptr<scene_entity>&& ent);
 
 template<typename ent_type, typename... args_type>
 ent_type* create_entity(args_type&&... args)
 {
     static_assert(std::is_base_of_v<scene_entity, ent_type>, "entity object must derive from scene_entity");
 
-    return static_cast<ent_type*>(push_builded_entity(std::make_unique<ent_type>(std::forward<args_type>(args)...)));
+    return static_cast<ent_type*>(u_push_builded_entity(std::make_unique<ent_type>(std::forward<args_type>(args)...)));
 }
 
 void erase_entity(scene_entity* ent);
@@ -66,6 +68,11 @@ void erase_all_entities_typed()
 }
 
 size_t get_entities_count();
+
+void update_entities();
+
+void set_player_entity(scene_entity* ent);
+scene_entity* get_player_entity();
 
 }
 

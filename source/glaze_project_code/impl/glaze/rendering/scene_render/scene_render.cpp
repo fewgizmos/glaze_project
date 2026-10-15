@@ -1,7 +1,6 @@
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
-#include "glp/glaze/rendering/scene_render/debug_grid.h"
-#include "glp/glaze/rendering/scene_render/objects_pipeline.h"
+#include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 
 #include "glp/glaze/rendering/scene_render/resources/materials.h"
 #include "glp/glaze/rendering/scene_render/resources/meshes.h"
@@ -19,12 +18,8 @@
 
 #include "glp/glaze/utilities/core/timer.h"
 
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/ext/matrix_transform.hpp>
 #include <glm/geometric.hpp>
 #include <glm/mat4x4.hpp>
-#include <glm/matrix.hpp>
-#include <glm/trigonometric.hpp>
 #include <glm/vec3.hpp>
 
 #include <cstdint>
@@ -51,9 +46,6 @@ struct frame_scene_data
     VkDeviceAddress objects;
     VkDeviceAddress materials;
 };
-
-const glm::vec3 CAMERA_POS    = glm::vec3(2.5f, 3.0f, 2.5f);
-const glm::vec3 CAMERA_TARGET = glm::vec3(0.0f);
 
 const glm::vec3 LIGHT_DIR = glm::vec3(-0.8f, 0.6f, 0.3f);
 
@@ -176,28 +168,23 @@ void handle_scene_set()
 
 void handle_frame_data()
 {
-    const VkExtent2D extent = vk::frame::get_swapchain().extent;
-
-    const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+    const gpu_camera& camera = frame_pipe::get_camera();
 
     frame_scene_data data;
 
-    data.view = glm::lookAt(CAMERA_POS, CAMERA_TARGET, glm::vec3(0.0f, 1.0f, 0.0f));
-    data.proj = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, 100.0f, 0.1f);
+    data.view          = camera.view;
+    data.proj          = camera.proj;
+    data.view_proj     = camera.view_proj;
+    data.inv_view_proj = camera.inv_view_proj;
 
-    data.proj[1][1] *= -1.0f;
-
-    data.view_proj     = data.proj * data.view;
-    data.inv_view_proj = glm::inverse(data.view_proj);
-
-    data.camera_pos = CAMERA_POS;
+    data.camera_pos = camera.position;
     data.timestamp  = utilities::core::timer::timestamp;
 
     data.light_dir = glm::normalize(LIGHT_DIR);
     data.padding   = 0.0f;
 
-    data.objects   = objects_pipeline::get_objects_address();
-    data.materials = objects_pipeline::get_materials_address();
+    data.objects   = frame_pipe::get_objects_address();
+    data.materials = frame_pipe::get_materials_address();
 
     vk::resources::upload_buffer(m_frame_buffers[vk::frame::get_current_frame_index()], &data, sizeof(data));
 }
@@ -219,20 +206,12 @@ void init()
 
     create_scene_set();
 
-    objects_pipeline::init_all();
-
-#ifndef NDEBUG
-    debug_grid::init();
-#endif
+    frame_pipe::init_all();
 }
 
 void cleanup()
 {
-#ifndef NDEBUG
-    debug_grid::clean();
-#endif
-
-    objects_pipeline::clean_all();
+    frame_pipe::clean_all();
 
     destroy_scene_set();
 
@@ -253,18 +232,16 @@ void handle_all()
 
     handle_scene_set();
 
-    objects_pipeline::handle_all();
+    frame_pipe::handle_all();
 
-    handle_frame_data();
+    if (frame_pipe::has_camera()) {
+        handle_frame_data();
+    }
 }
 
 void draw_all()
 {
-    objects_pipeline::draw_all();
-
-#ifndef NDEBUG
-    debug_grid::draw();
-#endif
+    frame_pipe::draw_all();
 }
 
 const image& get_depth_image() { return m_depth_image; }

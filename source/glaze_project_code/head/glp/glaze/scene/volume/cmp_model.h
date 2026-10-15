@@ -17,7 +17,7 @@ class model : public volume_component
 public:
     model(const std::string& gltf_path, const rendering::scene_render::shader* shader = rendering::scene_render::std_base_model_shader());
 
-    const rendering::scene_render::model* get_model() { return m_model.get_handle(); }
+    rendering::scene_render::gpu_model get_model() override;
 
 private:
     rendering::scene_render::model_ref m_model;

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace gl_game::game_managment::it
+namespace game::game_managment::it
 {
 
 void statup();

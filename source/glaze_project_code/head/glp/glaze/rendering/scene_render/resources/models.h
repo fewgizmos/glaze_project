@@ -62,10 +62,27 @@ public:
     model_ref(const std::string& gltf_path, const shader* target_shader = nullptr) { m_model_handle = res::models::make(gltf_path, target_shader); }
     ~model_ref() { res::models::set_unused(m_model_handle); }
 
-    const model* get_handle() { return m_model_handle; }
+    model_ref(const model_ref&) = delete;
+    model_ref& operator=(const model_ref&) = delete;
+
+    model_ref(model_ref&& other) noexcept : m_model_handle(other.m_model_handle) { other.m_model_handle = nullptr; }
+
+    model_ref& operator=(model_ref&& other) noexcept
+    {
+        if (this != &other) {
+            res::models::set_unused(m_model_handle);
+
+            m_model_handle = other.m_model_handle;
+            other.m_model_handle = nullptr;
+        }
+
+        return *this;
+    }
+
+    const model* get_handle() const { return m_model_handle; }
 
 private:
-    const model* m_model_handle;
+    const model* m_model_handle = nullptr;
 };
 
 }

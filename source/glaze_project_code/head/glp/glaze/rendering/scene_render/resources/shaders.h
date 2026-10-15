@@ -12,6 +12,8 @@ struct shader
 {
     pipeline graphics;
     pipeline compute;
+
+    bool is_blended = false;
 };
 
 }

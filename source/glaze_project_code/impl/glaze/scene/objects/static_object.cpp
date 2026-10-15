@@ -3,30 +3,27 @@
 #include "glp/glaze/scene/volume/volume.h"
 #include "glp/glaze/scene/volume/cmp_model.h"
 
+#include <memory>
+
 namespace glaze::scene::obj
 {
 
-namespace
+static_object_model_prim::static_object_model_prim(glm::vec3 pos, glm::vec3 rot, glm::vec3 scale, const std::string& gltf_path, bool is_gizmo)
 {
+    m_scene_volume().w_pos   = pos;
+    m_scene_volume().w_rot   = rot;
+    m_scene_volume().w_scale = scale;
 
-void push_component_to_vol(vol::scene_volume* volume, vol::volume_component* comp) { volume->components.push_back(comp); }
+    m_scene_gizmo_volume().w_pos   = pos;
+    m_scene_gizmo_volume().w_rot   = rot;
+    m_scene_gizmo_volume().w_scale = scale;
 
-}
-
-static_object_model_prim::static_object_model_prim(glm::vec3 pos, glm::vec3 rot, const std::string& gltf_path, bool is_gizmo)
-{
-    m_scene_volume().w_pos = pos;
-    m_scene_volume().w_rot = rot;
-
-    m_scene_gizmo_volume().w_pos = pos;
-    m_scene_gizmo_volume().w_rot = rot;
-
-    vol::component::model model_comp(gltf_path);
+    std::unique_ptr<vol::component::model> model_comp = std::make_unique<vol::component::model>(gltf_path);
 
     if (is_gizmo) {
-        push_component_to_vol(&m_scene_gizmo_volume(), &model_comp);
+        m_scene_gizmo_volume().components.push_back(std::move(model_comp));
     } else {
-        push_component_to_vol(&m_scene_volume(), &model_comp);
+        m_scene_volume().components.push_back(std::move(model_comp));
     }
 }
 

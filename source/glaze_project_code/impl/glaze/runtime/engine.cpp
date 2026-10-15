@@ -8,9 +8,16 @@
 #include "glp/glaze/io/input.h"
 #include "glp/glaze/io/viewport.h"
 
-#include "glp/glaze/rendering/renderer.h"
+#include "glp/game/game_managment/game_manager.h"
 
-#include "glp/gl_game/game_managment/game_manager.h"
+#ifndef NDEBUG
+#include "glp/editor/core/editor.h"
+#endif
+
+#include "glp/glaze/scene/scene.h"
+#include "glp/glaze/scene/scene_render_proxy.h"
+
+#include "glp/glaze/rendering/renderer.h"
 
 #include <cstdlib>
 #include <exception>
@@ -47,14 +54,24 @@ void startup()
 
     rendering::it::init();
 
-    gl_game::game_managment::it::statup();
-    gl_game::game_managment::it::init_session();
+    game::game_managment::it::statup();
+    game::game_managment::it::init_session();
+
+#ifndef NDEBUG
+    editor::core::it::startup();
+#endif
 }
 
 void cleanup()
 {
-    gl_game::game_managment::it::cleanup_session();
-    gl_game::game_managment::it::shutdown();
+#ifndef NDEBUG
+    editor::core::it::cleanup();
+#endif
+
+    game::game_managment::it::cleanup_session();
+    game::game_managment::it::shutdown();
+
+    scene::it::erase_all_entities();
 
     rendering::it::cleanup();
 
@@ -73,7 +90,14 @@ void tick_frame()
 
     io::input::parse_frame_inputs();
 
-    gl_game::game_managment::it::update_frame();
+    game::game_managment::it::update_frame();
+
+#ifndef NDEBUG
+    editor::core::it::frame_update();
+#endif
+
+    scene::it::update_entities();
+    scene::render_proxy::proxy_visibles();
 
     rendering::it::render_frame();
 
