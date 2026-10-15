@@ -23,7 +23,7 @@ namespace
 bool m_is_session_started = false;
 
 constexpr const char* FOX_MODEL_PATH = "source/glaze_project_resources/gltf/fox/Fox.gltf";
-constexpr const char* TREE_MODEL_PATH = "source/glaze_project_resources/glb/tree.glb";
+constexpr const char* TREE_MODEL_PATH = "source/glaze_project_resources/glb/coconut_tree.glb";
 
 const glm::vec3 FOX_SCALE = glm::vec3(0.02f);
 
@@ -61,7 +61,7 @@ void init_session()
 
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(70.0f, 20.0f, 140.0f), FOX_SCALE, FOX_MODEL_PATH);
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0), FOX_SCALE, FOX_MODEL_PATH);
-        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(6.0f, 0.0f, 6.0f), glm::vec3(0), glm::vec3(1), TREE_MODEL_PATH);
+        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(6.0f, 0.0f, 6.0f), glm::vec3(0), glm::vec3(0.33f), TREE_MODEL_PATH);
 
         if (glaze::scene::it::get_player_entity() == nullptr) {
 #ifndef NDEBUG
