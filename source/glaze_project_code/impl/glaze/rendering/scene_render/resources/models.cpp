@@ -1,5 +1,7 @@
 #include "glp/glaze/rendering/scene_render/resources/models.h"
 
+#include "glp/glaze/rendering/scene_render/resources/shaders_stdlib.h"
+
 #include "glp/glaze/rendering/vk/samplers.h"
 #include "glp/glaze/rendering/defines.h"
 
@@ -417,7 +419,7 @@ std::unique_ptr<model> build_gltf(const std::string& gltf_path, const shader* ta
     for (const fastgltf::Material& source : asset.materials) {
         material_create_info create_info;
 
-        create_info.target_shader = target_shader;
+        create_info.target_shader = source.doubleSided ? std_base_model_double_sided_shader() : target_shader;
 
         create_info.base_color = glm::vec4(
             source.pbrData.baseColorFactor[0],
@@ -432,6 +434,10 @@ std::unique_ptr<model> build_gltf(const std::string& gltf_path, const shader* ta
         create_info.roughness = source.pbrData.roughnessFactor;
 
         create_info.alpha_cutoff = source.alphaCutoff;
+
+        create_info.alpha_mode = source.alphaMode == fastgltf::AlphaMode::Opaque
+            ? material_alpha_mode::opaque
+            : material_alpha_mode::mask;
 
         if (source.pbrData.baseColorTexture.has_value()) {
             create_info.base_color_texture = get_material_texture(source.pbrData.baseColorTexture.value().textureIndex);

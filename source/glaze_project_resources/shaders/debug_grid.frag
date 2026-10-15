@@ -2,7 +2,6 @@
 #extension GL_EXT_buffer_reference : require
 
 #include "util/scene.glsl"
-#include "util/debug_grid.glsl"
 
 layout(location = 0) in vec3 world_pos;
 
@@ -15,6 +14,8 @@ const float LINE_WIDTH = 3.2;
 const float AXIS_WIDTH = 2.4;
 
 const float GRID_OPACITY = 0.6;
+
+const float FADE_DISTANCE = 1280.0;
 
 const vec3 THIN_COLOR   = vec3(0.05);
 const vec3 THICK_COLOR  = vec3(0.20);

@@ -17,6 +17,9 @@ layout(buffer_reference, std430) buffer vertex_buffer
 
 const uint NO_TEXTURE = 0xFFFFFFFFu;
 
+const uint ALPHA_MODE_OPAQUE = 0u;
+const uint ALPHA_MODE_MASK   = 1u;
+
 struct material_data
 {
     vec4 base_color;
@@ -43,6 +46,8 @@ struct material_data
 
     uint emissive_texture;
     uint emissive_sampler;
+
+    uint alpha_mode;
 };
 
 layout(buffer_reference, std430) readonly buffer material_buffer

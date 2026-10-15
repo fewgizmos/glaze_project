@@ -2,7 +2,8 @@
 #extension GL_EXT_buffer_reference : require
 
 #include "util/scene.glsl"
-#include "util/debug_grid.glsl"
+
+const float FADE_DISTANCE = 1280.0;
 
 layout(location = 0) out vec3 world_pos;
 

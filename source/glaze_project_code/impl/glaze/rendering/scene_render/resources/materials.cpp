@@ -56,6 +56,8 @@ const material* build(const material_create_info& create_info)
     data.occlusion_strength = create_info.occlusion_strength;
     data.alpha_cutoff       = create_info.alpha_cutoff;
 
+    data.alpha_mode = static_cast<uint32_t>(create_info.alpha_mode);
+
     data.base_color_texture = get_texture_index(create_info.base_color_texture);
     data.base_color_sampler = create_info.base_color_texture.sampler_index;
 

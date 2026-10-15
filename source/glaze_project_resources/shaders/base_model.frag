@@ -26,9 +26,17 @@ void main()
     material_data material = pc.frame.materials.data[frag_material_index];
 
     vec3 surface = vec3(checker_at(frag_uv));
+    float alpha  = material.base_color.a;
 
     if (material.base_color_texture != NO_TEXTURE) {
-        surface = sample_scene_texture(material.base_color_texture, material.base_color_sampler, frag_uv).rgb;
+        vec4 sampled = sample_scene_texture(material.base_color_texture, material.base_color_sampler, frag_uv);
+
+        surface = sampled.rgb;
+        alpha  *= sampled.a;
+    }
+
+    if (material.alpha_mode == ALPHA_MODE_MASK && alpha < material.alpha_cutoff) {
+        discard;
     }
 
     out_color = vec4(material.base_color.rgb * frag_color * surface, 1.0);

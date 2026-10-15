@@ -14,6 +14,12 @@ namespace glaze::rendering::scene_render
 
 constexpr uint32_t NO_TEXTURE = 0xFFFFFFFF;
 
+enum class material_alpha_mode : uint32_t
+{
+    opaque = 0,
+    mask   = 1
+};
+
 struct material_texture
 {
     const texture* target = nullptr;
@@ -33,6 +39,8 @@ struct material_create_info
     float normal_scale       = 1.0f;
     float occlusion_strength = 1.0f;
     float alpha_cutoff       = 0.5f;
+
+    material_alpha_mode alpha_mode = material_alpha_mode::opaque;
 
     material_texture base_color_texture;
     material_texture metallic_roughness_texture;
@@ -68,7 +76,8 @@ struct material_data
     uint32_t emissive_texture;
     uint32_t emissive_sampler;
 
-    uint32_t padding[2];
+    uint32_t alpha_mode;
+    uint32_t padding;
 };
 
 struct material
