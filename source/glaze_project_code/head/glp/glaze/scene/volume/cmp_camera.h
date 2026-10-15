@@ -19,7 +19,7 @@ public:
         float fov        = 60.0f,
         float ortho_size = 10.0f,
         float near_plane = 0.1f,
-        float far_plane  = 100.0f
+        float far_plane  = 1600.0f
     );
 
     rendering::scene_render::gpu_camera get_camera() override;

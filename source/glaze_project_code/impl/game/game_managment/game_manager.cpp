@@ -8,6 +8,10 @@
 #include "glp/glaze/scene/objects/game_object.h"
 #include "glp/glaze/scene/objects/static_object.h"
 
+#ifndef NDEBUG
+#include "glp/trainer/scene/debug_camera.h"
+#endif
+
 #include <glm/vec3.hpp>
 
 namespace game::game_managment::it
@@ -59,9 +63,13 @@ void init_session()
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(6.0f, 0.0f, 6.0f), glm::vec3(0), FOX_SCALE, FOX_MODEL_PATH);
 
         if (glaze::scene::it::get_player_entity() == nullptr) {
+#ifndef NDEBUG
+            glaze::scene::it::set_player_entity(glaze::scene::it::create_entity<trainer::scene::debug_camera_player_obj>());
+#else
             glaze::scene::it::set_player_entity(
                 glaze::scene::it::create_entity<glaze::scene::obj::game_object_static_camera_prim>(glm::vec3(2.5f, 3.0f, 2.5f), glm::vec3(-40.0f, 45.0f, 0.0f))
             );
+#endif
         }
     }
 }

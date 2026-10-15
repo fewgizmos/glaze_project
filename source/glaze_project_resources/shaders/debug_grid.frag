@@ -2,17 +2,19 @@
 #extension GL_EXT_buffer_reference : require
 
 #include "util/scene.glsl"
+#include "util/debug_grid.glsl"
 
-layout(location = 0) in vec3 near_point;
-layout(location = 1) in vec3 far_point;
+layout(location = 0) in vec3 world_pos;
 
 layout(location = 0) out vec4 out_color;
 
 const float CELL_SIZE                = 0.5;
 const float MIN_PIXELS_BETWEEN_CELLS = 2.0;
 
-const float AXIS_WIDTH    = 3.0;
-const float FADE_DISTANCE = 80.0;
+const float LINE_WIDTH = 3.2;
+const float AXIS_WIDTH = 2.4;
+
+const float GRID_OPACITY = 0.6;
 
 const vec3 THIN_COLOR   = vec3(0.05);
 const vec3 THICK_COLOR  = vec3(0.20);
@@ -28,7 +30,7 @@ float max2(vec2 v) { return max(v.x, v.y); }
 
 float grid_signal(vec2 pos, vec2 dudv, float cell_size)
 {
-    dudv *= 4.0;
+    dudv *= LINE_WIDTH;
     pos += dudv / 2.0;
 
     vec2 band = satv(mod(pos, cell_size) / dudv);
@@ -43,13 +45,7 @@ float axis_signal(float coord, float derivative)
 
 void main()
 {
-    vec3 ray = far_point - near_point;
-
-    float t = -near_point.y / ray.y;
-
-    vec3 hit = near_point + ray * t;
-
-    vec2 pos = hit.xz;
+    vec2 pos = world_pos.xz;
 
     vec2 dudv = vec2(
         length(vec2(dFdx(pos.x), dFdy(pos.x))),
@@ -87,15 +83,12 @@ void main()
     color = mix(color, AXIS_Z_COLOR, axis_z);
     alpha = max(alpha, axis_z);
 
-    alpha *= 1.0 - satf(length(hit - near_point) / FADE_DISTANCE);
+    alpha *= 1.0 - satf(length(world_pos - pc.frame.camera_pos) / FADE_DISTANCE);
+    alpha *= GRID_OPACITY;
 
-    if (!(t > 0.0 && t < 1.0) || alpha <= 0.0) {
+    if (alpha <= 0.0) {
         discard;
     }
-
-    vec4 clip = pc.frame.view_proj * vec4(hit, 1.0);
-
-    gl_FragDepth = clip.z / clip.w;
 
     out_color = vec4(color, alpha);
 }

@@ -64,7 +64,6 @@ struct scene_volume
     std::vector<std::unique_ptr<volume_component>> components{};
 };
 
-// rot in degrees: x - pitch, y - yaw, z - roll; applied as Ry * Rx * Rz, forward is -Z
 inline glm::mat4 compose_transform(glm::vec3 pos, glm::vec3 rot, glm::vec3 scale)
 {
     glm::mat4 result = glm::translate(glm::mat4(1.0f), pos);

@@ -46,8 +46,8 @@ cmp_debug_grid::cmp_debug_grid()
 {
     set_flag(glaze::scene::vol::component_flags::modeled);
 
-    const std::vector<glaze::rendering::scene_render::vertex> vertices(3, glaze::rendering::scene_render::vertex{});
-    const std::vector<uint32_t> indices = { 0, 1, 2 };
+    const std::vector<glaze::rendering::scene_render::vertex> vertices(4, glaze::rendering::scene_render::vertex{});
+    const std::vector<uint32_t> indices = { 0, 1, 2, 2, 1, 3 };
 
     m_mesh = glaze::rendering::scene_render::res::meshes::build(vertices, indices);
 
