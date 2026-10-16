@@ -21,6 +21,10 @@ struct gpu_light
 
     glm::vec3 ground_color = glm::vec3(0.0f);
     float cos_inner        = -1.0f;
+
+    float cos_angular_radius = 1.0f;
+    float sin_angular_radius = 0.0f;
+    float padding[2]         = { 0.0f, 0.0f };
 };
 
 }

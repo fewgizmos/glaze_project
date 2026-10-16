@@ -85,6 +85,11 @@ struct light_data
 
     vec3 ground_color;
     float cos_inner;
+
+    float cos_angular_radius;
+    float sin_angular_radius;
+    float padding0;
+    float padding1;
 };
 
 layout(buffer_reference, std430) readonly buffer light_buffer

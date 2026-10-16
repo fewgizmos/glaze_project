@@ -12,7 +12,8 @@ rendering::scene_render::gpu_post post::get_post()
 {
     rendering::scene_render::gpu_post result;
 
-    result.exposure = m_create_info.exposure;
+    result.exposure   = m_create_info.exposure;
+    result.tonemapper = static_cast<uint32_t>(m_create_info.tonemapper);
 
     return result;
 }

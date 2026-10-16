@@ -15,6 +15,8 @@
 
 #include <vulkan/vulkan_core.h>
 
+#include <cstdint>
+
 namespace glaze::rendering::scene_render::post_process
 {
 
@@ -24,6 +26,7 @@ namespace
 struct tonemap_push
 {
     float exposure;
+    uint32_t tonemapper;
 };
 
 VkDescriptorSetLayout m_set_layout = VK_NULL_HANDLE;
@@ -125,7 +128,9 @@ void draw_all()
 
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
-    const tonemap_push push = { frame_pipe::get_post().exposure };
+    const gpu_post& post = frame_pipe::get_post();
+
+    const tonemap_push push = { post.exposure, post.tonemapper };
 
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_tonemap_shader->graphics.handle);
 

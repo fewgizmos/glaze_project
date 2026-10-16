@@ -29,6 +29,8 @@ struct light_create_info
 
     float cone_angle    = 360.0f;
     float cone_softness = 0.2f;
+
+    float angular_radius = 0.27f;
 };
 
 class light : public volume_component

@@ -39,6 +39,11 @@ rendering::scene_render::gpu_light light::get_light()
     result.color        = m_create_info.color * m_create_info.intensity * radiance_scale;
     result.ground_color = m_create_info.ground_color * m_create_info.intensity;
 
+    const float angular_radius = glm::radians(std::clamp(m_create_info.angular_radius, 0.0f, 90.0f));
+
+    result.cos_angular_radius = glm::cos(angular_radius);
+    result.sin_angular_radius = glm::sin(angular_radius);
+
     result.type = static_cast<uint32_t>(m_create_info.type);
 
     return result;
