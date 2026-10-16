@@ -336,6 +336,19 @@ void queue_image_upload(const image& target, const void* pixels, VkDeviceSize si
     m_pending_image_uploads.push_back(upload);
 }
 
+void record_image_upload(VkCommandBuffer cmd, const image& target, const buffer& staging)
+{
+    pending_image_upload upload;
+
+    upload.staging      = staging;
+    upload.target       = target.handle;
+    upload.extent       = target.extent;
+    upload.mip_levels   = target.mip_levels;
+    upload.array_layers = target.array_layers;
+
+    flush_image_upload(cmd, upload);
+}
+
 void flush_uploads()
 {
     VkCommandBuffer cmd = frame::get_current_frame().command_buffer;
@@ -458,6 +471,33 @@ void destroy_image(image& target)
     vmaDestroyImage(m_allocator, target.handle, target.allocation);
 
     target = {};
+}
+
+VkImageView create_image_view(const image& target, VkImageViewType view_type, uint32_t base_mip, uint32_t mip_count)
+{
+    VkImageViewCreateInfo view_create_info = {};
+    view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    view_create_info.image = target.handle;
+    view_create_info.viewType = view_type;
+    view_create_info.format = target.format;
+    view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    view_create_info.subresourceRange.baseMipLevel = base_mip;
+    view_create_info.subresourceRange.levelCount = mip_count;
+    view_create_info.subresourceRange.baseArrayLayer = 0;
+    view_create_info.subresourceRange.layerCount = target.array_layers;
+
+    VkImageView view = VK_NULL_HANDLE;
+
+    const VkResult result = device::get_disp().createImageView(&view_create_info, nullptr, &view);
+
+    GLAZE_ASSERT(result != VK_SUCCESS, "failed to create image view");
+
+    return view;
+}
+
+void destroy_image_view(VkImageView view)
+{
+    device::get_disp().destroyImageView(view, nullptr);
 }
 
 }

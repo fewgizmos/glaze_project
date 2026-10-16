@@ -1,0 +1,65 @@
+#version 450
+
+#include "util/ibl.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform samplerCube source;
+layout(set = 0, binding = 1, rgba16f) uniform writeonly image2DArray target;
+
+layout(push_constant) uniform constants
+{
+    float roughness;
+    float source_resolution;
+} pc;
+
+const uint SAMPLE_COUNT = 1024u;
+
+void main()
+{
+    ivec2 size = imageSize(target).xy;
+    ivec3 id   = ivec3(gl_GlobalInvocationID);
+
+    if (id.x >= size.x || id.y >= size.y) {
+        return;
+    }
+
+    vec3 normal = cube_direction(uint(id.z), (vec2(id.xy) + 0.5) / vec2(size));
+    vec3 view   = normal;
+
+    if (pc.roughness <= 0.0) {
+        imageStore(target, id, vec4(textureLod(source, normal, 0.0).rgb, 1.0));
+
+        return;
+    }
+
+    float texel_solid_angle = 4.0 * PI / (6.0 * pc.source_resolution * pc.source_resolution);
+
+    vec3  sum    = vec3(0.0);
+    float weight = 0.0;
+
+    for (uint i = 0u; i < SAMPLE_COUNT; i++) {
+        vec3 half_vector = importance_sample_ggx(hammersley(i, SAMPLE_COUNT), normal, pc.roughness);
+        vec3 to_light    = normalize(2.0 * dot(view, half_vector) * half_vector - view);
+
+        float n_dot_l = dot(normal, to_light);
+
+        if (n_dot_l <= 0.0) {
+            continue;
+        }
+
+        float n_dot_h = max(dot(normal, half_vector), 0.0);
+        float h_dot_v = max(dot(half_vector, view), 0.0);
+
+        float pdf = distribution_ggx(n_dot_h, pc.roughness) * n_dot_h / (4.0 * h_dot_v) + 0.0001;
+
+        float sample_solid_angle = 1.0 / (float(SAMPLE_COUNT) * pdf + 0.0001);
+
+        float lod = max(0.5 * log2(sample_solid_angle / texel_solid_angle), 0.0);
+
+        sum    += textureLod(source, to_light, lod).rgb * n_dot_l;
+        weight += n_dot_l;
+    }
+
+    imageStore(target, id, vec4(sum / max(weight, 0.0001), 1.0));
+}

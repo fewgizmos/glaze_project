@@ -1,5 +1,6 @@
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 
+#include "glp/glaze/rendering/scene_render/environment.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
 #include "glp/glaze/rendering/scene_render/resources/materials.h"
@@ -47,6 +48,9 @@ gpu_camera m_camera;
 bool m_has_camera = false;
 
 gpu_post m_post;
+
+gpu_environment m_environment;
+bool m_has_environment = false;
 
 buffer m_object_buffers[MAX_FRAMES_IN_FLIGHT];
 buffer m_material_buffers[MAX_FRAMES_IN_FLIGHT];
@@ -225,6 +229,9 @@ void clear()
     m_has_camera = false;
 
     m_post = {};
+
+    m_environment     = {};
+    m_has_environment = false;
 }
 
 void set_camera(const gpu_camera& camera)
@@ -249,6 +256,12 @@ void set_post(const gpu_post& post)
     m_post = post;
 }
 
+void set_environment(const gpu_environment& environment)
+{
+    m_environment     = environment;
+    m_has_environment = true;
+}
+
 void submit_light(const gpu_light& light)
 {
     m_lights.push_back(light);
@@ -259,6 +272,10 @@ bool has_camera() { return m_has_camera; }
 const gpu_camera& get_camera() { return m_camera; }
 
 const gpu_post& get_post() { return m_post; }
+
+bool has_environment() { return m_has_environment; }
+
+const gpu_environment& get_environment() { return m_environment; }
 
 void handle_all()
 {
@@ -318,6 +335,12 @@ void draw_all()
             bound_extra_set = VK_NULL_HANDLE;
 
             bind_shader(bound_shader);
+
+            if (bound_shader->uses_environment) {
+                bound_extra_set = m_has_environment ? m_environment.set : environment::get_default_set();
+
+                bind_extra_set(bound_shader, bound_extra_set);
+            }
         }
 
         if (target_extra_set != VK_NULL_HANDLE && target_extra_set != bound_extra_set) {

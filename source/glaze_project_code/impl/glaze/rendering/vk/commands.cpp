@@ -185,7 +185,9 @@ void transition_image(
     VkAccessFlags2 src_access,
     VkPipelineStageFlags2 dst_stage,
     VkAccessFlags2 dst_access,
-    VkImageAspectFlags aspect
+    VkImageAspectFlags aspect,
+    uint32_t mip_count,
+    uint32_t layer_count
 )
 {
     VkImageMemoryBarrier2 barrier = {};
@@ -201,9 +203,9 @@ void transition_image(
     barrier.image = image;
     barrier.subresourceRange.aspectMask = aspect;
     barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.levelCount = mip_count;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
+    barrier.subresourceRange.layerCount = layer_count;
 
     VkDependencyInfo dependency_info = {};
     dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;

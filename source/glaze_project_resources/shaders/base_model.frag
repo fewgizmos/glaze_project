@@ -13,6 +13,10 @@ layout(location = 5) flat in uint frag_material_index;
 
 layout(location = 0) out vec4 out_color;
 
+layout(set = 1, binding = 1) uniform samplerCube env_irradiance;
+layout(set = 1, binding = 2) uniform samplerCube env_prefiltered;
+layout(set = 1, binding = 3) uniform sampler2D env_brdf_lut;
+
 const vec2  CHECKER_CELLS = vec2(16.0, 8.0);
 const float CHECKER_DARK  = 0.35;
 
@@ -24,6 +28,13 @@ const vec3  DIELECTRIC_F0 = vec3(0.04);
 const float MIN_ROUGHNESS = 0.045;
 const float MIN_N_DOT_V   = 0.0001;
 
+const float MIN_TANGENT_LENGTH2 = 0.000001;
+
+const float PREFILTERED_MAX_LOD = 4.0;
+
+const float SPECULAR_AA_VARIANCE  = 0.25;
+const float SPECULAR_AA_THRESHOLD = 0.18;
+
 struct surface_data
 {
     vec3 albedo;
@@ -31,11 +42,14 @@ struct surface_data
     vec3 view;
     vec3 f0;
 
+    vec2 dfg;
+
     float metallic;
     float roughness;
     float alpha;
     float n_dot_v;
     float occlusion;
+    float energy_compensation;
 };
 
 float checker_at(vec2 uv)
@@ -65,27 +79,47 @@ float visibility_smith_ggx_correlated(float n_dot_v, float n_dot_l, float alpha)
 
 vec3 fresnel_schlick(float cos_theta, vec3 f0)
 {
-    return f0 + (1.0 - f0) * pow(1.0 - cos_theta, 5.0);
+    return f0 + (1.0 - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
 }
 
 vec3 fresnel_schlick_roughness(float cos_theta, vec3 f0, float roughness)
 {
-    return f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(1.0 - cos_theta, 5.0);
+    return f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+float specular_anti_aliasing(vec3 normal, float roughness)
+{
+    vec3 du = dFdx(normal);
+    vec3 dv = dFdy(normal);
+
+    float variance = SPECULAR_AA_VARIANCE * (dot(du, du) + dot(dv, dv));
+    float kernel   = min(2.0 * variance, SPECULAR_AA_THRESHOLD);
+
+    float alpha  = roughness * roughness;
+    float alpha2 = clamp(alpha * alpha + kernel, 0.0, 1.0);
+
+    return sqrt(sqrt(alpha2));
 }
 
 vec3 brdf(surface_data surface, vec3 to_light)
 {
+    float n_dot_l = clamp(dot(surface.normal, to_light), 0.0, 1.0);
+
+    if (n_dot_l <= 0.0) {
+        return vec3(0.0);
+    }
+
     vec3 half_vector = normalize(surface.view + to_light);
 
-    float n_dot_l = max(dot(surface.normal, to_light), 0.0);
-    float n_dot_h = max(dot(surface.normal, half_vector), 0.0);
-    float v_dot_h = max(dot(surface.view, half_vector), 0.0);
+    float n_dot_h = clamp(dot(surface.normal, half_vector), 0.0, 1.0);
+    float v_dot_h = clamp(dot(surface.view, half_vector), 0.0, 1.0);
 
     vec3 fresnel = fresnel_schlick(v_dot_h, surface.f0);
 
     vec3 specular = distribution_ggx(n_dot_h, surface.alpha)
                   * visibility_smith_ggx_correlated(surface.n_dot_v, n_dot_l, surface.alpha)
-                  * fresnel;
+                  * fresnel
+                  * surface.energy_compensation;
 
     vec3 diffuse = (1.0 - fresnel) * (1.0 - surface.metallic) * surface.albedo / PI;
 
@@ -96,8 +130,10 @@ vec3 surface_normal(material_data material)
 {
     vec3 normal = normalize(frag_normal);
 
-    if (material.normal_texture != NO_TEXTURE && frag_tangent.w != 0.0) {
-        vec3 tangent   = normalize(frag_tangent.xyz - normal * dot(normal, frag_tangent.xyz));
+    vec3 orthogonal_tangent = frag_tangent.xyz - normal * dot(normal, frag_tangent.xyz);
+
+    if (material.normal_texture != NO_TEXTURE && frag_tangent.w != 0.0 && dot(orthogonal_tangent, orthogonal_tangent) > MIN_TANGENT_LENGTH2) {
+        vec3 tangent   = normalize(orthogonal_tangent);
         vec3 bitangent = cross(normal, tangent) * frag_tangent.w;
 
         vec3 sampled = sample_scene_texture(material.normal_texture, material.normal_sampler, frag_uv).xyz * 2.0 - 1.0;
@@ -136,6 +172,32 @@ vec3 ambient_contribution(light_data light, surface_data surface)
     return (diffuse + specular) * surface.occlusion;
 }
 
+vec3 environment_contribution(surface_data surface)
+{
+    vec3 reflected = reflect(-surface.view, surface.normal);
+
+    vec3 irradiance = texture(env_irradiance, surface.normal).rgb;
+    vec3 radiance   = textureLod(env_prefiltered, reflected, surface.roughness * PREFILTERED_MAX_LOD).rgb;
+
+    vec3 fresnel = fresnel_schlick_roughness(surface.n_dot_v, surface.f0, surface.roughness);
+
+    vec3 single_scatter = fresnel * surface.dfg.x + surface.dfg.y;
+
+    float single_energy = surface.dfg.x + surface.dfg.y;
+    float multi_energy  = 1.0 - single_energy;
+
+    vec3 average_fresnel = surface.f0 + (1.0 - surface.f0) / 21.0;
+    vec3 multi_scatter   = single_scatter * average_fresnel / (1.0 - multi_energy * average_fresnel);
+
+    vec3 diffuse_color = surface.albedo * (1.0 - surface.metallic);
+    vec3 diffuse       = diffuse_color * (1.0 - single_scatter - multi_scatter * multi_energy);
+
+    vec3 specular = single_scatter * radiance;
+    vec3 ambient  = (multi_scatter * multi_energy + diffuse) * irradiance;
+
+    return (specular + ambient) * surface.occlusion * pc.frame.environment_intensity;
+}
+
 vec3 light_contribution(light_data light, surface_data surface)
 {
     if (light.type == LIGHT_TYPE_DIRECTIONAL) {
@@ -158,7 +220,7 @@ vec3 light_contribution(light_data light, surface_data surface)
         return light.color * brdf(surface, to_light) * attenuation * cone_factor(light, to_light);
     }
 
-    if (light.type == LIGHT_TYPE_AMBIENT) {
+    if (light.type == LIGHT_TYPE_AMBIENT && pc.frame.has_environment == 0u) {
         return ambient_contribution(light, surface);
     }
 
@@ -214,14 +276,21 @@ void main()
     data.view   = normalize(pc.frame.camera_pos - frag_world_pos);
 
     data.metallic  = clamp(metallic, 0.0, 1.0);
-    data.roughness = clamp(roughness, MIN_ROUGHNESS, 1.0);
+    data.roughness = clamp(specular_anti_aliasing(data.normal, clamp(roughness, 0.0, 1.0)), MIN_ROUGHNESS, 1.0);
     data.alpha     = data.roughness * data.roughness;
-    data.n_dot_v   = max(dot(data.normal, data.view), MIN_N_DOT_V);
+    data.n_dot_v   = clamp(dot(data.normal, data.view), MIN_N_DOT_V, 1.0);
     data.occlusion = occlusion;
 
-    data.f0 = mix(DIELECTRIC_F0, data.albedo, data.metallic);
+    data.f0  = mix(DIELECTRIC_F0, data.albedo, data.metallic);
+    data.dfg = texture(env_brdf_lut, vec2(data.n_dot_v, data.roughness)).rg;
+
+    data.energy_compensation = 1.0 + max(data.f0.r, max(data.f0.g, data.f0.b)) * (1.0 / max(data.dfg.x + data.dfg.y, 0.0001) - 1.0);
 
     vec3 lighting = vec3(0.0);
+
+    if (pc.frame.has_environment != 0u) {
+        lighting += environment_contribution(data);
+    }
 
     for (uint i = 0u; i < pc.frame.light_count; i++) {
         lighting += light_contribution(pc.frame.lights.data[i], data);

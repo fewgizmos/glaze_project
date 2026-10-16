@@ -1,5 +1,6 @@
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
+#include "glp/glaze/rendering/scene_render/environment.h"
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 #include "glp/glaze/rendering/scene_render/post_process.h"
 
@@ -41,6 +42,8 @@ struct frame_scene_data
     float timestamp;
 
     uint32_t light_count;
+    uint32_t has_environment;
+    float environment_intensity;
     uint32_t padding;
 
     VkDeviceAddress objects;
@@ -196,7 +199,11 @@ void handle_frame_data()
     data.timestamp  = utilities::core::timer::timestamp;
 
     data.light_count = frame_pipe::get_lights_count();
-    data.padding     = 0;
+
+    data.has_environment       = frame_pipe::has_environment() ? 1 : 0;
+    data.environment_intensity = frame_pipe::get_environment().intensity;
+
+    data.padding = 0;
 
     data.objects   = frame_pipe::get_objects_address();
     data.materials = frame_pipe::get_materials_address();
@@ -222,6 +229,8 @@ void init()
 
     create_scene_set();
 
+    environment::init_all();
+
     frame_pipe::init_all();
 
     post_process::init_all();
@@ -232,6 +241,8 @@ void cleanup()
     post_process::clean_all();
 
     frame_pipe::clean_all();
+
+    environment::clean_all();
 
     destroy_scene_set();
 

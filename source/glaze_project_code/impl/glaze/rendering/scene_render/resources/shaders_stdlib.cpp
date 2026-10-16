@@ -2,6 +2,8 @@
 
 #include "glp/glaze/rendering/scene_render/resources/shaders.h"
 
+#include "glp/glaze/rendering/scene_render/environment.h"
+
 #include "glp/glaze/rendering/vk/shaders.h"
 
 #include "glp/glaze/rendering/defines.h"
@@ -22,7 +24,7 @@ const shader* build_base_model(const std::string& name, VkCullModeFlags cull_mod
     info.depth_format         = DEPTH_FORMAT;
     info.cull_mode            = cull_mode;
     info.front_face           = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    info.set_layouts          = { it::get_scene_set_layout() };
+    info.set_layouts          = { it::get_scene_set_layout(), environment::get_set_layout() };
     info.push_constant_size   = sizeof(VkDeviceAddress);
     info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 

@@ -1,5 +1,7 @@
 #include "glp/glaze/rendering/scene_render/resources/shaders.h"
 
+#include "glp/glaze/rendering/scene_render/environment.h"
+
 #include "glp/glaze/rendering/defines.h"
 
 #include "glp/glaze/utilities/core/assert.h"
@@ -48,6 +50,9 @@ const shader* build(
 
     if (!vert_file.empty()) {
         result.graphics = vk::shaders::create_graphics_pipeline(vert_file, frag_file, graphics_create_info);
+
+        result.uses_environment = graphics_create_info.set_layouts.size() > 1
+                               && graphics_create_info.set_layouts[1] == environment::get_set_layout();
     }
 
     if (!comp_file.empty()) {

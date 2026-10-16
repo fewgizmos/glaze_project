@@ -45,6 +45,8 @@ void upload_buffer(const buffer& target, const void* data, VkDeviceSize size);
 void queue_upload(const buffer& target, const void* data, VkDeviceSize size);
 void queue_image_upload(const image& target, const void* pixels, VkDeviceSize size);
 
+void record_image_upload(VkCommandBuffer cmd, const image& target, const buffer& staging);
+
 void flush_uploads();
 void destroy_used_staging();
 
@@ -59,5 +61,8 @@ image create_image(
 );
 
 void destroy_image(image& target);
+
+VkImageView create_image_view(const image& target, VkImageViewType view_type, uint32_t base_mip, uint32_t mip_count);
+void destroy_image_view(VkImageView view);
 
 }

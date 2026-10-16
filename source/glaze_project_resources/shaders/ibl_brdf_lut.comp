@@ -1,0 +1,59 @@
+#version 450
+
+#include "util/ibl.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0, rgba16f) uniform writeonly image2D target;
+
+const uint SAMPLE_COUNT = 1024u;
+
+float geometry_schlick_ggx(float n_dot_x, float roughness)
+{
+    float k = roughness * roughness * 0.5;
+
+    return n_dot_x / (n_dot_x * (1.0 - k) + k);
+}
+
+void main()
+{
+    ivec2 size = imageSize(target);
+    ivec2 id   = ivec2(gl_GlobalInvocationID.xy);
+
+    if (id.x >= size.x || id.y >= size.y) {
+        return;
+    }
+
+    vec2 coord = (vec2(id) + 0.5) / vec2(size);
+
+    float n_dot_v   = coord.x;
+    float roughness = coord.y;
+
+    vec3 view   = vec3(sqrt(1.0 - n_dot_v * n_dot_v), 0.0, n_dot_v);
+    vec3 normal = vec3(0.0, 0.0, 1.0);
+
+    float scale = 0.0;
+    float bias  = 0.0;
+
+    for (uint i = 0u; i < SAMPLE_COUNT; i++) {
+        vec3 half_vector = importance_sample_ggx(hammersley(i, SAMPLE_COUNT), normal, roughness);
+        vec3 to_light    = normalize(2.0 * dot(view, half_vector) * half_vector - view);
+
+        float n_dot_l = max(to_light.z, 0.0);
+        float n_dot_h = max(half_vector.z, 0.0);
+        float v_dot_h = max(dot(view, half_vector), 0.0);
+
+        if (n_dot_l <= 0.0) {
+            continue;
+        }
+
+        float geometry   = geometry_schlick_ggx(n_dot_v, roughness) * geometry_schlick_ggx(n_dot_l, roughness);
+        float visibility = geometry * v_dot_h / max(n_dot_h * n_dot_v, 0.000001);
+        float fresnel    = pow(1.0 - v_dot_h, 5.0);
+
+        scale += (1.0 - fresnel) * visibility;
+        bias  += fresnel * visibility;
+    }
+
+    imageStore(target, id, vec4(scale / float(SAMPLE_COUNT), bias / float(SAMPLE_COUNT), 0.0, 1.0));
+}

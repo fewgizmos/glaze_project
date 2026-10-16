@@ -26,9 +26,14 @@ public:
     cmp_cubemap& operator=(const cmp_cubemap&) = delete;
 
     rendering::scene_render::gpu_model get_model() override;
+    rendering::scene_render::gpu_environment get_environment() override;
 
 private:
     rendering::image m_image;
+    rendering::image m_irradiance;
+    rendering::image m_prefiltered;
+
+    float m_intensity = 1.0f;
 
     VkDescriptorPool m_pool = VK_NULL_HANDLE;
     VkDescriptorSet m_set = VK_NULL_HANDLE;

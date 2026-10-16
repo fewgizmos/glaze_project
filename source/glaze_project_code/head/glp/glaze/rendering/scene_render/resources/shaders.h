@@ -21,6 +21,8 @@ struct shader
     pipeline compute;
 
     render_queue queue = render_queue::opaque;
+
+    bool uses_environment = false;
 };
 
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "glp/glaze/rendering/scene_render/resources/gpu_camera.h"
+#include "glp/glaze/rendering/scene_render/resources/gpu_environment.h"
 #include "glp/glaze/rendering/scene_render/resources/gpu_light.h"
 #include "glp/glaze/rendering/scene_render/resources/gpu_model.h"
 #include "glp/glaze/rendering/scene_render/resources/gpu_post.h"
@@ -19,12 +20,16 @@ void clear();
 
 void set_camera(const gpu_camera& camera);
 void set_post(const gpu_post& post);
+void set_environment(const gpu_environment& environment);
 void submit_model(const gpu_model& model);
 void submit_light(const gpu_light& light);
 
 bool has_camera();
 const gpu_camera& get_camera();
 const gpu_post& get_post();
+
+bool has_environment();
+const gpu_environment& get_environment();
 
 void handle_all();
 void draw_all();

@@ -103,6 +103,8 @@ layout(buffer_reference, std430) readonly buffer frame_buffer
     float timestamp;
 
     uint light_count;
+    uint has_environment;
+    float environment_intensity;
     uint padding;
 
     object_buffer objects;

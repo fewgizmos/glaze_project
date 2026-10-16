@@ -59,7 +59,9 @@ void transition_image(
     VkAccessFlags2 src_access,
     VkPipelineStageFlags2 dst_stage,
     VkAccessFlags2 dst_access,
-    VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT
+    VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT,
+    uint32_t mip_count = 1,
+    uint32_t layer_count = 1
 );
 
 }
