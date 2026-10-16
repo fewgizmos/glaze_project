@@ -32,14 +32,21 @@ private:
 namespace it
 {
 
-scene_entity* u_push_builded_entity(std::unique_ptr<scene_entity>&& ent);
+namespace util
+{
+
+scene_entity* push_builded_entity(std::unique_ptr<scene_entity>&& ent);
+
+bool is_entity_pending_erase(const scene_entity* ent);
+
+}
 
 template<typename ent_type, typename... args_type>
 ent_type* create_entity(args_type&&... args)
 {
     static_assert(std::is_base_of_v<scene_entity, ent_type>, "entity object must derive from scene_entity");
 
-    return static_cast<ent_type*>(u_push_builded_entity(std::make_unique<ent_type>(std::forward<args_type>(args)...)));
+    return static_cast<ent_type*>(util::push_builded_entity(std::make_unique<ent_type>(std::forward<args_type>(args)...)));
 }
 
 void erase_entity(scene_entity* ent);
@@ -55,8 +62,9 @@ std::vector<ent_type*> get_all_entities_typed()
 
     std::vector<ent_type*> out;
     for (const auto& ent_ptr : get_all_entities())
-        if (auto* el = dynamic_cast<ent_type*>(ent_ptr.get()))
-            out.push_back(el);
+        if (!util::is_entity_pending_erase(ent_ptr.get()))
+            if (auto* el = dynamic_cast<ent_type*>(ent_ptr.get()))
+                out.push_back(el);
     return out;
 }
 
@@ -70,6 +78,8 @@ void erase_all_entities_typed()
 size_t get_entities_count();
 
 void update_entities();
+
+void apply_pending_ops();
 
 void set_player_entity(scene_entity* ent);
 scene_entity* get_player_entity();

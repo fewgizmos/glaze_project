@@ -70,6 +70,10 @@ void proxy_visibles()
     proxy_camera();
 
     for (const std::unique_ptr<scene_entity>& ent : it::get_all_entities()) {
+        if (it::util::is_entity_pending_erase(ent.get())) {
+            continue;
+        }
+
         proxy_volume_models(ent->scene_volume());
         proxy_volume_models(ent->scene_gizmo_volume());
     }

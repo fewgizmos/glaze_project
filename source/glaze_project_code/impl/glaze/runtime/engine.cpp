@@ -72,6 +72,7 @@ void cleanup()
     game::game_managment::it::shutdown();
 
     scene::it::erase_all_entities();
+    scene::it::apply_pending_ops();
 
     rendering::it::cleanup();
 
@@ -100,6 +101,8 @@ void tick_frame()
     scene::render_proxy::proxy_visibles();
 
     rendering::it::render_frame();
+
+    scene::it::apply_pending_ops();
 
     if (platform::app::wants_exit || io::viewport::get_wants_exit()) {
         wants_stop = true;
