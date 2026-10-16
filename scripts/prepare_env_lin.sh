@@ -14,7 +14,9 @@ PACKAGES=(
     vulkan-tools
 
     glslang-dev
+    glslang-tools
     spirv-tools-dev
+    spirv-headers
 
     libasound2-dev
     libpulse-dev
