@@ -26,6 +26,8 @@ bool m_is_session_started = false;
 
 constexpr const char* FOX_MODEL_PATH = "source/glaze_project_resources/gltf/fox/Fox.gltf";
 constexpr const char* PALMS_MODEL_PATH = "source/glaze_project_resources/glb/palms.glb";
+constexpr const char* GOLD_LOCK_MODEL_PATH = "source/glaze_project_resources/glb/gold_lock.glb";
+constexpr const char* WOODEN_CRATE_MODEL_PATH = "source/glaze_project_resources/glb/wooden_crate.glb";
 
 constexpr const char* SKY_CUBEMAP_DIR = "source/glaze_project_resources/cubemaps/sky";
 
@@ -89,7 +91,10 @@ void init_session()
 
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(70.0f, 20.0f, 140.0f), FOX_SCALE, FOX_MODEL_PATH);
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0), FOX_SCALE, FOX_MODEL_PATH);
+
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(6.0f, 0.0f, 6.0f), glm::vec3(0), glm::vec3(1.5f), PALMS_MODEL_PATH);
+        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(0.0f, 1.0f, 5.0f), glm::vec3(77.0f, 10.0f, 0.0f), glm::vec3(4.0f), GOLD_LOCK_MODEL_PATH);
+        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-8.0f, 0.0f, -6.0f), glm::vec3(0), glm::vec3(3.4f), WOODEN_CRATE_MODEL_PATH);
 
         glaze::scene::it::create_entity<glaze::world::res::cubemap>(SKY_CUBEMAP_DIR);
 
