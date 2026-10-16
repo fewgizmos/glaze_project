@@ -29,7 +29,7 @@ constexpr const char* PALMS_MODEL_PATH = "source/glaze_project_resources/glb/pal
 constexpr const char* GOLD_LOCK_MODEL_PATH = "source/glaze_project_resources/glb/gold_lock.glb";
 constexpr const char* WOODEN_CRATE_MODEL_PATH = "source/glaze_project_resources/glb/wooden_crate.glb";
 
-constexpr const char* SKYBOX_PATH = "source/glaze_project_resources/skybox/sky_v2.hdr";
+constexpr const char* SKYBOX_PATH = "source/glaze_project_resources/skybox/sky_v3.hdr";
 
 const glm::vec3 FOX_SCALE = glm::vec3(0.02f);
 
