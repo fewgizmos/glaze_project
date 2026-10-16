@@ -43,7 +43,7 @@ void update_volume(const vol::scene_volume& volume)
 namespace util
 {
 
-scene_entity* push_builded_entity(std::unique_ptr<scene_entity>&& ent)
+scene_entity* push_built_entity(std::unique_ptr<scene_entity>&& ent)
 {
     scene_entity* raw = ent.get();
 

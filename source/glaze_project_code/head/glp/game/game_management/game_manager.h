@@ -1,9 +1,9 @@
 #pragma once
 
-namespace game::game_managment::it
+namespace game::game_management::it
 {
 
-void statup();
+void startup();
 void shutdown();
 
 void update_frame();

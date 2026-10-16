@@ -8,7 +8,7 @@
 #include "glp/glaze/io/input.h"
 #include "glp/glaze/io/viewport.h"
 
-#include "glp/game/game_managment/game_manager.h"
+#include "glp/game/game_management/game_manager.h"
 
 #ifndef NDEBUG
 #include "glp/editor/core/editor.h"
@@ -54,8 +54,8 @@ void startup()
 
     rendering::it::init();
 
-    game::game_managment::it::statup();
-    game::game_managment::it::init_session();
+    game::game_management::it::startup();
+    game::game_management::it::init_session();
 
 #ifndef NDEBUG
     editor::core::it::startup();
@@ -68,8 +68,8 @@ void cleanup()
     editor::core::it::cleanup();
 #endif
 
-    game::game_managment::it::cleanup_session();
-    game::game_managment::it::shutdown();
+    game::game_management::it::cleanup_session();
+    game::game_management::it::shutdown();
 
     scene::it::erase_all_entities();
     scene::it::apply_pending_ops();
@@ -91,7 +91,7 @@ void tick_frame()
 
     io::input::parse_frame_inputs();
 
-    game::game_managment::it::update_frame();
+    game::game_management::it::update_frame();
 
 #ifndef NDEBUG
     editor::core::it::frame_update();

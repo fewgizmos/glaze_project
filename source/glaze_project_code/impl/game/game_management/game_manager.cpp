@@ -1,4 +1,4 @@
-#include "glp/game/game_managment/game_manager.h"
+#include "glp/game/game_management/game_manager.h"
 
 #include "glp/glaze/runtime/engine.h"
 
@@ -16,7 +16,7 @@
 
 #include <glm/vec3.hpp>
 
-namespace game::game_managment::it
+namespace game::game_management::it
 {
 
 namespace
@@ -33,7 +33,7 @@ const glm::vec3 FOX_SCALE = glm::vec3(0.02f);
 
 }
 
-void statup()
+void startup()
 {
 
 }

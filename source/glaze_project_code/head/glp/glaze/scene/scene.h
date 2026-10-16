@@ -35,7 +35,7 @@ namespace it
 namespace util
 {
 
-scene_entity* push_builded_entity(std::unique_ptr<scene_entity>&& ent);
+scene_entity* push_built_entity(std::unique_ptr<scene_entity>&& ent);
 
 bool is_entity_pending_erase(const scene_entity* ent);
 
@@ -46,7 +46,7 @@ ent_type* create_entity(args_type&&... args)
 {
     static_assert(std::is_base_of_v<scene_entity, ent_type>, "entity object must derive from scene_entity");
 
-    return static_cast<ent_type*>(util::push_builded_entity(std::make_unique<ent_type>(std::forward<args_type>(args)...)));
+    return static_cast<ent_type*>(util::push_built_entity(std::make_unique<ent_type>(std::forward<args_type>(args)...)));
 }
 
 void erase_entity(scene_entity* ent);
