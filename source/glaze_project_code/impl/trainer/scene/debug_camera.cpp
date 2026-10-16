@@ -27,9 +27,9 @@ namespace trainer::scene
 namespace
 {
 
-constexpr float START_SPEED = 5.0f;
+constexpr float START_SPEED = 10.0f;
 constexpr float MIN_SPEED   = 0.1f;
-constexpr float MAX_SPEED   = 100.0f;
+constexpr float MAX_SPEED   = 300.0f;
 
 constexpr float SPEED_SCROLL_FACTOR = 1.2f;
 
