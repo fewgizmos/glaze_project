@@ -35,11 +35,19 @@ const float PREFILTERED_MAX_LOD = 4.0;
 const float SPECULAR_AA_VARIANCE  = 0.25;
 const float SPECULAR_AA_THRESHOLD = 0.18;
 
+const float HORIZON_FADE = 1.3;
+
+const float SUN_ANGULAR_RADIUS = 0.00465;
+const float SUN_COS_RADIUS     = cos(SUN_ANGULAR_RADIUS);
+const float SUN_SIN_RADIUS     = sin(SUN_ANGULAR_RADIUS);
+
 struct surface_data
 {
     vec3 albedo;
     vec3 normal;
+    vec3 geometric_normal;
     vec3 view;
+    vec3 reflected;
     vec3 f0;
 
     vec2 dfg;
@@ -49,6 +57,7 @@ struct surface_data
     float alpha;
     float n_dot_v;
     float occlusion;
+    float specular_occlusion;
     float energy_compensation;
 };
 
@@ -101,7 +110,36 @@ float specular_anti_aliasing(vec3 normal, float roughness)
     return sqrt(sqrt(alpha2));
 }
 
-vec3 brdf(surface_data surface, vec3 to_light)
+float specular_occlusion(float n_dot_v, float occlusion, float roughness)
+{
+    return clamp(pow(n_dot_v + occlusion, exp2(-16.0 * roughness - 1.0)) - 1.0 + occlusion, 0.0, 1.0);
+}
+
+float horizon_occlusion(vec3 reflected, vec3 geometric_normal)
+{
+    float horizon = clamp(1.0 + HORIZON_FADE * dot(reflected, geometric_normal), 0.0, 1.0);
+
+    return horizon * horizon;
+}
+
+vec3 sun_specular_direction(surface_data surface, vec3 to_light)
+{
+    float d = dot(to_light, surface.reflected);
+
+    if (d >= SUN_COS_RADIUS) {
+        return surface.reflected;
+    }
+
+    vec3 tangent = surface.reflected - d * to_light;
+
+    if (dot(tangent, tangent) <= MIN_TANGENT_LENGTH2) {
+        return to_light;
+    }
+
+    return normalize(to_light * SUN_COS_RADIUS + normalize(tangent) * SUN_SIN_RADIUS);
+}
+
+vec3 brdf(surface_data surface, vec3 to_light, vec3 specular_to_light)
 {
     float n_dot_l = clamp(dot(surface.normal, to_light), 0.0, 1.0);
 
@@ -109,7 +147,9 @@ vec3 brdf(surface_data surface, vec3 to_light)
         return vec3(0.0);
     }
 
-    vec3 half_vector = normalize(surface.view + to_light);
+    float specular_n_dot_l = clamp(dot(surface.normal, specular_to_light), 0.0, 1.0);
+
+    vec3 half_vector = normalize(surface.view + specular_to_light);
 
     float n_dot_h = clamp(dot(surface.normal, half_vector), 0.0, 1.0);
     float v_dot_h = clamp(dot(surface.view, half_vector), 0.0, 1.0);
@@ -117,13 +157,14 @@ vec3 brdf(surface_data surface, vec3 to_light)
     vec3 fresnel = fresnel_schlick(v_dot_h, surface.f0);
 
     vec3 specular = distribution_ggx(n_dot_h, surface.alpha)
-                  * visibility_smith_ggx_correlated(surface.n_dot_v, n_dot_l, surface.alpha)
+                  * visibility_smith_ggx_correlated(surface.n_dot_v, max(specular_n_dot_l, MIN_N_DOT_V), surface.alpha)
                   * fresnel
-                  * surface.energy_compensation;
+                  * surface.energy_compensation
+                  * specular_n_dot_l;
 
-    vec3 diffuse = (1.0 - fresnel) * (1.0 - surface.metallic) * surface.albedo / PI;
+    vec3 diffuse = (1.0 - fresnel) * (1.0 - surface.metallic) * surface.albedo / PI * n_dot_l;
 
-    return (diffuse + specular) * n_dot_l;
+    return diffuse + specular;
 }
 
 vec3 surface_normal(material_data material)
@@ -159,25 +200,21 @@ float cone_factor(light_data light, vec3 to_light)
 
 vec3 ambient_contribution(light_data light, surface_data surface)
 {
-    vec3 reflected = reflect(-surface.view, surface.normal);
-
     vec3 irradiance = mix(light.ground_color, light.color, surface.normal.y * 0.5 + 0.5);
-    vec3 reflection = mix(light.ground_color, light.color, reflected.y * 0.5 + 0.5);
+    vec3 reflection = mix(light.ground_color, light.color, surface.reflected.y * 0.5 + 0.5);
 
     vec3 fresnel = fresnel_schlick_roughness(surface.n_dot_v, surface.f0, surface.roughness);
 
-    vec3 diffuse  = (1.0 - fresnel) * (1.0 - surface.metallic) * surface.albedo * irradiance;
-    vec3 specular = fresnel * reflection;
+    vec3 diffuse  = (1.0 - fresnel) * (1.0 - surface.metallic) * surface.albedo * irradiance * surface.occlusion;
+    vec3 specular = fresnel * reflection * surface.specular_occlusion;
 
-    return (diffuse + specular) * surface.occlusion;
+    return diffuse + specular;
 }
 
 vec3 environment_contribution(surface_data surface)
 {
-    vec3 reflected = reflect(-surface.view, surface.normal);
-
     vec3 irradiance = texture(env_irradiance, surface.normal).rgb;
-    vec3 radiance   = textureLod(env_prefiltered, reflected, surface.roughness * PREFILTERED_MAX_LOD).rgb;
+    vec3 radiance   = textureLod(env_prefiltered, surface.reflected, surface.roughness * PREFILTERED_MAX_LOD).rgb;
 
     vec3 fresnel = fresnel_schlick_roughness(surface.n_dot_v, surface.f0, surface.roughness);
 
@@ -192,16 +229,18 @@ vec3 environment_contribution(surface_data surface)
     vec3 diffuse_color = surface.albedo * (1.0 - surface.metallic);
     vec3 diffuse       = diffuse_color * (1.0 - single_scatter - multi_scatter * multi_energy);
 
-    vec3 specular = single_scatter * radiance;
-    vec3 ambient  = (multi_scatter * multi_energy + diffuse) * irradiance;
+    vec3 specular = single_scatter * radiance * surface.specular_occlusion;
+    vec3 ambient  = (multi_scatter * multi_energy + diffuse) * irradiance * surface.occlusion;
 
-    return (specular + ambient) * surface.occlusion * pc.frame.environment_intensity;
+    return (specular + ambient) * pc.frame.environment_intensity;
 }
 
 vec3 light_contribution(light_data light, surface_data surface)
 {
     if (light.type == LIGHT_TYPE_DIRECTIONAL) {
-        return light.color * brdf(surface, -light.direction);
+        vec3 to_light = -light.direction;
+
+        return light.color * brdf(surface, to_light, sun_specular_direction(surface, to_light));
     }
 
     if (light.type == LIGHT_TYPE_POINT) {
@@ -217,7 +256,7 @@ vec3 light_contribution(light_data light, surface_data surface)
         float window      = clamp(1.0 - pow(distance / light.range, 4.0), 0.0, 1.0);
         float attenuation = window * window / (distance * distance + 1.0);
 
-        return light.color * brdf(surface, to_light) * attenuation * cone_factor(light, to_light);
+        return light.color * brdf(surface, to_light, to_light) * attenuation * cone_factor(light, to_light);
     }
 
     if (light.type == LIGHT_TYPE_AMBIENT && pc.frame.has_environment == 0u) {
@@ -271,15 +310,20 @@ void main()
 
     surface_data data;
 
-    data.albedo = material.base_color.rgb * frag_color * surface;
-    data.normal = surface_normal(material);
-    data.view   = normalize(pc.frame.camera_pos - frag_world_pos);
+    data.albedo           = material.base_color.rgb * frag_color * surface;
+    data.normal           = surface_normal(material);
+    data.geometric_normal = gl_FrontFacing ? normalize(frag_normal) : -normalize(frag_normal);
+    data.view             = normalize(pc.frame.camera_pos - frag_world_pos);
+    data.reflected        = reflect(-data.view, data.normal);
 
     data.metallic  = clamp(metallic, 0.0, 1.0);
     data.roughness = clamp(specular_anti_aliasing(data.normal, clamp(roughness, 0.0, 1.0)), MIN_ROUGHNESS, 1.0);
     data.alpha     = data.roughness * data.roughness;
     data.n_dot_v   = clamp(dot(data.normal, data.view), MIN_N_DOT_V, 1.0);
     data.occlusion = occlusion;
+
+    data.specular_occlusion = specular_occlusion(data.n_dot_v, occlusion, data.roughness)
+                            * horizon_occlusion(data.reflected, data.geometric_normal);
 
     data.f0  = mix(DIELECTRIC_F0, data.albedo, data.metallic);
     data.dfg = texture(env_brdf_lut, vec2(data.n_dot_v, data.roughness)).rg;
