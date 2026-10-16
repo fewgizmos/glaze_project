@@ -25,7 +25,7 @@ namespace
 bool m_is_session_started = false;
 
 constexpr const char* FOX_MODEL_PATH = "source/glaze_project_resources/gltf/fox/Fox.gltf";
-constexpr const char* TREE_MODEL_PATH = "source/glaze_project_resources/glb/coconut_tree.glb";
+constexpr const char* TREE_MODEL_PATH = "source/glaze_project_resources/glb/palm.glb";
 
 constexpr const char* SKY_CUBEMAP_DIR = "source/glaze_project_resources/cubemaps/sky";
 
