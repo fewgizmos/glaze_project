@@ -31,6 +31,7 @@ bool is_same(const sampler_create_info& left, const sampler_create_info& right)
         && left.mip_mode   == right.mip_mode
         && left.wrap_u     == right.wrap_u
         && left.wrap_v     == right.wrap_v
+        && left.wrap_w     == right.wrap_w
         && left.anisotropy == right.anisotropy;
 }
 
@@ -53,7 +54,7 @@ uint32_t make(const sampler_create_info& create_info)
     vk_create_info.mipmapMode = create_info.mip_mode;
     vk_create_info.addressModeU = create_info.wrap_u;
     vk_create_info.addressModeV = create_info.wrap_v;
-    vk_create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    vk_create_info.addressModeW = create_info.wrap_w;
     vk_create_info.anisotropyEnable = create_info.anisotropy ? VK_TRUE : VK_FALSE;
     vk_create_info.maxAnisotropy = std::min(
         MAX_ANISOTROPY,

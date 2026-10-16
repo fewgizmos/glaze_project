@@ -27,7 +27,7 @@ const shader* build_base_model(const std::string& name, VkCullModeFlags cull_mod
     info.push_constant_size   = sizeof(VkDeviceAddress);
     info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    return res::shaders::build(name, "base_model.vert", "base_model.frag", "", info, {});
+    return res::shaders::build(name, "base_model.vert", "base_model.frag", "", info, {}, render_queue::opaque);
 }
 
 }

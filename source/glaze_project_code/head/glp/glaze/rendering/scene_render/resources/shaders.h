@@ -8,12 +8,19 @@
 namespace glaze::rendering::scene_render
 {
 
+enum class render_queue
+{
+    opaque,
+    skybox,
+    blended
+};
+
 struct shader
 {
     pipeline graphics;
     pipeline compute;
 
-    bool is_blended = false;
+    render_queue queue = render_queue::opaque;
 };
 
 }
@@ -27,7 +34,8 @@ const shader* build(
     const std::string& frag_file,
     const std::string& comp_file,
     const graphics_pipeline_create_info& graphics_create_info,
-    const compute_pipeline_create_info& compute_create_info
+    const compute_pipeline_create_info& compute_create_info,
+    render_queue queue
 );
 
 const shader* get(const std::string& name);

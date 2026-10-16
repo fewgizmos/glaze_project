@@ -36,17 +36,18 @@ const shader* build(
     const std::string& frag_file,
     const std::string& comp_file,
     const graphics_pipeline_create_info& graphics_create_info,
-    const compute_pipeline_create_info& compute_create_info
+    const compute_pipeline_create_info& compute_create_info,
+    render_queue queue
 )
 {
     GLAZE_ASSERT(vert_file.empty() && comp_file.empty(), "shader has no vertex or compute shader: " + name);
 
     shader result;
 
+    result.queue = queue;
+
     if (!vert_file.empty()) {
         result.graphics = vk::shaders::create_graphics_pipeline(vert_file, frag_file, graphics_create_info);
-
-        result.is_blended = graphics_create_info.alpha_blend;
     }
 
     if (!comp_file.empty()) {

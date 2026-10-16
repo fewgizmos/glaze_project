@@ -8,6 +8,8 @@
 #include "glp/glaze/scene/objects/game_object.h"
 #include "glp/glaze/scene/objects/static_object.h"
 
+#include "glp/glaze/world/resources/cubemap.h"
+
 #ifndef NDEBUG
 #include "glp/trainer/scene/debug_camera.h"
 #endif
@@ -24,6 +26,8 @@ bool m_is_session_started = false;
 
 constexpr const char* FOX_MODEL_PATH = "source/glaze_project_resources/gltf/fox/Fox.gltf";
 constexpr const char* TREE_MODEL_PATH = "source/glaze_project_resources/glb/coconut_tree.glb";
+
+constexpr const char* SKY_CUBEMAP_DIR = "source/glaze_project_resources/cubemaps/sky";
 
 const glm::vec3 FOX_SCALE = glm::vec3(0.02f);
 
@@ -63,6 +67,8 @@ void init_session()
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0), FOX_SCALE, FOX_MODEL_PATH);
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(6.0f, 0.0f, 6.0f), glm::vec3(0), glm::vec3(0.33f), TREE_MODEL_PATH);
 
+        glaze::scene::it::create_entity<glaze::world::res::cubemap>(SKY_CUBEMAP_DIR);
+
         if (glaze::scene::it::get_player_entity() == nullptr) {
 #ifndef NDEBUG
             glaze::scene::it::set_player_entity(glaze::scene::it::create_entity<trainer::scene::debug_camera_player_obj>());
@@ -80,6 +86,7 @@ void cleanup_session()
     m_is_session_started = false;
 
     glaze::scene::it::erase_all_entities_typed<glaze::scene::obj::static_object_model_prim>();
+    glaze::scene::it::erase_all_entities_typed<glaze::world::res::cubemap>();
 }
 
 }

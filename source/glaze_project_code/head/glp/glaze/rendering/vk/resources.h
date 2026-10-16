@@ -25,6 +25,7 @@ struct image
     VkExtent3D extent = {};
     VkFormat format = VK_FORMAT_UNDEFINED;
     uint32_t mip_levels = 1;
+    uint32_t array_layers = 1;
 };
 
 }
@@ -52,7 +53,9 @@ image create_image(
     VkFormat format,
     VkImageUsageFlags usage,
     VkImageAspectFlags aspect,
-    uint32_t mip_levels = 1
+    uint32_t mip_levels = 1,
+    uint32_t array_layers = 1,
+    bool is_cube = false
 );
 
 void destroy_image(image& target);

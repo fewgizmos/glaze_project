@@ -98,12 +98,19 @@ void handle_objects()
         const shader* left_shader  = left.target_material->target_shader;
         const shader* right_shader = right.target_material->target_shader;
 
-        if (left_shader->is_blended != right_shader->is_blended) {
-            return !left_shader->is_blended;
+        if (left_shader->queue != right_shader->queue) {
+            return left_shader->queue < right_shader->queue;
         }
 
         if (left_shader != right_shader) {
             return std::less<const shader*>()(left_shader, right_shader);
+        }
+
+        const VkDescriptorSet left_set  = left.target_material->extra_set;
+        const VkDescriptorSet right_set = right.target_material->extra_set;
+
+        if (left_set != right_set) {
+            return std::less<VkDescriptorSet>()(left_set, right_set);
         }
 
         return std::less<const mesh*>()(left.target_mesh, right.target_mesh);
@@ -163,6 +170,22 @@ void bind_shader(const shader* target)
         0,
         1,
         &scene_set,
+        0,
+        nullptr
+    );
+}
+
+void bind_extra_set(const shader* target, VkDescriptorSet extra_set)
+{
+    VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
+
+    vk::device::get_disp().cmdBindDescriptorSets(
+        cmd,
+        VK_PIPELINE_BIND_POINT_GRAPHICS,
+        target->graphics.layout,
+        1,
+        1,
+        &extra_set,
         0,
         nullptr
     );
@@ -237,6 +260,8 @@ void draw_all()
 
     const shader* bound_shader = nullptr;
 
+    VkDescriptorSet bound_extra_set = VK_NULL_HANDLE;
+
     uint32_t first = 0;
 
     while (first < objects_count) {
@@ -244,12 +269,18 @@ void draw_all()
 
         const shader* target_shader = target.target_material->target_shader;
 
+        const VkDescriptorSet target_extra_set = target.target_material->extra_set;
+
         uint32_t count = 1;
 
         while (first + count < objects_count) {
             const gpu_model_part& next = m_objects[first + count];
 
-            if (next.target_mesh != target.target_mesh || next.target_material->target_shader != target_shader) {
+            if (
+                next.target_mesh != target.target_mesh
+                || next.target_material->target_shader != target_shader
+                || next.target_material->extra_set != target_extra_set
+            ) {
                 break;
             }
 
@@ -259,7 +290,15 @@ void draw_all()
         if (target_shader != bound_shader) {
             bound_shader = target_shader;
 
+            bound_extra_set = VK_NULL_HANDLE;
+
             bind_shader(bound_shader);
+        }
+
+        if (target_extra_set != VK_NULL_HANDLE && target_extra_set != bound_extra_set) {
+            bound_extra_set = target_extra_set;
+
+            bind_extra_set(bound_shader, bound_extra_set);
         }
 
         disp.cmdBindIndexBuffer(cmd, target.target_mesh->index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);

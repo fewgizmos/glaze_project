@@ -38,6 +38,7 @@ struct pending_image_upload
     VkImage target = VK_NULL_HANDLE;
     VkExtent3D extent = {};
     uint32_t mip_levels = 1;
+    uint32_t array_layers = 1;
 };
 
 VmaAllocator m_allocator = VK_NULL_HANDLE;
@@ -72,6 +73,7 @@ void transition_mips(
     VkImage target,
     uint32_t base_mip,
     uint32_t mip_count,
+    uint32_t layer_count,
     VkImageLayout old_layout,
     VkImageLayout new_layout,
     VkPipelineStageFlags2 src_stage,
@@ -95,7 +97,7 @@ void transition_mips(
     barrier.subresourceRange.baseMipLevel = base_mip;
     barrier.subresourceRange.levelCount = mip_count;
     barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = 1;
+    barrier.subresourceRange.layerCount = layer_count;
 
     VkDependencyInfo dependency_info = {};
     dependency_info.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
@@ -114,6 +116,7 @@ void flush_image_upload(VkCommandBuffer cmd, const pending_image_upload& upload)
         upload.target,
         0,
         upload.mip_levels,
+        upload.array_layers,
         VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         VK_PIPELINE_STAGE_2_NONE,
@@ -126,7 +129,7 @@ void flush_image_upload(VkCommandBuffer cmd, const pending_image_upload& upload)
     region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     region.imageSubresource.mipLevel = 0;
     region.imageSubresource.baseArrayLayer = 0;
-    region.imageSubresource.layerCount = 1;
+    region.imageSubresource.layerCount = upload.array_layers;
     region.imageExtent = upload.extent;
 
     disp.cmdCopyBufferToImage(
@@ -150,6 +153,7 @@ void flush_image_upload(VkCommandBuffer cmd, const pending_image_upload& upload)
             upload.target,
             mip - 1,
             1,
+            upload.array_layers,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
@@ -162,12 +166,12 @@ void flush_image_upload(VkCommandBuffer cmd, const pending_image_upload& upload)
         blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.srcSubresource.mipLevel = mip - 1;
         blit.srcSubresource.baseArrayLayer = 0;
-        blit.srcSubresource.layerCount = 1;
+        blit.srcSubresource.layerCount = upload.array_layers;
         blit.srcOffsets[1] = { mip_width, mip_height, 1 };
         blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         blit.dstSubresource.mipLevel = mip;
         blit.dstSubresource.baseArrayLayer = 0;
-        blit.dstSubresource.layerCount = 1;
+        blit.dstSubresource.layerCount = upload.array_layers;
         blit.dstOffsets[1] = { next_width, next_height, 1 };
 
         disp.cmdBlitImage(
@@ -191,6 +195,7 @@ void flush_image_upload(VkCommandBuffer cmd, const pending_image_upload& upload)
             upload.target,
             0,
             upload.mip_levels - 1,
+            upload.array_layers,
             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
             VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
@@ -205,6 +210,7 @@ void flush_image_upload(VkCommandBuffer cmd, const pending_image_upload& upload)
         upload.target,
         upload.mip_levels - 1,
         1,
+        upload.array_layers,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
@@ -323,6 +329,7 @@ void queue_image_upload(const image& target, const void* pixels, VkDeviceSize si
     upload.target     = target.handle;
     upload.extent     = target.extent;
     upload.mip_levels = target.mip_levels;
+    upload.array_layers = target.array_layers;
 
     upload_buffer(upload.staging, pixels, size);
 
@@ -386,16 +393,19 @@ image create_image(
     VkFormat format,
     VkImageUsageFlags usage,
     VkImageAspectFlags aspect,
-    uint32_t mip_levels
+    uint32_t mip_levels,
+    uint32_t array_layers,
+    bool is_cube
 )
 {
     VkImageCreateInfo image_create_info = {};
     image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_create_info.flags = is_cube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
     image_create_info.imageType = VK_IMAGE_TYPE_2D;
     image_create_info.format = format;
     image_create_info.extent = extent;
     image_create_info.mipLevels = mip_levels;
-    image_create_info.arrayLayers = 1;
+    image_create_info.arrayLayers = array_layers;
     image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
     image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     image_create_info.usage = usage;
@@ -410,6 +420,7 @@ image create_image(
     result_image.extent = extent;
     result_image.format = format;
     result_image.mip_levels = mip_levels;
+    result_image.array_layers = array_layers;
 
     VkResult result = vmaCreateImage(
         m_allocator,
@@ -425,13 +436,13 @@ image create_image(
     VkImageViewCreateInfo view_create_info = {};
     view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view_create_info.image = result_image.handle;
-    view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    view_create_info.viewType = is_cube ? VK_IMAGE_VIEW_TYPE_CUBE : (array_layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D);
     view_create_info.format = format;
     view_create_info.subresourceRange.aspectMask = aspect;
     view_create_info.subresourceRange.baseMipLevel = 0;
     view_create_info.subresourceRange.levelCount = mip_levels;
     view_create_info.subresourceRange.baseArrayLayer = 0;
-    view_create_info.subresourceRange.layerCount = 1;
+    view_create_info.subresourceRange.layerCount = array_layers;
 
     result = device::get_disp().createImageView(&view_create_info, nullptr, &result_image.view);
 

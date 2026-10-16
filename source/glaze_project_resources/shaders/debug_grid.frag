@@ -10,8 +10,8 @@ layout(location = 0) out vec4 out_color;
 const float CELL_SIZE                = 0.5;
 const float MIN_PIXELS_BETWEEN_CELLS = 2.0;
 
-const float LINE_WIDTH = 3.2;
-const float AXIS_WIDTH = 2.4;
+const float LINE_WIDTH = 4.0;
+const float AXIS_WIDTH = 3.0;
 
 const float GRID_OPACITY = 0.6;
 

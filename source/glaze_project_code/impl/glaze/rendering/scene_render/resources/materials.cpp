@@ -42,6 +42,7 @@ const material* build(const material_create_info& create_info)
     std::unique_ptr<material> created = std::make_unique<material>();
 
     created->target_shader = create_info.target_shader;
+    created->extra_set     = create_info.extra_set;
     created->index         = take_index();
 
     material_data& data = m_data[created->index];

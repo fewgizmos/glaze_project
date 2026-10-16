@@ -34,7 +34,7 @@ const glaze::rendering::scene_render::shader* debug_grid_shader()
         info.push_constant_size   = sizeof(VkDeviceAddress);
         info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        return glaze::rendering::scene_render::res::shaders::build("debug_grid", "debug_grid.vert", "debug_grid.frag", "", info, {});
+        return glaze::rendering::scene_render::res::shaders::build("debug_grid", "debug_grid.vert", "debug_grid.frag", "", info, {}, glaze::rendering::scene_render::render_queue::blended);
     }();
 
     return shd;

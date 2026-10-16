@@ -16,6 +16,7 @@ struct sampler_create_info
 
     VkSamplerAddressMode wrap_u = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     VkSamplerAddressMode wrap_v = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    VkSamplerAddressMode wrap_w = VK_SAMPLER_ADDRESS_MODE_REPEAT;
 
     bool anisotropy = true;
 };

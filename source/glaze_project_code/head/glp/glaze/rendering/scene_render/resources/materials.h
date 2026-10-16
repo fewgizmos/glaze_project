@@ -30,6 +30,8 @@ struct material_create_info
 {
     const shader* target_shader = nullptr;
 
+    VkDescriptorSet extra_set = VK_NULL_HANDLE;
+
     glm::vec4 base_color = glm::vec4(1.0f);
     glm::vec3 emissive   = glm::vec3(0.0f);
 
@@ -83,6 +85,7 @@ struct material_data
 struct material
 {
     const shader* target_shader = nullptr;
+    VkDescriptorSet extra_set = VK_NULL_HANDLE;
     uint32_t index = 0;
 };
 
