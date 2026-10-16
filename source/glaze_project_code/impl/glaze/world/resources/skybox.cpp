@@ -1,4 +1,4 @@
-#include "glp/glaze/world/resources/cubemap.h"
+#include "glp/glaze/world/resources/skybox.h"
 
 #include "glp/glaze/rendering/scene_render/environment.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
@@ -8,6 +8,7 @@
 #include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/descriptors.h"
 #include "glp/glaze/rendering/vk/device.h"
+#include "glp/glaze/rendering/vk/samplers.h"
 #include "glp/glaze/rendering/vk/shaders.h"
 
 #include "glp/glaze/rendering/defines.h"
@@ -17,9 +18,14 @@
 
 #include <stb_image.h>
 
+#include <glm/ext/scalar_constants.hpp>
+#include <glm/geometric.hpp>
+#include <glm/trigonometric.hpp>
+#include <glm/vec3.hpp>
+
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
-#include <cstring>
 #include <memory>
 #include <vector>
 
@@ -40,12 +46,36 @@ constexpr uint32_t BAKE_GROUP = 8;
 
 constexpr VkFormat IBL_FORMAT = VK_FORMAT_R16G16B16A16_SFLOAT;
 
-constexpr const char* FACE_NAMES[FACES_COUNT] = { "px", "nx", "py", "ny", "pz", "nz" };
+constexpr float PANORAMA_MAX_VALUE = 60000.0f;
+
+constexpr float SUN_THRESHOLD_FRACTION = 0.5f;
+constexpr float SUN_REPLACE_LUMINANCE  = 5.0f;
+
+const glm::vec3 LUMINANCE_WEIGHTS = glm::vec3(0.2126f, 0.7152f, 0.0722f);
+
+struct sun_data
+{
+    bool found = false;
+
+    glm::vec3 direction  = glm::vec3(0.0f, -1.0f, 0.0f);
+    glm::vec3 irradiance = glm::vec3(0.0f);
+};
 
 struct prefilter_push
 {
     float roughness;
     float source_resolution;
+};
+
+struct sky_source
+{
+    rendering::buffer staging;
+    rendering::image panorama;
+
+    VkImageView sky_view = VK_NULL_HANDLE;
+
+    VkDescriptorPool pool = VK_NULL_HANDLE;
+    VkDescriptorSet set   = VK_NULL_HANDLE;
 };
 
 VkDescriptorSetLayout bake_set_layout()
@@ -77,6 +107,18 @@ const rendering::scene_render::shader* cubemap_shader()
         info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
         return rendering::scene_render::res::shaders::build("cubemap", "cubemap.vert", "cubemap.frag", "", info, {}, rendering::scene_render::render_queue::skybox);
+    }();
+
+    return shd;
+}
+
+const rendering::scene_render::shader* panorama_shader()
+{
+    static const rendering::scene_render::shader* shd = [] {
+        rendering::compute_pipeline_create_info info;
+        info.set_layouts = { bake_set_layout() };
+
+        return rendering::scene_render::res::shaders::build("ibl_panorama", "", "", "ibl_panorama.comp", {}, info, rendering::scene_render::render_queue::opaque);
     }();
 
     return shd;
@@ -156,7 +198,270 @@ void transition_bake_target(VkCommandBuffer cmd, const rendering::image& target,
     );
 }
 
-void bake(const rendering::image& sky, const rendering::buffer& staging, const rendering::image& irradiance, const rendering::image& prefiltered)
+float pixel_luminance(const float* pixel)
+{
+    return glm::dot(glm::vec3(pixel[0], pixel[1], pixel[2]), LUMINANCE_WEIGHTS);
+}
+
+std::vector<size_t> find_sun_cluster(const std::vector<float>& luminance, int width, int height, float threshold)
+{
+    std::vector<bool> visited(luminance.size(), false);
+
+    std::vector<size_t> best;
+    std::vector<size_t> current;
+    std::vector<size_t> stack;
+
+    for (size_t start = 0; start < luminance.size(); start++) {
+        if (visited[start] || luminance[start] < threshold) {
+            continue;
+        }
+
+        current.clear();
+        stack.assign(1, start);
+
+        visited[start] = true;
+
+        while (!stack.empty()) {
+            const size_t index = stack.back();
+
+            stack.pop_back();
+            current.push_back(index);
+
+            const int x = static_cast<int>(index % width);
+            const int y = static_cast<int>(index / width);
+
+            const int neighbours[4][2] = {
+                { (x + 1) % width, y },
+                { (x + width - 1) % width, y },
+                { x, y + 1 },
+                { x, y - 1 }
+            };
+
+            for (const auto& neighbour : neighbours) {
+                if (neighbour[1] < 0 || neighbour[1] >= height) {
+                    continue;
+                }
+
+                const size_t next = static_cast<size_t>(neighbour[1]) * width + neighbour[0];
+
+                if (visited[next] || luminance[next] < threshold) {
+                    continue;
+                }
+
+                visited[next] = true;
+
+                stack.push_back(next);
+            }
+        }
+
+        if (current.size() > best.size()) {
+            best.swap(current);
+        }
+    }
+
+    return best;
+}
+
+sun_data extract_sun(float* pixels, int width, int height)
+{
+    const size_t pixels_count = static_cast<size_t>(width) * height;
+
+    std::vector<float> luminance(pixels_count);
+
+    float max_luminance = 0.0f;
+
+    for (size_t i = 0; i < pixels_count; i++) {
+        luminance[i] = pixel_luminance(pixels + i * PIXEL_SIZE);
+
+        max_luminance = std::max(max_luminance, luminance[i]);
+    }
+
+    sun_data result;
+
+    if (max_luminance <= 0.0f) {
+        return result;
+    }
+
+    const std::vector<size_t> cluster = find_sun_cluster(luminance, width, height, max_luminance * SUN_THRESHOLD_FRACTION);
+
+    const float pixel_phi   = 2.0f * glm::pi<float>() / static_cast<float>(width);
+    const float pixel_theta = glm::pi<float>() / static_cast<float>(height);
+
+    glm::vec3 weighted_direction(0.0f);
+
+    for (const size_t index : cluster) {
+        const float u = (static_cast<float>(index % width) + 0.5f) / static_cast<float>(width);
+        const float v = (static_cast<float>(index / width) + 0.5f) / static_cast<float>(height);
+
+        const float phi   = (u - 0.5f) * 2.0f * glm::pi<float>();
+        const float theta = v * glm::pi<float>();
+
+        const glm::vec3 direction(glm::sin(theta) * glm::cos(phi), glm::cos(theta), glm::sin(theta) * glm::sin(phi));
+
+        const float solid_angle = pixel_phi * pixel_theta * glm::sin(theta);
+
+        float* pixel = pixels + index * PIXEL_SIZE;
+
+        result.irradiance  += glm::vec3(pixel[0], pixel[1], pixel[2]) * solid_angle;
+        weighted_direction += direction * luminance[index] * solid_angle;
+
+        const float scale = SUN_REPLACE_LUMINANCE / std::max(luminance[index], SUN_REPLACE_LUMINANCE);
+
+        pixel[0] *= scale;
+        pixel[1] *= scale;
+        pixel[2] *= scale;
+    }
+
+    if (glm::length(weighted_direction) <= 0.0f) {
+        return result;
+    }
+
+    result.found     = true;
+    result.direction = glm::normalize(weighted_direction);
+
+    return result;
+}
+
+rendering::image load_panorama(const std::string& path, sky_source& source, sun_data& sun)
+{
+    int width    = 0;
+    int height   = 0;
+    int channels = 0;
+
+    float* pixels = stbi_loadf(path.c_str(), &width, &height, &channels, PIXEL_SIZE);
+
+    GLAZE_ASSERT(pixels == nullptr, "failed to load panorama: " + path);
+
+    sun = extract_sun(pixels, width, height);
+
+    const size_t values_count = static_cast<size_t>(width) * height * PIXEL_SIZE;
+    const size_t bytes_count  = values_count * sizeof(float);
+
+    for (size_t i = 0; i < values_count; i++) {
+        pixels[i] = std::clamp(pixels[i], 0.0f, PANORAMA_MAX_VALUE);
+    }
+
+    source.staging = rendering::vk::resources::create_buffer(
+        bytes_count,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+    );
+
+    rendering::vk::resources::upload_buffer(source.staging, pixels, bytes_count);
+
+    stbi_image_free(pixels);
+
+    source.panorama = rendering::vk::resources::create_image(
+        { static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1 },
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT
+    );
+
+    const uint32_t size = std::max(static_cast<uint32_t>(height) / 2, 1u);
+
+    rendering::image sky = rendering::vk::resources::create_image(
+        { size, size, 1 },
+        IBL_FORMAT,
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT,
+        get_mip_levels(size),
+        FACES_COUNT,
+        true
+    );
+
+    rendering::sampler_create_info sampler_info;
+    sampler_info.mip_mode   = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    sampler_info.wrap_u     = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sampler_info.wrap_v     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_info.wrap_w     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_info.anisotropy = false;
+
+    source.sky_view = rendering::vk::resources::create_image_view(sky, VK_IMAGE_VIEW_TYPE_2D_ARRAY, 0, 1);
+
+    source.pool = rendering::vk::descriptors::create_pool(
+        1,
+        {
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          1 }
+        }
+    );
+
+    source.set = rendering::vk::descriptors::allocate_set(source.pool, bake_set_layout());
+
+    rendering::vk::descriptors::write_image(
+        source.set,
+        0,
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        source.panorama.view,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        rendering::vk::samplers::get(rendering::vk::samplers::make(sampler_info))
+    );
+
+    rendering::vk::descriptors::write_image(source.set, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, source.sky_view, VK_IMAGE_LAYOUT_GENERAL);
+
+    return sky;
+}
+
+void destroy_sky_source(sky_source& source)
+{
+    rendering::vk::descriptors::destroy_pool(source.pool);
+
+    rendering::vk::resources::destroy_image_view(source.sky_view);
+    rendering::vk::resources::destroy_image(source.panorama);
+    rendering::vk::resources::destroy_buffer(source.staging);
+
+    source = {};
+}
+
+void record_sky(VkCommandBuffer cmd, const rendering::image& sky, const sky_source& source)
+{
+    const vkb::DispatchTable& disp = rendering::vk::device::get_disp();
+
+    rendering::vk::resources::record_image_upload(cmd, source.panorama, source.staging);
+
+    rendering::vk::commands::memory_barrier(
+        cmd,
+        VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
+    );
+
+    transition_bake_target(cmd, sky, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+
+    const rendering::scene_render::shader* panorama_target = panorama_shader();
+
+    disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, panorama_target->compute.layout, 0, 1, &source.set, 0, nullptr);
+
+    rendering::vk::commands::dispatch(
+        cmd,
+        panorama_target->compute,
+        nullptr,
+        0,
+        get_groups(sky.extent.width),
+        get_groups(sky.extent.height),
+        FACES_COUNT
+    );
+
+    rendering::vk::commands::transition_image(
+        cmd,
+        sky.handle,
+        VK_IMAGE_LAYOUT_GENERAL,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+        VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT,
+        sky.mip_levels,
+        sky.array_layers
+    );
+
+    rendering::vk::resources::record_mip_generation(cmd, sky);
+}
+
+void bake(const rendering::image& sky, const sky_source& source, const rendering::image& irradiance, const rendering::image& prefiltered)
 {
     const uint32_t sets_count = 1 + PREFILTERED_MIPS;
 
@@ -190,7 +495,7 @@ void bake(const rendering::image& sky, const rendering::buffer& staging, const r
     rendering::vk::commands::immediate_submit([&](VkCommandBuffer cmd) {
         const vkb::DispatchTable& disp = rendering::vk::device::get_disp();
 
-        rendering::vk::resources::record_image_upload(cmd, sky, staging);
+        record_sky(cmd, sky, source);
 
         rendering::vk::commands::memory_barrier(
             cmd,
@@ -263,48 +568,33 @@ void write_environment_image(VkDescriptorSet set, uint32_t binding, const render
 
 }
 
-cmp_cubemap::cmp_cubemap(const std::string& dir, float intensity) : m_intensity(intensity)
+cmp_cubemap::cmp_cubemap(const std::string& path, float intensity, float sun_intensity) : m_intensity(intensity)
 {
     set_flag(scene::vol::component_flags::modeled);
     set_flag(scene::vol::component_flags::environment);
 
-    std::vector<stbi_uc> pixels;
+    sky_source source;
+    sun_data sun;
 
-    uint32_t size = 0;
+    m_image = load_panorama(path, source, sun);
 
-    for (uint32_t face = 0; face < FACES_COUNT; face++) {
-        const std::string path = dir + "/" + FACE_NAMES[face] + ".png";
+    if (sun.found) {
+        const float peak = std::max(sun.irradiance.r, std::max(sun.irradiance.g, sun.irradiance.b));
 
-        int width    = 0;
-        int height   = 0;
-        int channels = 0;
+        const glm::vec3 forward = -sun.direction;
 
-        stbi_uc* face_pixels = stbi_load(path.c_str(), &width, &height, &channels, PIXEL_SIZE);
+        m_has_sun = peak > 0.0f;
 
-        GLAZE_ASSERT(face_pixels == nullptr, "failed to load cubemap face: " + path);
-        GLAZE_ASSERT(width != height, "cubemap face is not square: " + path);
-        GLAZE_ASSERT(face != 0 && static_cast<uint32_t>(width) != size, "cubemap faces have different sizes: " + path);
+        m_sun.type      = scene::vol::component::light_type::directional;
+        m_sun.color     = peak > 0.0f ? sun.irradiance / peak : glm::vec3(1.0f);
+        m_sun.intensity = sun_intensity;
 
-        size = static_cast<uint32_t>(width);
-
-        const size_t face_bytes = static_cast<size_t>(size) * size * PIXEL_SIZE;
-
-        pixels.resize(face_bytes * (face + 1));
-
-        std::memcpy(pixels.data() + face_bytes * face, face_pixels, face_bytes);
-
-        stbi_image_free(face_pixels);
+        m_sun_rot = glm::vec3(
+            glm::degrees(glm::asin(glm::clamp(forward.y, -1.0f, 1.0f))),
+            glm::degrees(std::atan2(-forward.x, -forward.z)),
+            0.0f
+        );
     }
-
-    m_image = rendering::vk::resources::create_image(
-        { size, size, 1 },
-        VK_FORMAT_R8G8B8A8_SRGB,
-        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-        VK_IMAGE_ASPECT_COLOR_BIT,
-        get_mip_levels(size),
-        FACES_COUNT,
-        true
-    );
 
     m_irradiance = rendering::vk::resources::create_image(
         { IRRADIANCE_SIZE, IRRADIANCE_SIZE, 1 },
@@ -326,17 +616,9 @@ cmp_cubemap::cmp_cubemap(const std::string& dir, float intensity) : m_intensity(
         true
     );
 
-    rendering::buffer staging = rendering::vk::resources::create_buffer(
-        pixels.size(),
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
-    );
+    bake(m_image, source, m_irradiance, m_prefiltered);
 
-    rendering::vk::resources::upload_buffer(staging, pixels.data(), pixels.size());
-
-    bake(m_image, staging, m_irradiance, m_prefiltered);
-
-    rendering::vk::resources::destroy_buffer(staging);
+    destroy_sky_source(source);
 
     m_pool = rendering::vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 } });
     m_set  = rendering::vk::descriptors::allocate_set(m_pool, rendering::scene_render::environment::get_set_layout());
@@ -393,9 +675,19 @@ rendering::scene_render::gpu_environment cmp_cubemap::get_environment()
     return result;
 }
 
-cubemap::cubemap(const std::string& dir, float intensity)
+skybox::skybox(const std::string& path, float intensity, float sun_intensity)
 {
-    m_scene_volume().components.push_back(std::make_unique<cmp_cubemap>(dir, intensity));
+    std::unique_ptr<cmp_cubemap> sky = std::make_unique<cmp_cubemap>(path, intensity, sun_intensity);
+
+    if (sky->has_sun()) {
+        std::unique_ptr<scene::vol::component::light> sun = std::make_unique<scene::vol::component::light>(sky->get_sun());
+
+        sun->set_rot(sky->get_sun_rot());
+
+        m_scene_volume().components.push_back(std::move(sun));
+    }
+
+    m_scene_volume().components.push_back(std::move(sky));
 }
 
 }

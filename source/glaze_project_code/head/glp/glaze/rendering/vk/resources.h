@@ -46,6 +46,7 @@ void queue_upload(const buffer& target, const void* data, VkDeviceSize size);
 void queue_image_upload(const image& target, const void* pixels, VkDeviceSize size);
 
 void record_image_upload(VkCommandBuffer cmd, const image& target, const buffer& staging);
+void record_mip_generation(VkCommandBuffer cmd, const image& target);
 
 void flush_uploads();
 void destroy_used_staging();

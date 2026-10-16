@@ -107,6 +107,8 @@ void transition_mips(
     device::get_disp().cmdPipelineBarrier2(cmd, &dependency_info);
 }
 
+void generate_mips(VkCommandBuffer cmd, const pending_image_upload& upload);
+
 void flush_image_upload(VkCommandBuffer cmd, const pending_image_upload& upload)
 {
     const vkb::DispatchTable& disp = device::get_disp();
@@ -140,6 +142,13 @@ void flush_image_upload(VkCommandBuffer cmd, const pending_image_upload& upload)
         1,
         &region
     );
+
+    generate_mips(cmd, upload);
+}
+
+void generate_mips(VkCommandBuffer cmd, const pending_image_upload& upload)
+{
+    const vkb::DispatchTable& disp = device::get_disp();
 
     int32_t mip_width  = static_cast<int32_t>(upload.extent.width);
     int32_t mip_height = static_cast<int32_t>(upload.extent.height);
@@ -347,6 +356,18 @@ void record_image_upload(VkCommandBuffer cmd, const image& target, const buffer&
     upload.array_layers = target.array_layers;
 
     flush_image_upload(cmd, upload);
+}
+
+void record_mip_generation(VkCommandBuffer cmd, const image& target)
+{
+    pending_image_upload upload;
+
+    upload.target       = target.handle;
+    upload.extent       = target.extent;
+    upload.mip_levels   = target.mip_levels;
+    upload.array_layers = target.array_layers;
+
+    generate_mips(cmd, upload);
 }
 
 void flush_uploads()
