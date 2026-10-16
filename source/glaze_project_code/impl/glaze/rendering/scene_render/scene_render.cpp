@@ -18,7 +18,6 @@
 
 #include "glp/glaze/utilities/core/timer.h"
 
-#include <glm/geometric.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
@@ -40,14 +39,13 @@ struct frame_scene_data
     glm::vec3 camera_pos;
     float timestamp;
 
-    glm::vec3 light_dir;
-    float padding;
+    uint32_t light_count;
+    uint32_t padding;
 
     VkDeviceAddress objects;
     VkDeviceAddress materials;
+    VkDeviceAddress lights;
 };
-
-const glm::vec3 LIGHT_DIR = glm::vec3(-0.8f, 0.6f, 0.3f);
 
 image m_depth_image;
 
@@ -180,11 +178,12 @@ void handle_frame_data()
     data.camera_pos = camera.position;
     data.timestamp  = utilities::core::timer::timestamp;
 
-    data.light_dir = glm::normalize(LIGHT_DIR);
-    data.padding   = 0.0f;
+    data.light_count = frame_pipe::get_lights_count();
+    data.padding     = 0;
 
     data.objects   = frame_pipe::get_objects_address();
     data.materials = frame_pipe::get_materials_address();
+    data.lights    = frame_pipe::get_lights_address();
 
     vk::resources::upload_buffer(m_frame_buffers[vk::frame::get_current_frame_index()], &data, sizeof(data));
 }

@@ -68,6 +68,30 @@ layout(buffer_reference, std430) readonly buffer object_buffer
     object_data data[];
 };
 
+const uint LIGHT_TYPE_DIRECTIONAL = 0u;
+const uint LIGHT_TYPE_POINT       = 1u;
+const uint LIGHT_TYPE_AMBIENT     = 2u;
+
+struct light_data
+{
+    vec3 position;
+    float range;
+
+    vec3 direction;
+    float cos_outer;
+
+    vec3 color;
+    uint type;
+
+    vec3 ground_color;
+    float cos_inner;
+};
+
+layout(buffer_reference, std430) readonly buffer light_buffer
+{
+    light_data data[];
+};
+
 layout(buffer_reference, std430) readonly buffer frame_buffer
 {
     mat4 view;
@@ -78,10 +102,12 @@ layout(buffer_reference, std430) readonly buffer frame_buffer
     vec3 camera_pos;
     float timestamp;
 
-    vec3 light_dir;
+    uint light_count;
+    uint padding;
 
     object_buffer objects;
     material_buffer materials;
+    light_buffer lights;
 };
 
 layout(push_constant) uniform constants

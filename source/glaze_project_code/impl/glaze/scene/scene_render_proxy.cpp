@@ -6,6 +6,7 @@
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 
 #include "glp/glaze/rendering/scene_render/resources/gpu_camera.h"
+#include "glp/glaze/rendering/scene_render/resources/gpu_light.h"
 #include "glp/glaze/rendering/scene_render/resources/gpu_model.h"
 
 #include <memory>
@@ -61,6 +62,23 @@ void proxy_volume_models(const vol::scene_volume& volume)
     }
 }
 
+void proxy_volume_lights(const vol::scene_volume& volume)
+{
+    const glm::mat4 world = vol::compose_transform(volume.w_pos, volume.w_rot, glm::vec3(1.0f));
+
+    for (const std::unique_ptr<vol::volume_component>& comp : volume.components) {
+        if (!comp->has_flag(vol::component_flags::light)) {
+            continue;
+        }
+
+        rendering::scene_render::gpu_light light = comp->get_light();
+
+        rendering::scene_render::res::gpu_lights::apply_world(light, world);
+
+        rendering::scene_render::frame_pipe::submit_light(light);
+    }
+}
+
 }
 
 void proxy_visibles()
@@ -76,6 +94,9 @@ void proxy_visibles()
 
         proxy_volume_models(ent->scene_volume());
         proxy_volume_models(ent->scene_gizmo_volume());
+
+        proxy_volume_lights(ent->scene_volume());
+        proxy_volume_lights(ent->scene_gizmo_volume());
     }
 }
 

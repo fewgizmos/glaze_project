@@ -35,16 +35,20 @@ struct object_data
 
 constexpr uint32_t OBJECTS_START_CAPACITY   = 64;
 constexpr uint32_t MATERIALS_START_CAPACITY = 64;
+constexpr uint32_t LIGHTS_START_CAPACITY    = 16;
 
 std::vector<gpu_model_part> m_objects;
 
 std::vector<object_data> m_objects_data;
+
+std::vector<gpu_light> m_lights;
 
 gpu_camera m_camera;
 bool m_has_camera = false;
 
 buffer m_object_buffers[MAX_FRAMES_IN_FLIGHT];
 buffer m_material_buffers[MAX_FRAMES_IN_FLIGHT];
+buffer m_light_buffers[MAX_FRAMES_IN_FLIGHT];
 
 buffer create_shader_buffer(VkDeviceSize size)
 {
@@ -60,12 +64,14 @@ void create_buffers()
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         m_object_buffers[i]   = create_shader_buffer(sizeof(object_data) * OBJECTS_START_CAPACITY);
         m_material_buffers[i] = create_shader_buffer(sizeof(material_data) * MATERIALS_START_CAPACITY);
+        m_light_buffers[i]    = create_shader_buffer(sizeof(gpu_light) * LIGHTS_START_CAPACITY);
     }
 }
 
 void destroy_buffers()
 {
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vk::resources::destroy_buffer(m_light_buffers[i]);
         vk::resources::destroy_buffer(m_material_buffers[i]);
         vk::resources::destroy_buffer(m_object_buffers[i]);
     }
@@ -141,6 +147,8 @@ void handle_buffers()
         materials_data.data(),
         sizeof(material_data) * materials_data.size()
     );
+
+    upload_grown(m_light_buffers[frame_index], m_lights.data(), sizeof(gpu_light) * m_lights.size());
 }
 
 void bind_shader(const shader* target)
@@ -210,6 +218,7 @@ void clean_all()
 void clear()
 {
     m_objects.clear();
+    m_lights.clear();
 
     m_has_camera = false;
 }
@@ -229,6 +238,11 @@ void submit_model(const gpu_model& model)
 
         m_objects.push_back(part);
     }
+}
+
+void submit_light(const gpu_light& light)
+{
+    m_lights.push_back(light);
 }
 
 bool has_camera() { return m_has_camera; }
@@ -318,5 +332,12 @@ VkDeviceAddress get_materials_address()
 {
     return m_material_buffers[vk::frame::get_current_frame_index()].address;
 }
+
+VkDeviceAddress get_lights_address()
+{
+    return m_light_buffers[vk::frame::get_current_frame_index()].address;
+}
+
+uint32_t get_lights_count() { return static_cast<uint32_t>(m_lights.size()); }
 
 }

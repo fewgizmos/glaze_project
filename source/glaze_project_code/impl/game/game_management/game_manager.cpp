@@ -31,6 +31,26 @@ constexpr const char* SKY_CUBEMAP_DIR = "source/glaze_project_resources/cubemaps
 
 const glm::vec3 FOX_SCALE = glm::vec3(0.02f);
 
+const glaze::scene::vol::component::light_create_info SUN_LIGHT = {
+    .type      = glaze::scene::vol::component::light_type::directional,
+    .color     = glm::vec3(1.0f, 0.95f, 0.85f),
+    .intensity = 0.75f
+};
+
+const glaze::scene::vol::component::light_create_info AMBIENT_LIGHT = {
+    .type         = glaze::scene::vol::component::light_type::ambient,
+    .color        = glm::vec3(0.35f, 0.45f, 0.6f),
+    .ground_color = glm::vec3(0.15f, 0.12f, 0.1f),
+    .intensity    = 1.0f
+};
+
+const glaze::scene::vol::component::light_create_info BLUE_LIGHT = {
+    .type      = glaze::scene::vol::component::light_type::point,
+    .color     = glm::vec3(0.0f, 0.0f, 1.0f),
+    .intensity = 14.0f,
+    .range     = 8.0f
+};
+
 }
 
 void startup()
@@ -69,6 +89,12 @@ void init_session()
 
         glaze::scene::it::create_entity<glaze::world::res::cubemap>(SKY_CUBEMAP_DIR);
 
+        glaze::scene::it::create_entity<glaze::scene::obj::game_object_light_prim>(glm::vec3(0.0f), glm::vec3(-32.0f, -116.0f, 0.0f), SUN_LIGHT);
+        glaze::scene::it::create_entity<glaze::scene::obj::game_object_light_prim>(glm::vec3(0.0f), glm::vec3(0.0f), AMBIENT_LIGHT);
+
+        glaze::scene::it::create_entity<glaze::scene::obj::game_object_light_prim>(glm::vec3(6.4f, 2.2f, 6.0f), glm::vec3(0.0f), BLUE_LIGHT);
+        glaze::scene::it::create_entity<glaze::scene::obj::game_object_light_prim>(glm::vec3(1.4f, 1.0f, 0.0f), glm::vec3(0.0f), BLUE_LIGHT);
+
         if (glaze::scene::it::get_player_entity() == nullptr) {
 #ifndef NDEBUG
             glaze::scene::it::set_player_entity(glaze::scene::it::create_entity<trainer::scene::debug_camera_player_obj>());
@@ -87,6 +113,7 @@ void cleanup_session()
 
     glaze::scene::it::erase_all_entities_typed<glaze::scene::obj::static_object_model_prim>();
     glaze::scene::it::erase_all_entities_typed<glaze::world::res::cubemap>();
+    glaze::scene::it::erase_all_entities_typed<glaze::scene::obj::game_object_light_prim>();
 }
 
 }

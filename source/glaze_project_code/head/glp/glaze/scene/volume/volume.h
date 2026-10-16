@@ -1,6 +1,7 @@
 #pragma once
 
 #include "glp/glaze/rendering/scene_render/resources/gpu_camera.h"
+#include "glp/glaze/rendering/scene_render/resources/gpu_light.h"
 #include "glp/glaze/rendering/scene_render/resources/gpu_model.h"
 
 #include "glp/glaze/utilities/state_machine.h"
@@ -20,6 +21,7 @@ enum class component_flags : unsigned int
 {
     modeled = 1U << 0,
     camera  = 1U << 1,
+    light   = 1U << 2,
 };
 
 class volume_component
@@ -33,6 +35,7 @@ public:
 
     virtual rendering::scene_render::gpu_model get_model() { return {}; }
     virtual rendering::scene_render::gpu_camera get_camera() { return {}; }
+    virtual rendering::scene_render::gpu_light get_light() { return {}; }
 
     bool has_flag(component_flags flag) const { return m_flags.is_state_set(flag); }
 
