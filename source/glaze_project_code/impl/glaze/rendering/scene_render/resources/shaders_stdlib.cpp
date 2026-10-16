@@ -2,7 +2,6 @@
 
 #include "glp/glaze/rendering/scene_render/resources/shaders.h"
 
-#include "glp/glaze/rendering/vk/frame.h"
 #include "glp/glaze/rendering/vk/shaders.h"
 
 #include "glp/glaze/rendering/defines.h"
@@ -19,7 +18,7 @@ namespace
 const shader* build_base_model(const std::string& name, VkCullModeFlags cull_mode)
 {
     graphics_pipeline_create_info info;
-    info.color_format         = vk::frame::get_swapchain().image_format;
+    info.color_format         = HDR_FORMAT;
     info.depth_format         = DEPTH_FORMAT;
     info.cull_mode            = cull_mode;
     info.front_face           = VK_FRONT_FACE_COUNTER_CLOCKWISE;

@@ -46,6 +46,8 @@ std::vector<gpu_light> m_lights;
 gpu_camera m_camera;
 bool m_has_camera = false;
 
+gpu_post m_post;
+
 buffer m_object_buffers[MAX_FRAMES_IN_FLIGHT];
 buffer m_material_buffers[MAX_FRAMES_IN_FLIGHT];
 buffer m_light_buffers[MAX_FRAMES_IN_FLIGHT];
@@ -221,6 +223,8 @@ void clear()
     m_lights.clear();
 
     m_has_camera = false;
+
+    m_post = {};
 }
 
 void set_camera(const gpu_camera& camera)
@@ -240,6 +244,11 @@ void submit_model(const gpu_model& model)
     }
 }
 
+void set_post(const gpu_post& post)
+{
+    m_post = post;
+}
+
 void submit_light(const gpu_light& light)
 {
     m_lights.push_back(light);
@@ -248,6 +257,8 @@ void submit_light(const gpu_light& light)
 bool has_camera() { return m_has_camera; }
 
 const gpu_camera& get_camera() { return m_camera; }
+
+const gpu_post& get_post() { return m_post; }
 
 void handle_all()
 {

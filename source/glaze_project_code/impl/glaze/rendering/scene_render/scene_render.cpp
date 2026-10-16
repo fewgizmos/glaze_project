@@ -1,6 +1,7 @@
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
+#include "glp/glaze/rendering/scene_render/post_process.h"
 
 #include "glp/glaze/rendering/scene_render/resources/materials.h"
 #include "glp/glaze/rendering/scene_render/resources/meshes.h"
@@ -48,6 +49,7 @@ struct frame_scene_data
 };
 
 image m_depth_image;
+image m_hdr_image;
 
 buffer m_frame_buffers[MAX_FRAMES_IN_FLIGHT];
 
@@ -57,17 +59,32 @@ VkDescriptorSet m_scene_set = VK_NULL_HANDLE;
 
 uint32_t m_bound_samplers = 0;
 
-void create_depth_image(VkExtent2D extent)
+void create_render_targets()
 {
+    const VkExtent2D extent = vk::frame::get_swapchain().extent;
+
     m_depth_image = vk::resources::create_image(
         { extent.width, extent.height, 1 },
         DEPTH_FORMAT,
         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
         VK_IMAGE_ASPECT_DEPTH_BIT
     );
+
+    m_hdr_image = vk::resources::create_image(
+        { extent.width, extent.height, 1 },
+        HDR_FORMAT,
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT
+    );
 }
 
-void ensure_depth_image()
+void destroy_render_targets()
+{
+    vk::resources::destroy_image(m_hdr_image);
+    vk::resources::destroy_image(m_depth_image);
+}
+
+void ensure_render_targets()
 {
     const VkExtent2D extent = vk::frame::get_swapchain().extent;
 
@@ -77,9 +94,9 @@ void ensure_depth_image()
 
     vk::device::get_disp().deviceWaitIdle();
 
-    vk::resources::destroy_image(m_depth_image);
+    destroy_render_targets();
 
-    create_depth_image(extent);
+    create_render_targets();
 }
 
 void create_frame_buffers()
@@ -199,24 +216,28 @@ void init()
     queue_deletor::push([]() { vk::samplers::destroy_all(); });
     queue_deletor::push([]() { res::models::erase_all(); });
 
-    create_depth_image(vk::frame::get_swapchain().extent);
+    create_render_targets();
 
     create_frame_buffers();
 
     create_scene_set();
 
     frame_pipe::init_all();
+
+    post_process::init_all();
 }
 
 void cleanup()
 {
+    post_process::clean_all();
+
     frame_pipe::clean_all();
 
     destroy_scene_set();
 
     destroy_frame_buffers();
 
-    vk::resources::destroy_image(m_depth_image);
+    destroy_render_targets();
 }
 
 void handle_all()
@@ -227,11 +248,13 @@ void handle_all()
     res::shaders::destroy_replaced();
     res::textures::destroy_erased();
 
-    ensure_depth_image();
+    ensure_render_targets();
 
     handle_scene_set();
 
     frame_pipe::handle_all();
+
+    post_process::handle_all();
 
     if (frame_pipe::has_camera()) {
         handle_frame_data();
@@ -244,6 +267,7 @@ void draw_all()
 }
 
 const image& get_depth_image() { return m_depth_image; }
+const image& get_hdr_image()   { return m_hdr_image; }
 
 VkDeviceAddress get_frame_data_address()
 {

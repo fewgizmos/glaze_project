@@ -19,7 +19,7 @@ namespace glaze::world::res
 class cmp_cubemap : public scene::vol::volume_component
 {
 public:
-    cmp_cubemap(const std::string& dir);
+    cmp_cubemap(const std::string& dir, float intensity);
     ~cmp_cubemap() override;
 
     cmp_cubemap(const cmp_cubemap&) = delete;
@@ -40,7 +40,7 @@ private:
 class cubemap : public scene::scene_entity
 {
 public:
-    cubemap(const std::string& dir);
+    cubemap(const std::string& dir, float intensity = 1.0f);
 };
 
 }

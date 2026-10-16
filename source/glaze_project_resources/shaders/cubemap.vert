@@ -6,6 +6,7 @@
 const float CUBEMAP_DEPTH = 0.0000001;
 
 layout(location = 0) out vec3 view_ray;
+layout(location = 1) out vec3 tint;
 
 const vec2 CORNERS[3] = vec2[](
     vec2(-1.0, -1.0),
@@ -21,6 +22,10 @@ void main()
     vec4 far_point  = pc.frame.inv_view_proj * vec4(corner, 0.0, 1.0);
 
     view_ray = far_point.xyz / far_point.w - near_point.xyz / near_point.w;
+
+    object_data object = pc.frame.objects.data[gl_InstanceIndex];
+
+    tint = pc.frame.materials.data[object.material_index].base_color.rgb;
 
     gl_Position = vec4(corner, CUBEMAP_DEPTH, 1.0);
 }

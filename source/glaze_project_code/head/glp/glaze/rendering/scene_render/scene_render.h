@@ -12,6 +12,7 @@ void handle_all();
 void draw_all();
 
 const image& get_depth_image();
+const image& get_hdr_image();
 
 VkDeviceAddress get_frame_data_address();
 

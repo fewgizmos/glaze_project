@@ -6,7 +6,6 @@
 
 #include "glp/glaze/rendering/vk/descriptors.h"
 #include "glp/glaze/rendering/vk/device.h"
-#include "glp/glaze/rendering/vk/frame.h"
 #include "glp/glaze/rendering/vk/samplers.h"
 #include "glp/glaze/rendering/vk/shaders.h"
 
@@ -52,7 +51,7 @@ const rendering::scene_render::shader* cubemap_shader()
 {
     static const rendering::scene_render::shader* shd = [] {
         rendering::graphics_pipeline_create_info info;
-        info.color_format         = rendering::vk::frame::get_swapchain().image_format;
+        info.color_format         = rendering::HDR_FORMAT;
         info.depth_format         = rendering::DEPTH_FORMAT;
         info.cull_mode            = VK_CULL_MODE_NONE;
         info.depth_write          = false;
@@ -68,7 +67,7 @@ const rendering::scene_render::shader* cubemap_shader()
 
 }
 
-cmp_cubemap::cmp_cubemap(const std::string& dir)
+cmp_cubemap::cmp_cubemap(const std::string& dir, float intensity)
 {
     set_flag(scene::vol::component_flags::modeled);
 
@@ -140,6 +139,7 @@ cmp_cubemap::cmp_cubemap(const std::string& dir)
     rendering::scene_render::material_create_info create_info;
     create_info.target_shader = cubemap_shader();
     create_info.extra_set     = m_set;
+    create_info.base_color    = glm::vec4(glm::vec3(intensity), 1.0f);
 
     m_material = rendering::scene_render::res::materials::build(create_info);
 }
@@ -165,9 +165,9 @@ rendering::scene_render::gpu_model cmp_cubemap::get_model()
     return result;
 }
 
-cubemap::cubemap(const std::string& dir)
+cubemap::cubemap(const std::string& dir, float intensity)
 {
-    m_scene_volume().components.push_back(std::make_unique<cmp_cubemap>(dir));
+    m_scene_volume().components.push_back(std::make_unique<cmp_cubemap>(dir, intensity));
 }
 
 }

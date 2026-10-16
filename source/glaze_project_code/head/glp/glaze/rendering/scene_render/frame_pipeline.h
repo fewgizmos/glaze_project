@@ -3,6 +3,7 @@
 #include "glp/glaze/rendering/scene_render/resources/gpu_camera.h"
 #include "glp/glaze/rendering/scene_render/resources/gpu_light.h"
 #include "glp/glaze/rendering/scene_render/resources/gpu_model.h"
+#include "glp/glaze/rendering/scene_render/resources/gpu_post.h"
 
 #include <vulkan/vulkan_core.h>
 
@@ -17,11 +18,13 @@ void clean_all();
 void clear();
 
 void set_camera(const gpu_camera& camera);
+void set_post(const gpu_post& post);
 void submit_model(const gpu_model& model);
 void submit_light(const gpu_light& light);
 
 bool has_camera();
 const gpu_camera& get_camera();
+const gpu_post& get_post();
 
 void handle_all();
 void draw_all();

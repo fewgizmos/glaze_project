@@ -2,6 +2,7 @@
 
 #include "glp/glaze/rendering/queue_deletor.h"
 
+#include "glp/glaze/rendering/scene_render/post_process.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
 #include "glp/glaze/rendering/vk/commands.h"
@@ -52,26 +53,46 @@ void create_instance()
     queue_deletor::push([]() { vkb::destroy_instance(m_vk_instance); });
 }
 
-void begin_rendering()
+void set_viewport(VkCommandBuffer cmd, VkExtent2D extent)
+{
+    const vkb::DispatchTable& disp = vk::device::get_disp();
+
+    VkViewport viewport = {};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor = {};
+    scissor.offset = { 0, 0 };
+    scissor.extent = extent;
+
+    disp.cmdSetViewport(cmd, 0, 1, &viewport);
+    disp.cmdSetScissor(cmd, 0, 1, &scissor);
+}
+
+void begin_scene_rendering()
 {
     const vkb::DispatchTable& disp = vk::device::get_disp();
 
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
-    const swapchain_image_data& target = vk::frame::get_current_image();
+    const image& hdr   = scene_render::it::get_hdr_image();
     const image& depth = scene_render::it::get_depth_image();
 
     const VkExtent2D extent = vk::frame::get_swapchain().extent;
 
     vk::commands::transition_image(
         cmd,
-        target.image,
+        hdr.handle,
         VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
         0,
         VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
+        VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
     );
 
     vk::commands::transition_image(
@@ -88,7 +109,7 @@ void begin_rendering()
 
     VkRenderingAttachmentInfo color_attachment = {};
     color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    color_attachment.imageView = target.image_view;
+    color_attachment.imageView = hdr.view;
     color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     color_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
     color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -113,22 +134,63 @@ void begin_rendering()
     rendering_info.pColorAttachments = &color_attachment;
     rendering_info.pDepthAttachment = &depth_attachment;
 
-    VkViewport viewport = {};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(extent.width);
-    viewport.height = static_cast<float>(extent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
+    disp.cmdBeginRendering(cmd, &rendering_info);
 
-    VkRect2D scissor = {};
-    scissor.offset = { 0, 0 };
-    scissor.extent = extent;
+    set_viewport(cmd, extent);
+}
+
+void begin_post_rendering()
+{
+    const vkb::DispatchTable& disp = vk::device::get_disp();
+
+    VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
+
+    const swapchain_image_data& target = vk::frame::get_current_image();
+    const image& hdr = scene_render::it::get_hdr_image();
+
+    const VkExtent2D extent = vk::frame::get_swapchain().extent;
+
+    vk::commands::transition_image(
+        cmd,
+        hdr.handle,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
+        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
+    );
+
+    vk::commands::transition_image(
+        cmd,
+        target.image,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        0,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
+    );
+
+    VkRenderingAttachmentInfo color_attachment = {};
+    color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    color_attachment.imageView = target.image_view;
+    color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    color_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
+    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+    VkRenderingInfo rendering_info = {};
+    rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    rendering_info.renderArea.offset = { 0, 0 };
+    rendering_info.renderArea.extent = extent;
+    rendering_info.layerCount = 1;
+    rendering_info.colorAttachmentCount = 1;
+    rendering_info.pColorAttachments = &color_attachment;
 
     disp.cmdBeginRendering(cmd, &rendering_info);
 
-    disp.cmdSetViewport(cmd, 0, 1, &viewport);
-    disp.cmdSetScissor(cmd, 0, 1, &scissor);
+    set_viewport(cmd, extent);
 }
 
 void record_command_buffer()
@@ -146,9 +208,15 @@ void record_command_buffer()
 
     scene_render::it::handle_all();
 
-    begin_rendering();
+    begin_scene_rendering();
 
     scene_render::it::draw_all();
+
+    vk::device::get_disp().cmdEndRendering(cmd);
+
+    begin_post_rendering();
+
+    scene_render::post_process::draw_all();
 
     vk::device::get_disp().cmdEndRendering(cmd);
 

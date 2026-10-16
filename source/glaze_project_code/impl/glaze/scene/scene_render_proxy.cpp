@@ -62,6 +62,21 @@ void proxy_volume_models(const vol::scene_volume& volume)
     }
 }
 
+bool proxy_volume_post(const vol::scene_volume& volume)
+{
+    for (const std::unique_ptr<vol::volume_component>& comp : volume.components) {
+        if (!comp->has_flag(vol::component_flags::post)) {
+            continue;
+        }
+
+        rendering::scene_render::frame_pipe::set_post(comp->get_post());
+
+        return true;
+    }
+
+    return false;
+}
+
 void proxy_volume_lights(const vol::scene_volume& volume)
 {
     const glm::mat4 world = vol::compose_transform(volume.w_pos, volume.w_rot, glm::vec3(1.0f));
@@ -87,6 +102,8 @@ void proxy_visibles()
 
     proxy_camera();
 
+    bool has_post = false;
+
     for (const std::unique_ptr<scene_entity>& ent : it::get_all_entities()) {
         if (it::util::is_entity_pending_erase(ent.get())) {
             continue;
@@ -97,6 +114,10 @@ void proxy_visibles()
 
         proxy_volume_lights(ent->scene_volume());
         proxy_volume_lights(ent->scene_gizmo_volume());
+
+        if (!has_post) {
+            has_post = proxy_volume_post(ent->scene_volume()) || proxy_volume_post(ent->scene_gizmo_volume());
+        }
     }
 }
 
