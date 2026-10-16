@@ -3,7 +3,7 @@
 
 #include "util/scene.glsl"
 
-const float SKYBOX_DEPTH = 0.0000001;
+const float CUBEMAP_DEPTH = 0.0000001;
 
 layout(location = 0) out vec3 view_ray;
 
@@ -22,5 +22,5 @@ void main()
 
     view_ray = far_point.xyz / far_point.w - near_point.xyz / near_point.w;
 
-    gl_Position = vec4(corner, SKYBOX_DEPTH, 1.0);
+    gl_Position = vec4(corner, CUBEMAP_DEPTH, 1.0);
 }

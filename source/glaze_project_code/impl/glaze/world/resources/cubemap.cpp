@@ -48,7 +48,7 @@ VkDescriptorSetLayout cubemap_set_layout()
     return layout;
 }
 
-const rendering::scene_render::shader* skybox_shader()
+const rendering::scene_render::shader* cubemap_shader()
 {
     static const rendering::scene_render::shader* shd = [] {
         rendering::graphics_pipeline_create_info info;
@@ -60,7 +60,7 @@ const rendering::scene_render::shader* skybox_shader()
         info.push_constant_size   = sizeof(VkDeviceAddress);
         info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        return rendering::scene_render::res::shaders::build("skybox", "skybox.vert", "skybox.frag", "", info, {}, rendering::scene_render::render_queue::skybox);
+        return rendering::scene_render::res::shaders::build("cubemap", "cubemap.vert", "cubemap.frag", "", info, {}, rendering::scene_render::render_queue::skybox);
     }();
 
     return shd;
@@ -138,7 +138,7 @@ cmp_cubemap::cmp_cubemap(const std::string& dir)
     m_mesh = rendering::scene_render::res::meshes::build(vertices, indices);
 
     rendering::scene_render::material_create_info create_info;
-    create_info.target_shader = skybox_shader();
+    create_info.target_shader = cubemap_shader();
     create_info.extra_set     = m_set;
 
     m_material = rendering::scene_render::res::materials::build(create_info);
