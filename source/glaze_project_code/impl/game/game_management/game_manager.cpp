@@ -30,6 +30,8 @@ constexpr const char* FOX_MODEL_PATH = "source/glaze_project_resources/gltf/fox/
 constexpr const char* TREE_MODEL_PATH = "source/glaze_project_resources/gltf/tree/tree_small_02_2k.gltf";
 constexpr const char* GOLD_LOCK_MODEL_PATH = "source/glaze_project_resources/glb/gold_lock.glb";
 constexpr const char* WOODEN_CRATE_MODEL_PATH = "source/glaze_project_resources/glb/wooden_crate.glb";
+constexpr const char* PCB_MODEL_PATH = "source/glaze_project_resources/gltf/circuit_board/circuit_board_2k.gltf";
+constexpr const char* SERVICE_PISTOL_MODEL_PATH = "source/glaze_project_resources/gltf/pistol/service_pistol_2k.gltf";
 
 constexpr const char* SKYBOX_PATH = "source/glaze_project_resources/skybox/sky.hdr";
 
@@ -86,6 +88,8 @@ void init_session()
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(6.0f, 0.0f, 6.0f), glm::vec3(0), glm::vec3(1.5f), TREE_MODEL_PATH);
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(0.0f, 1.0f, 5.0f), glm::vec3(77.0f, 10.0f, 0.0f), glm::vec3(4.0f), GOLD_LOCK_MODEL_PATH);
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-8.0f, 0.0f, -6.0f), glm::vec3(0), glm::vec3(3.4f), WOODEN_CRATE_MODEL_PATH);
+        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-10.0f, 0.0f, -6.0f), glm::vec3(0), glm::vec3(3.4f), PCB_MODEL_PATH);
+        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-6.0f, 0.0f, 6.0f), glm::vec3(0), glm::vec3(3.4f), SERVICE_PISTOL_MODEL_PATH);
 
         glaze::scene::it::create_entity<glaze::world::res::skybox>(SKYBOX_PATH, 30000.0f, 100000.0f, SUNSET_SUN_COLOR);
 

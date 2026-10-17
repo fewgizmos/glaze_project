@@ -114,7 +114,7 @@ const rendering::scene_render::shader* cubemap_shader()
         info.push_constant_size   = sizeof(VkDeviceAddress);
         info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        return rendering::scene_render::res::shaders::build("cubemap", "cubemap.vert", "cubemap.frag", "", info, {}, rendering::scene_render::render_queue::skybox);
+        return rendering::scene_render::res::shaders::build("cubemap", "sys/cubemap.vert", "sys/cubemap.frag", "", info, {}, rendering::scene_render::render_queue::skybox);
     }();
 
     return shd;
@@ -126,7 +126,7 @@ const rendering::scene_render::shader* panorama_shader()
         rendering::compute_pipeline_create_info info;
         info.set_layouts = { bake_set_layout() };
 
-        return rendering::scene_render::res::shaders::build("ibl_panorama", "", "", "ibl_panorama.comp", {}, info, rendering::scene_render::render_queue::opaque);
+        return rendering::scene_render::res::shaders::build("ibl_panorama", "", "", "sys/ibl_panorama.comp", {}, info, rendering::scene_render::render_queue::opaque);
     }();
 
     return shd;
@@ -139,7 +139,7 @@ const rendering::scene_render::shader* prefilter_shader()
         info.set_layouts        = { bake_set_layout() };
         info.push_constant_size = sizeof(prefilter_push);
 
-        return rendering::scene_render::res::shaders::build("ibl_prefilter", "", "", "ibl_prefilter.comp", {}, info, rendering::scene_render::render_queue::opaque);
+        return rendering::scene_render::res::shaders::build("ibl_prefilter", "", "", "sys/ibl_prefilter.comp", {}, info, rendering::scene_render::render_queue::opaque);
     }();
 
     return shd;

@@ -92,7 +92,7 @@ void bake_images()
     compute_pipeline_create_info compute_info;
     compute_info.set_layouts = { bake_layout };
 
-    const shader* lut_shader = res::shaders::build("ibl_brdf_lut", "", "", "ibl_brdf_lut.comp", {}, compute_info, render_queue::opaque);
+    const shader* lut_shader = res::shaders::build("ibl_brdf_lut", "", "", "sys/ibl_brdf_lut.comp", {}, compute_info, render_queue::opaque);
 
     vk::commands::immediate_submit([&](VkCommandBuffer cmd) {
         const vkb::DispatchTable& disp = vk::device::get_disp();

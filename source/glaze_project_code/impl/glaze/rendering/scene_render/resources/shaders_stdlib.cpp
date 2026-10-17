@@ -43,7 +43,7 @@ const shader* build_prepass(const std::string& name, VkCullModeFlags cull_mode)
     info.push_constant_size   = sizeof(VkDeviceAddress);
     info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    return res::shaders::build(name, "base_model.vert", "prepass.frag", "", info, {}, render_queue::opaque);
+    return res::shaders::build(name, "base_model.vert", "sys/prepass.frag", "", info, {}, render_queue::opaque);
 }
 
 }
