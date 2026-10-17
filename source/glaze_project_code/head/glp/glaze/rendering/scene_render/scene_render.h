@@ -9,10 +9,17 @@ void init();
 void cleanup();
 
 void handle_all();
+
+void draw_prepass();
 void draw_all();
 
 const image& get_depth_image();
 const image& get_hdr_image();
+const image& get_normal_image();
+const image& get_velocity_image();
+const image& get_gtao_image();
+const image& get_taa_output_image();
+const image& get_taa_history_image();
 
 VkDeviceAddress get_frame_data_address();
 

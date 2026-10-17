@@ -18,8 +18,10 @@ enum class shader_stage
 
 struct graphics_pipeline_create_info
 {
-    VkFormat color_format = VK_FORMAT_UNDEFINED;
+    std::vector<VkFormat> color_formats;
     VkFormat depth_format = VK_FORMAT_UNDEFINED;
+
+    VkCompareOp depth_compare = VK_COMPARE_OP_GREATER;
 
     VkCullModeFlags cull_mode = VK_CULL_MODE_BACK_BIT;
     VkFrontFace front_face    = VK_FRONT_FACE_CLOCKWISE;

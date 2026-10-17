@@ -38,7 +38,6 @@ namespace
 constexpr uint32_t FACES_COUNT = 6;
 constexpr uint32_t PIXEL_SIZE  = 4;
 
-constexpr uint32_t IRRADIANCE_SIZE  = 32;
 constexpr uint32_t PREFILTERED_SIZE = 128;
 constexpr uint32_t PREFILTERED_MIPS = 5;
 
@@ -48,8 +47,11 @@ constexpr VkFormat IBL_FORMAT = VK_FORMAT_R16G16B16A16_SFLOAT;
 
 constexpr float PANORAMA_MAX_VALUE = 60000.0f;
 
-constexpr float SUN_THRESHOLD_FRACTION = 0.5f;
+constexpr float SUN_THRESHOLD_FRACTION = 0.9f;
 constexpr float SUN_REPLACE_LUMINANCE  = 5.0f;
+
+constexpr float SUN_REMOVAL_FRACTION      = 0.01f;
+constexpr float SUN_REMOVAL_MIN_LUMINANCE = 50.0f;
 
 const glm::vec3 LUMINANCE_WEIGHTS = glm::vec3(0.2126f, 0.7152f, 0.0722f);
 
@@ -57,8 +59,14 @@ struct sun_data
 {
     bool found = false;
 
-    glm::vec3 direction  = glm::vec3(0.0f, -1.0f, 0.0f);
-    glm::vec3 irradiance = glm::vec3(0.0f);
+    glm::vec3 direction = glm::vec3(0.0f, -1.0f, 0.0f);
+};
+
+struct sky_lighting
+{
+    glm::vec3 irradiance_sh[rendering::scene_render::ENVIRONMENT_SH_COUNT] = {};
+
+    float upward_irradiance = 0.0f;
 };
 
 struct prefilter_push
@@ -98,7 +106,7 @@ const rendering::scene_render::shader* cubemap_shader()
 {
     static const rendering::scene_render::shader* shd = [] {
         rendering::graphics_pipeline_create_info info;
-        info.color_format         = rendering::HDR_FORMAT;
+        info.color_formats        = { rendering::HDR_FORMAT };
         info.depth_format         = rendering::DEPTH_FORMAT;
         info.cull_mode            = VK_CULL_MODE_NONE;
         info.depth_write          = false;
@@ -119,18 +127,6 @@ const rendering::scene_render::shader* panorama_shader()
         info.set_layouts = { bake_set_layout() };
 
         return rendering::scene_render::res::shaders::build("ibl_panorama", "", "", "ibl_panorama.comp", {}, info, rendering::scene_render::render_queue::opaque);
-    }();
-
-    return shd;
-}
-
-const rendering::scene_render::shader* irradiance_shader()
-{
-    static const rendering::scene_render::shader* shd = [] {
-        rendering::compute_pipeline_create_info info;
-        info.set_layouts = { bake_set_layout() };
-
-        return rendering::scene_render::res::shaders::build("ibl_irradiance", "", "", "ibl_irradiance.comp", {}, info, rendering::scene_render::render_queue::opaque);
     }();
 
     return shd;
@@ -203,77 +199,69 @@ float pixel_luminance(const float* pixel)
     return glm::dot(glm::vec3(pixel[0], pixel[1], pixel[2]), LUMINANCE_WEIGHTS);
 }
 
-std::vector<size_t> find_sun_cluster(const std::vector<float>& luminance, int width, int height, float threshold)
+std::vector<size_t> grow_sun_spot(const std::vector<float>& luminance, int width, int upper_height, size_t seed, float threshold)
 {
     std::vector<bool> visited(luminance.size(), false);
 
-    std::vector<size_t> best;
-    std::vector<size_t> current;
-    std::vector<size_t> stack;
+    std::vector<size_t> spot;
+    std::vector<size_t> stack(1, seed);
 
-    for (size_t start = 0; start < luminance.size(); start++) {
-        if (visited[start] || luminance[start] < threshold) {
-            continue;
-        }
+    visited[seed] = true;
 
-        current.clear();
-        stack.assign(1, start);
+    while (!stack.empty()) {
+        const size_t index = stack.back();
 
-        visited[start] = true;
+        stack.pop_back();
+        spot.push_back(index);
 
-        while (!stack.empty()) {
-            const size_t index = stack.back();
+        const int x = static_cast<int>(index % width);
+        const int y = static_cast<int>(index / width);
 
-            stack.pop_back();
-            current.push_back(index);
+        const int neighbours[4][2] = {
+            { (x + 1) % width, y },
+            { (x + width - 1) % width, y },
+            { x, y + 1 },
+            { x, y - 1 }
+        };
 
-            const int x = static_cast<int>(index % width);
-            const int y = static_cast<int>(index / width);
-
-            const int neighbours[4][2] = {
-                { (x + 1) % width, y },
-                { (x + width - 1) % width, y },
-                { x, y + 1 },
-                { x, y - 1 }
-            };
-
-            for (const auto& neighbour : neighbours) {
-                if (neighbour[1] < 0 || neighbour[1] >= height) {
-                    continue;
-                }
-
-                const size_t next = static_cast<size_t>(neighbour[1]) * width + neighbour[0];
-
-                if (visited[next] || luminance[next] < threshold) {
-                    continue;
-                }
-
-                visited[next] = true;
-
-                stack.push_back(next);
+        for (const auto& neighbour : neighbours) {
+            if (neighbour[1] < 0 || neighbour[1] >= upper_height) {
+                continue;
             }
-        }
 
-        if (current.size() > best.size()) {
-            best.swap(current);
+            const size_t next = static_cast<size_t>(neighbour[1]) * width + neighbour[0];
+
+            if (visited[next] || luminance[next] < threshold) {
+                continue;
+            }
+
+            visited[next] = true;
+
+            stack.push_back(next);
         }
     }
 
-    return best;
+    return spot;
 }
 
 sun_data extract_sun(float* pixels, int width, int height)
 {
-    const size_t pixels_count = static_cast<size_t>(width) * height;
+    const int upper_height = height / 2;
+
+    const size_t pixels_count = static_cast<size_t>(width) * upper_height;
 
     std::vector<float> luminance(pixels_count);
 
     float max_luminance = 0.0f;
+    size_t max_index    = 0;
 
     for (size_t i = 0; i < pixels_count; i++) {
         luminance[i] = pixel_luminance(pixels + i * PIXEL_SIZE);
 
-        max_luminance = std::max(max_luminance, luminance[i]);
+        if (luminance[i] > max_luminance) {
+            max_luminance = luminance[i];
+            max_index     = i;
+        }
     }
 
     sun_data result;
@@ -282,7 +270,7 @@ sun_data extract_sun(float* pixels, int width, int height)
         return result;
     }
 
-    const std::vector<size_t> cluster = find_sun_cluster(luminance, width, height, max_luminance * SUN_THRESHOLD_FRACTION);
+    const std::vector<size_t> cluster = grow_sun_spot(luminance, width, upper_height, max_index, max_luminance * SUN_THRESHOLD_FRACTION);
 
     const float pixel_phi   = 2.0f * glm::pi<float>() / static_cast<float>(width);
     const float pixel_theta = glm::pi<float>() / static_cast<float>(height);
@@ -300,20 +288,25 @@ sun_data extract_sun(float* pixels, int width, int height)
 
         const float solid_angle = pixel_phi * pixel_theta * glm::sin(theta);
 
-        float* pixel = pixels + index * PIXEL_SIZE;
-
-        result.irradiance  += glm::vec3(pixel[0], pixel[1], pixel[2]) * solid_angle;
         weighted_direction += direction * luminance[index] * solid_angle;
-
-        const float scale = SUN_REPLACE_LUMINANCE / std::max(luminance[index], SUN_REPLACE_LUMINANCE);
-
-        pixel[0] *= scale;
-        pixel[1] *= scale;
-        pixel[2] *= scale;
     }
 
     if (glm::length(weighted_direction) <= 0.0f) {
         return result;
+    }
+
+    const float removal_threshold = std::max(max_luminance * SUN_REMOVAL_FRACTION, SUN_REMOVAL_MIN_LUMINANCE);
+
+    if (max_luminance >= removal_threshold) {
+        for (const size_t index : grow_sun_spot(luminance, width, upper_height, max_index, removal_threshold)) {
+            float* pixel = pixels + index * PIXEL_SIZE;
+
+            const float scale = SUN_REPLACE_LUMINANCE / std::max(luminance[index], SUN_REPLACE_LUMINANCE);
+
+            pixel[0] *= scale;
+            pixel[1] *= scale;
+            pixel[2] *= scale;
+        }
     }
 
     result.found     = true;
@@ -322,7 +315,64 @@ sun_data extract_sun(float* pixels, int width, int height)
     return result;
 }
 
-rendering::image load_panorama(const std::string& path, sky_source& source, sun_data& sun)
+void sh_basis(const glm::vec3& direction, float basis[rendering::scene_render::ENVIRONMENT_SH_COUNT])
+{
+    basis[0] = 0.282095f;
+
+    basis[1] = 0.488603f * direction.y;
+    basis[2] = 0.488603f * direction.z;
+    basis[3] = 0.488603f * direction.x;
+
+    basis[4] = 1.092548f * direction.x * direction.y;
+    basis[5] = 1.092548f * direction.y * direction.z;
+    basis[6] = 0.315392f * (3.0f * direction.z * direction.z - 1.0f);
+    basis[7] = 1.092548f * direction.x * direction.z;
+    basis[8] = 0.546274f * (direction.x * direction.x - direction.y * direction.y);
+}
+
+sky_lighting compute_sky_lighting(const float* pixels, int width, int height)
+{
+    const float band_factors[rendering::scene_render::ENVIRONMENT_SH_COUNT] = {
+        1.0f,
+        2.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f,
+        0.25f, 0.25f, 0.25f, 0.25f, 0.25f
+    };
+
+    const float pixel_phi   = 2.0f * glm::pi<float>() / static_cast<float>(width);
+    const float pixel_theta = glm::pi<float>() / static_cast<float>(height);
+
+    sky_lighting result;
+
+    float basis[rendering::scene_render::ENVIRONMENT_SH_COUNT];
+
+    for (int y = 0; y < height; y++) {
+        const float theta = (static_cast<float>(y) + 0.5f) / static_cast<float>(height) * glm::pi<float>();
+
+        const float solid_angle = pixel_phi * pixel_theta * glm::sin(theta);
+
+        for (int x = 0; x < width; x++) {
+            const float phi = ((static_cast<float>(x) + 0.5f) / static_cast<float>(width) - 0.5f) * 2.0f * glm::pi<float>();
+
+            const glm::vec3 direction(glm::sin(theta) * glm::cos(phi), glm::cos(theta), glm::sin(theta) * glm::sin(phi));
+
+            const float* pixel = pixels + (static_cast<size_t>(y) * width + x) * PIXEL_SIZE;
+
+            const glm::vec3 radiance(pixel[0], pixel[1], pixel[2]);
+
+            sh_basis(direction, basis);
+
+            for (uint32_t i = 0; i < rendering::scene_render::ENVIRONMENT_SH_COUNT; i++) {
+                result.irradiance_sh[i] += radiance * basis[i] * solid_angle * band_factors[i];
+            }
+
+            result.upward_irradiance += pixel_luminance(pixel) * std::max(direction.y, 0.0f) * solid_angle;
+        }
+    }
+
+    return result;
+}
+
+rendering::image load_panorama(const std::string& path, sky_source& source, sun_data& sun, sky_lighting& lighting)
 {
     int width    = 0;
     int height   = 0;
@@ -340,6 +390,8 @@ rendering::image load_panorama(const std::string& path, sky_source& source, sun_
     for (size_t i = 0; i < values_count; i++) {
         pixels[i] = std::clamp(pixels[i], 0.0f, PANORAMA_MAX_VALUE);
     }
+
+    lighting = compute_sky_lighting(pixels, width, height);
 
     source.staging = rendering::vk::resources::create_buffer(
         bytes_count,
@@ -461,9 +513,9 @@ void record_sky(VkCommandBuffer cmd, const rendering::image& sky, const sky_sour
     rendering::vk::resources::record_mip_generation(cmd, sky);
 }
 
-void bake(const rendering::image& sky, const sky_source& source, const rendering::image& irradiance, const rendering::image& prefiltered)
+void bake(const rendering::image& sky, const sky_source& source, const rendering::image& prefiltered)
 {
-    const uint32_t sets_count = 1 + PREFILTERED_MIPS;
+    const uint32_t sets_count = PREFILTERED_MIPS;
 
     const VkDescriptorPool pool = rendering::vk::descriptors::create_pool(
         sets_count,
@@ -472,12 +524,6 @@ void bake(const rendering::image& sky, const sky_source& source, const rendering
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          sets_count }
         }
     );
-
-    const VkImageView irradiance_view = rendering::vk::resources::create_image_view(irradiance, VK_IMAGE_VIEW_TYPE_2D_ARRAY, 0, 1);
-
-    const VkDescriptorSet irradiance_set = rendering::vk::descriptors::allocate_set(pool, bake_set_layout());
-
-    write_bake_set(irradiance_set, sky, irradiance_view);
 
     std::vector<VkImageView> prefiltered_views;
     std::vector<VkDescriptorSet> prefiltered_sets;
@@ -489,8 +535,7 @@ void bake(const rendering::image& sky, const sky_source& source, const rendering
         write_bake_set(prefiltered_sets.back(), sky, prefiltered_views.back());
     }
 
-    const rendering::scene_render::shader* irradiance_target = irradiance_shader();
-    const rendering::scene_render::shader* prefilter_target  = prefilter_shader();
+    const rendering::scene_render::shader* prefilter_target = prefilter_shader();
 
     rendering::vk::commands::immediate_submit([&](VkCommandBuffer cmd) {
         const vkb::DispatchTable& disp = rendering::vk::device::get_disp();
@@ -505,20 +550,7 @@ void bake(const rendering::image& sky, const sky_source& source, const rendering
             VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
         );
 
-        transition_bake_target(cmd, irradiance, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
         transition_bake_target(cmd, prefiltered, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-
-        disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, irradiance_target->compute.layout, 0, 1, &irradiance_set, 0, nullptr);
-
-        rendering::vk::commands::dispatch(
-            cmd,
-            irradiance_target->compute,
-            nullptr,
-            0,
-            get_groups(IRRADIANCE_SIZE),
-            get_groups(IRRADIANCE_SIZE),
-            FACES_COUNT
-        );
 
         for (uint32_t mip = 0; mip < PREFILTERED_MIPS; mip++) {
             const uint32_t mip_size = std::max(PREFILTERED_SIZE >> mip, 1u);
@@ -541,15 +573,12 @@ void bake(const rendering::image& sky, const sky_source& source, const rendering
             );
         }
 
-        transition_bake_target(cmd, irradiance, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         transition_bake_target(cmd, prefiltered, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     });
 
     for (const VkImageView view : prefiltered_views) {
         rendering::vk::resources::destroy_image_view(view);
     }
-
-    rendering::vk::resources::destroy_image_view(irradiance_view);
 
     rendering::vk::descriptors::destroy_pool(pool);
 }
@@ -568,26 +597,31 @@ void write_environment_image(VkDescriptorSet set, uint32_t binding, const render
 
 }
 
-cmp_cubemap::cmp_cubemap(const std::string& path, float intensity, float sun_intensity) : m_intensity(intensity)
+cmp_cubemap::cmp_cubemap(const std::string& path, float sky_illuminance, float sun_illuminance, glm::vec3 sun_color)
 {
     set_flag(scene::vol::component_flags::modeled);
     set_flag(scene::vol::component_flags::environment);
 
     sky_source source;
     sun_data sun;
+    sky_lighting lighting;
 
-    m_image = load_panorama(path, source, sun);
+    m_image = load_panorama(path, source, sun, lighting);
+
+    m_intensity = lighting.upward_irradiance > 0.0f ? sky_illuminance / lighting.upward_irradiance : 0.0f;
+
+    for (uint32_t i = 0; i < rendering::scene_render::ENVIRONMENT_SH_COUNT; i++) {
+        m_irradiance_sh[i] = glm::vec4(lighting.irradiance_sh[i], 0.0f);
+    }
 
     if (sun.found) {
-        const float peak = std::max(sun.irradiance.r, std::max(sun.irradiance.g, sun.irradiance.b));
-
         const glm::vec3 forward = -sun.direction;
 
-        m_has_sun = peak > 0.0f;
+        m_has_sun = true;
 
         m_sun.type      = scene::vol::component::light_type::directional;
-        m_sun.color     = peak > 0.0f ? sun.irradiance / peak : glm::vec3(1.0f);
-        m_sun.intensity = sun_intensity;
+        m_sun.color     = sun_color;
+        m_sun.intensity = sun_illuminance;
 
         m_sun_rot = glm::vec3(
             glm::degrees(glm::asin(glm::clamp(forward.y, -1.0f, 1.0f))),
@@ -595,16 +629,6 @@ cmp_cubemap::cmp_cubemap(const std::string& path, float intensity, float sun_int
             0.0f
         );
     }
-
-    m_irradiance = rendering::vk::resources::create_image(
-        { IRRADIANCE_SIZE, IRRADIANCE_SIZE, 1 },
-        IBL_FORMAT,
-        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
-        VK_IMAGE_ASPECT_COLOR_BIT,
-        1,
-        FACES_COUNT,
-        true
-    );
 
     m_prefiltered = rendering::vk::resources::create_image(
         { PREFILTERED_SIZE, PREFILTERED_SIZE, 1 },
@@ -616,15 +640,14 @@ cmp_cubemap::cmp_cubemap(const std::string& path, float intensity, float sun_int
         true
     );
 
-    bake(m_image, source, m_irradiance, m_prefiltered);
+    bake(m_image, source, m_prefiltered);
 
     destroy_sky_source(source);
 
-    m_pool = rendering::vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 } });
+    m_pool = rendering::vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 } });
     m_set  = rendering::vk::descriptors::allocate_set(m_pool, rendering::scene_render::environment::get_set_layout());
 
     write_environment_image(m_set, rendering::scene_render::environment::SKY_BINDING, m_image);
-    write_environment_image(m_set, rendering::scene_render::environment::IRRADIANCE_BINDING, m_irradiance);
     write_environment_image(m_set, rendering::scene_render::environment::PREFILTERED_BINDING, m_prefiltered);
 
     rendering::scene_render::environment::write_brdf_lut(m_set);
@@ -637,7 +660,7 @@ cmp_cubemap::cmp_cubemap(const std::string& path, float intensity, float sun_int
     rendering::scene_render::material_create_info create_info;
     create_info.target_shader = cubemap_shader();
     create_info.extra_set     = m_set;
-    create_info.base_color    = glm::vec4(glm::vec3(intensity), 1.0f);
+    create_info.base_color    = glm::vec4(glm::vec3(m_intensity), 1.0f);
 
     m_material = rendering::scene_render::res::materials::build(create_info);
 }
@@ -652,7 +675,6 @@ cmp_cubemap::~cmp_cubemap()
     rendering::vk::descriptors::destroy_pool(m_pool);
 
     rendering::vk::resources::destroy_image(m_prefiltered);
-    rendering::vk::resources::destroy_image(m_irradiance);
     rendering::vk::resources::destroy_image(m_image);
 }
 
@@ -672,12 +694,16 @@ rendering::scene_render::gpu_environment cmp_cubemap::get_environment()
     result.set       = m_set;
     result.intensity = m_intensity;
 
+    for (uint32_t i = 0; i < rendering::scene_render::ENVIRONMENT_SH_COUNT; i++) {
+        result.irradiance_sh[i] = m_irradiance_sh[i];
+    }
+
     return result;
 }
 
-skybox::skybox(const std::string& path, float intensity, float sun_intensity)
+skybox::skybox(const std::string& path, float sky_illuminance, float sun_illuminance, glm::vec3 sun_color)
 {
-    std::unique_ptr<cmp_cubemap> sky = std::make_unique<cmp_cubemap>(path, intensity, sun_intensity);
+    std::unique_ptr<cmp_cubemap> sky = std::make_unique<cmp_cubemap>(path, sky_illuminance, sun_illuminance, sun_color);
 
     if (sky->has_sun()) {
         std::unique_ptr<scene::vol::component::light> sun = std::make_unique<scene::vol::component::light>(sky->get_sun());

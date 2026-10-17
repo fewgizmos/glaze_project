@@ -15,12 +15,16 @@
 #include <glm/vec4.hpp>
 
 #include <memory>
+#include <unordered_map>
 
 namespace glaze::scene::render_proxy
 {
 
 namespace
 {
+
+std::unordered_map<const vol::scene_volume*, glm::mat4> m_previous_worlds;
+std::unordered_map<const vol::scene_volume*, glm::mat4> m_current_worlds;
 
 void proxy_camera()
 {
@@ -54,6 +58,12 @@ void proxy_volume_models(const vol::scene_volume& volume)
 {
     const glm::mat4 world = vol::compose_transform(volume.w_pos, volume.w_rot, volume.w_scale);
 
+    const auto previous = m_previous_worlds.find(&volume);
+
+    const glm::mat4 previous_world = previous != m_previous_worlds.end() ? previous->second : world;
+
+    m_current_worlds[&volume] = world;
+
     for (const std::unique_ptr<vol::volume_component>& comp : volume.components) {
         if (!comp->has_flag(vol::component_flags::modeled)) {
             continue;
@@ -61,7 +71,7 @@ void proxy_volume_models(const vol::scene_volume& volume)
 
         rendering::scene_render::gpu_model model = comp->get_model();
 
-        util::apply_model_world(model, world);
+        util::apply_model_world(model, world, previous_world);
 
         rendering::scene_render::frame_pipe::submit_model(model);
     }
@@ -144,15 +154,19 @@ void proxy_visibles()
             has_environment = proxy_volume_environment(ent->scene_volume()) || proxy_volume_environment(ent->scene_gizmo_volume());
         }
     }
+
+    m_previous_worlds.swap(m_current_worlds);
+    m_current_worlds.clear();
 }
 
 namespace util
 {
 
-void apply_model_world(rendering::scene_render::gpu_model& target, const glm::mat4& world)
+void apply_model_world(rendering::scene_render::gpu_model& target, const glm::mat4& world, const glm::mat4& previous_world)
 {
     for (rendering::scene_render::gpu_model_part& part : target.parts) {
-        part.transform = world * part.transform;
+        part.previous_transform = previous_world * part.previous_transform;
+        part.transform          = world * part.transform;
     }
 }
 

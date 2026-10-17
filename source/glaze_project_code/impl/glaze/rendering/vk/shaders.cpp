@@ -165,7 +165,7 @@ pipeline create_graphics_pipeline(
 {
     const vkb::DispatchTable& disp = device::get_disp();
 
-    const bool has_color = create_info.color_format != VK_FORMAT_UNDEFINED;
+    const uint32_t color_count = static_cast<uint32_t>(create_info.color_formats.size());
 
     VkShaderModule vert_module = load_module(vert_file);
     VkShaderModule frag_module = frag_file.empty() ? VK_NULL_HANDLE : load_module(frag_file);
@@ -224,7 +224,7 @@ pipeline create_graphics_pipeline(
     depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     depth_stencil.depthTestEnable = VK_TRUE;
     depth_stencil.depthWriteEnable = create_info.depth_write ? VK_TRUE : VK_FALSE;
-    depth_stencil.depthCompareOp = VK_COMPARE_OP_GREATER;
+    depth_stencil.depthCompareOp = create_info.depth_compare;
 
     VkPipelineColorBlendAttachmentState color_blend_attachment = {};
     color_blend_attachment.colorWriteMask =
@@ -241,8 +241,10 @@ pipeline create_graphics_pipeline(
     color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     color_blending.logicOpEnable = VK_FALSE;
     color_blending.logicOp = VK_LOGIC_OP_COPY;
-    color_blending.attachmentCount = has_color ? 1 : 0;
-    color_blending.pAttachments = has_color ? &color_blend_attachment : nullptr;
+    const std::vector<VkPipelineColorBlendAttachmentState> color_blend_attachments(color_count, color_blend_attachment);
+
+    color_blending.attachmentCount = color_count;
+    color_blending.pAttachments = color_count > 0 ? color_blend_attachments.data() : nullptr;
 
     VkPushConstantRange push_range = {};
     push_range.stageFlags = create_info.push_constant_stages;
@@ -271,8 +273,8 @@ pipeline create_graphics_pipeline(
 
     VkPipelineRenderingCreateInfo rendering_create_info = {};
     rendering_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    rendering_create_info.colorAttachmentCount = has_color ? 1 : 0;
-    rendering_create_info.pColorAttachmentFormats = has_color ? &create_info.color_format : nullptr;
+    rendering_create_info.colorAttachmentCount = color_count;
+    rendering_create_info.pColorAttachmentFormats = color_count > 0 ? create_info.color_formats.data() : nullptr;
     rendering_create_info.depthAttachmentFormat = create_info.depth_format;
     rendering_create_info.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
 

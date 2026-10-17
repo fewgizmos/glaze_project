@@ -1,0 +1,83 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D current_texture;
+layout(set = 0, binding = 1) uniform sampler2D history_texture;
+layout(set = 0, binding = 2) uniform sampler2D velocity_texture;
+layout(set = 0, binding = 3, rgba16f) uniform writeonly image2D target;
+
+layout(push_constant) uniform constants
+{
+    vec2 screen_size;
+    float history_weight;
+    uint reset;
+} pc;
+
+const vec3 LUMINANCE_WEIGHTS = vec3(0.2126, 0.7152, 0.0722);
+
+vec3 rgb_to_ycocg(vec3 color)
+{
+    return vec3(
+         0.25 * color.r + 0.5 * color.g + 0.25 * color.b,
+         0.5  * color.r                 - 0.5  * color.b,
+        -0.25 * color.r + 0.5 * color.g - 0.25 * color.b
+    );
+}
+
+vec3 ycocg_to_rgb(vec3 color)
+{
+    return vec3(
+        color.x + color.y - color.z,
+        color.x           + color.z,
+        color.x - color.y - color.z
+    );
+}
+
+void main()
+{
+    ivec2 id   = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = ivec2(pc.screen_size);
+
+    if (id.x >= size.x || id.y >= size.y) {
+        return;
+    }
+
+    vec3 current = texelFetch(current_texture, id, 0).rgb;
+
+    vec2 uv         = (vec2(id) + 0.5) / pc.screen_size;
+    vec2 history_uv = uv - texelFetch(velocity_texture, id, 0).xy;
+
+    bool outside = any(lessThan(history_uv, vec2(0.0))) || any(greaterThan(history_uv, vec2(1.0)));
+
+    if (pc.reset != 0u || pc.history_weight <= 0.0 || outside) {
+        imageStore(target, id, vec4(current, 1.0));
+
+        return;
+    }
+
+    vec3 neighbourhood_min = vec3( 1.0e9);
+    vec3 neighbourhood_max = vec3(-1.0e9);
+
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            ivec2 coord = clamp(id + ivec2(x, y), ivec2(0), size - 1);
+
+            vec3 neighbour = rgb_to_ycocg(texelFetch(current_texture, coord, 0).rgb);
+
+            neighbourhood_min = min(neighbourhood_min, neighbour);
+            neighbourhood_max = max(neighbourhood_max, neighbour);
+        }
+    }
+
+    vec3 history = textureLod(history_texture, history_uv, 0.0).rgb;
+
+    history = ycocg_to_rgb(clamp(rgb_to_ycocg(history), neighbourhood_min, neighbourhood_max));
+
+    float current_weight = (1.0 - pc.history_weight) / (1.0 + dot(current, LUMINANCE_WEIGHTS));
+    float history_weight = pc.history_weight / (1.0 + dot(history, LUMINANCE_WEIGHTS));
+
+    vec3 resolved = (current * current_weight + history * history_weight) / max(current_weight + history_weight, 0.0001);
+
+    imageStore(target, id, vec4(max(resolved, vec3(0.0)), 1.0));
+}

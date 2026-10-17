@@ -6,6 +6,7 @@
 #include "glp/glaze/rendering/scene_render/resources/materials.h"
 #include "glp/glaze/rendering/scene_render/resources/meshes.h"
 #include "glp/glaze/rendering/scene_render/resources/shaders.h"
+#include "glp/glaze/rendering/scene_render/resources/shaders_stdlib.h"
 
 #include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/device.h"
@@ -29,6 +30,7 @@ namespace
 struct object_data
 {
     glm::mat4 model;
+    glm::mat4 previous_model;
     VkDeviceAddress vertices;
     uint32_t vertex_count;
     uint32_t material_index;
@@ -138,6 +140,7 @@ void handle_buffers()
     for (const gpu_model_part& target : m_objects) {
         m_objects_data.push_back({
             target.transform,
+            target.previous_transform,
             target.target_mesh->vertex_buffer.address,
             target.target_mesh->vertex_count,
             target.target_material->index
@@ -347,6 +350,65 @@ void draw_all()
             bound_extra_set = target_extra_set;
 
             bind_extra_set(bound_shader, bound_extra_set);
+        }
+
+        disp.cmdBindIndexBuffer(cmd, target.target_mesh->index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
+
+        disp.cmdDrawIndexed(cmd, target.target_mesh->index_count, count, 0, 0, first);
+
+        first += count;
+    }
+}
+
+void draw_prepass()
+{
+    if (!m_has_camera) {
+        return;
+    }
+
+    const vkb::DispatchTable& disp = vk::device::get_disp();
+
+    VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
+
+    const uint32_t objects_count = static_cast<uint32_t>(m_objects.size());
+
+    const shader* bound_shader = nullptr;
+
+    uint32_t first = 0;
+
+    while (first < objects_count) {
+        const gpu_model_part& target = m_objects[first];
+
+        if (target.target_material->target_shader->queue != render_queue::opaque) {
+            first++;
+
+            continue;
+        }
+
+        const bool double_sided = target.target_material->double_sided;
+
+        uint32_t count = 1;
+
+        while (first + count < objects_count) {
+            const gpu_model_part& next = m_objects[first + count];
+
+            if (
+                next.target_mesh != target.target_mesh
+                || next.target_material->target_shader->queue != render_queue::opaque
+                || next.target_material->double_sided != double_sided
+            ) {
+                break;
+            }
+
+            count++;
+        }
+
+        const shader* target_shader = double_sided ? std_prepass_double_sided_shader() : std_prepass_shader();
+
+        if (target_shader != bound_shader) {
+            bound_shader = target_shader;
+
+            bind_shader(bound_shader);
         }
 
         disp.cmdBindIndexBuffer(cmd, target.target_mesh->index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);

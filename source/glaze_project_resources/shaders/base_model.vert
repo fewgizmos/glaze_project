@@ -3,6 +3,8 @@
 
 #include "util/scene.glsl"
 
+invariant gl_Position;
+
 layout(location = 0) out vec3 frag_color;
 layout(location = 1) out vec3 frag_normal;
 layout(location = 2) out vec2 frag_uv;
@@ -11,13 +13,17 @@ layout(location = 4) out vec4 frag_tangent;
 
 layout(location = 5) flat out uint frag_material_index;
 
+layout(location = 6) out vec4 frag_current_clip;
+layout(location = 7) out vec4 frag_previous_clip;
+
 void main()
 {
     object_data object = pc.frame.objects.data[gl_InstanceIndex];
 
     vertex v = object.vertices.data[gl_VertexIndex];
 
-    vec4 world_pos = object.model * vec4(v.pos, 1.0);
+    vec4 world_pos          = object.model * vec4(v.pos, 1.0);
+    vec4 previous_world_pos = object.previous_model * vec4(v.pos, 1.0);
 
     mat3 normal_matrix = transpose(inverse(mat3(object.model)));
 
@@ -30,4 +36,7 @@ void main()
     frag_tangent   = vec4(mat3(object.model) * v.tangent.xyz, v.tangent.w);
 
     frag_material_index = object.material_index;
+
+    frag_current_clip  = pc.frame.unjittered_view_proj * world_pos;
+    frag_previous_clip = pc.frame.previous_view_proj * previous_world_pos;
 }

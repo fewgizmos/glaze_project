@@ -35,11 +35,6 @@ constexpr float SPEED_SCROLL_FACTOR = 1.2f;
 
 constexpr float MOUSE_SENSITIVITY = 0.1f;
 
-bool key_is_down(glaze::io::input::keyboard_input_codes code)
-{
-    return glaze::io::input::key_is_pressed(code) || glaze::io::input::key_is_held(code);
-}
-
 }
 
 debug_camera_player_obj::debug_camera_player_obj() : m_speed(START_SPEED)
@@ -78,12 +73,16 @@ void debug_camera_player_obj::update()
 
     glm::vec3 direction(0.0f);
 
-    if (key_is_down(glaze::io::input::keyboard_input_codes::w)) { direction += forward; }
-    if (key_is_down(glaze::io::input::keyboard_input_codes::s)) { direction -= forward; }
-    if (key_is_down(glaze::io::input::keyboard_input_codes::d)) { direction += right;   }
-    if (key_is_down(glaze::io::input::keyboard_input_codes::a)) { direction -= right;   }
-    if (key_is_down(glaze::io::input::keyboard_input_codes::e)) { direction += up;      }
-    if (key_is_down(glaze::io::input::keyboard_input_codes::q)) { direction -= up;      }
+    using glaze::io::input::keyboard_input_codes;
+    using glaze::io::input::key_is_held;
+    using glaze::io::input::key_is_pressed;
+
+    if (key_is_pressed(keyboard_input_codes::w) || key_is_held(keyboard_input_codes::w)) { direction += forward; }
+    if (key_is_pressed(keyboard_input_codes::s) || key_is_held(keyboard_input_codes::s)) { direction -= forward; }
+    if (key_is_pressed(keyboard_input_codes::d) || key_is_held(keyboard_input_codes::d)) { direction += right;   }
+    if (key_is_pressed(keyboard_input_codes::a) || key_is_held(keyboard_input_codes::a)) { direction -= right;   }
+    if (key_is_pressed(keyboard_input_codes::e) || key_is_held(keyboard_input_codes::e)) { direction += up;      }
+    if (key_is_pressed(keyboard_input_codes::q) || key_is_held(keyboard_input_codes::q)) { direction -= up;      }
 
     if (glm::length(direction) > 0.0f) {
         volume.w_pos += glm::normalize(direction) * m_speed * glaze::utilities::core::timer::delta;

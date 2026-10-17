@@ -1,6 +1,5 @@
 #include "glp/glaze/scene/volume/cmp_light.h"
 
-#include <glm/ext/scalar_constants.hpp>
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>
 #include <glm/vec4.hpp>
@@ -34,9 +33,7 @@ rendering::scene_render::gpu_light light::get_light()
         result.cos_inner = glm::cos(glm::radians(half_angle * (1.0f - softness)));
     }
 
-    const float radiance_scale = m_create_info.type == light_type::ambient ? 1.0f : glm::pi<float>();
-
-    result.color        = m_create_info.color * m_create_info.intensity * radiance_scale;
+    result.color        = m_create_info.color * m_create_info.intensity;
     result.ground_color = m_create_info.ground_color * m_create_info.intensity;
 
     const float angular_radius = glm::radians(std::clamp(m_create_info.angular_radius, 0.0f, 90.0f));

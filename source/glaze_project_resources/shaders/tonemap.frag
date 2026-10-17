@@ -4,7 +4,6 @@ layout(set = 0, binding = 0) uniform sampler2D hdr_image;
 
 layout(push_constant) uniform constants
 {
-    float exposure;
     uint tonemapper;
 } pc;
 
@@ -54,7 +53,7 @@ vec3 pbr_neutral_tonemap(vec3 color)
 
 void main()
 {
-    vec3 hdr = max(texture(hdr_image, frag_uv).rgb * pc.exposure, vec3(0.0));
+    vec3 hdr = max(texture(hdr_image, frag_uv).rgb, vec3(0.0));
 
     vec3 mapped = pc.tonemapper == TONEMAPPER_ACES ? aces_tonemap(hdr) : pbr_neutral_tonemap(hdr);
 

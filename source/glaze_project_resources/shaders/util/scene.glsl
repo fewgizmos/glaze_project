@@ -48,7 +48,77 @@ struct material_data
     uint emissive_sampler;
 
     uint alpha_mode;
+
+    uint specular_texture;
+    uint specular_sampler;
+
+    uint specular_color_texture;
+    uint specular_color_sampler;
+
+    uint diffuse_transmission_texture;
+    uint diffuse_transmission_sampler;
+
+    uint diffuse_transmission_color_texture;
+    uint diffuse_transmission_color_sampler;
+
+    uint clearcoat_texture;
+    uint clearcoat_sampler;
+
+    uint clearcoat_roughness_texture;
+    uint clearcoat_roughness_sampler;
+
+    uint clearcoat_normal_texture;
+    uint clearcoat_normal_sampler;
+
+    uint sheen_color_texture;
+    uint sheen_color_sampler;
+
+    uint sheen_roughness_texture;
+    uint sheen_roughness_sampler;
+
+    uint padding0[3];
+
+    vec4 uv_transforms[28];
+
+    vec3 specular_color;
+    float specular_factor;
+
+    float ior;
+    float emissive_strength;
+    float clearcoat_factor;
+    float clearcoat_roughness;
+
+    vec3 diffuse_transmission_color;
+    float diffuse_transmission_factor;
+
+    vec3 sheen_color;
+    float sheen_roughness;
+
+    float clearcoat_normal_scale;
+    float padding1[3];
 };
+
+const uint TEXTURE_SLOT_BASE_COLOR                 = 0u;
+const uint TEXTURE_SLOT_METALLIC_ROUGHNESS         = 1u;
+const uint TEXTURE_SLOT_NORMAL                     = 2u;
+const uint TEXTURE_SLOT_OCCLUSION                  = 3u;
+const uint TEXTURE_SLOT_EMISSIVE                   = 4u;
+const uint TEXTURE_SLOT_SPECULAR                   = 5u;
+const uint TEXTURE_SLOT_SPECULAR_COLOR             = 6u;
+const uint TEXTURE_SLOT_DIFFUSE_TRANSMISSION       = 7u;
+const uint TEXTURE_SLOT_DIFFUSE_TRANSMISSION_COLOR = 8u;
+const uint TEXTURE_SLOT_CLEARCOAT                  = 9u;
+const uint TEXTURE_SLOT_CLEARCOAT_ROUGHNESS        = 10u;
+const uint TEXTURE_SLOT_CLEARCOAT_NORMAL           = 11u;
+const uint TEXTURE_SLOT_SHEEN_COLOR                = 12u;
+const uint TEXTURE_SLOT_SHEEN_ROUGHNESS            = 13u;
+
+vec2 material_uv(material_data material, uint slot, vec2 uv)
+{
+    vec3 source = vec3(uv, 1.0);
+
+    return vec2(dot(material.uv_transforms[slot * 2u].xyz, source), dot(material.uv_transforms[slot * 2u + 1u].xyz, source));
+}
 
 layout(buffer_reference, std430) readonly buffer material_buffer
 {
@@ -58,6 +128,7 @@ layout(buffer_reference, std430) readonly buffer material_buffer
 struct object_data
 {
     mat4 model;
+    mat4 previous_model;
     vertex_buffer vertices;
     uint vertex_count;
     uint material_index;
@@ -110,11 +181,19 @@ layout(buffer_reference, std430) readonly buffer frame_buffer
     uint light_count;
     uint has_environment;
     float environment_intensity;
-    uint padding;
+    uint padding0;
 
     object_buffer objects;
     material_buffer materials;
     light_buffer lights;
+
+    uint frame_index;
+    float exposure;
+
+    mat4 unjittered_view_proj;
+    mat4 previous_view_proj;
+
+    vec4 environment_sh[9];
 };
 
 layout(push_constant) uniform constants

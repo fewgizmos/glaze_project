@@ -8,9 +8,8 @@ namespace glaze::rendering::scene_render::environment
 {
 
 constexpr uint32_t SKY_BINDING         = 0;
-constexpr uint32_t IRRADIANCE_BINDING  = 1;
-constexpr uint32_t PREFILTERED_BINDING = 2;
-constexpr uint32_t BRDF_LUT_BINDING    = 3;
+constexpr uint32_t PREFILTERED_BINDING = 1;
+constexpr uint32_t BRDF_LUT_BINDING    = 2;
 
 void init_all();
 void clean_all();

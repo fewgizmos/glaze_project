@@ -2,8 +2,10 @@
 
 #include "glp/glaze/rendering/queue_deletor.h"
 
+#include "glp/glaze/rendering/scene_render/gtao.h"
 #include "glp/glaze/rendering/scene_render/post_process.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
+#include "glp/glaze/rendering/scene_render/taa.h"
 
 #include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/device.h"
@@ -73,6 +75,89 @@ void set_viewport(VkCommandBuffer cmd, VkExtent2D extent)
     disp.cmdSetScissor(cmd, 0, 1, &scissor);
 }
 
+VkRenderingAttachmentInfo make_color_attachment(VkImageView view, VkAttachmentLoadOp load_op)
+{
+    VkRenderingAttachmentInfo attachment = {};
+    attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    attachment.imageView = view;
+    attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachment.resolveMode = VK_RESOLVE_MODE_NONE;
+    attachment.loadOp = load_op;
+    attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment.clearValue.color = { { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+    return attachment;
+}
+
+void transition_color_target(VkCommandBuffer cmd, const image& target)
+{
+    vk::commands::transition_image(
+        cmd,
+        target.handle,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        0,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
+    );
+}
+
+void begin_prepass_rendering()
+{
+    const vkb::DispatchTable& disp = vk::device::get_disp();
+
+    VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
+
+    const image& depth    = scene_render::it::get_depth_image();
+    const image& normal   = scene_render::it::get_normal_image();
+    const image& velocity = scene_render::it::get_velocity_image();
+
+    const VkExtent2D extent = vk::frame::get_swapchain().extent;
+
+    transition_color_target(cmd, normal);
+    transition_color_target(cmd, velocity);
+
+    vk::commands::transition_image(
+        cmd,
+        depth.handle,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+        0,
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT
+    );
+
+    const VkRenderingAttachmentInfo color_attachments[2] = {
+        make_color_attachment(normal.view, VK_ATTACHMENT_LOAD_OP_CLEAR),
+        make_color_attachment(velocity.view, VK_ATTACHMENT_LOAD_OP_CLEAR)
+    };
+
+    VkRenderingAttachmentInfo depth_attachment = {};
+    depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    depth_attachment.imageView = depth.view;
+    depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+    depth_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
+    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    depth_attachment.clearValue.depthStencil = { 0.0f, 0 };
+
+    VkRenderingInfo rendering_info = {};
+    rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    rendering_info.renderArea.offset = { 0, 0 };
+    rendering_info.renderArea.extent = extent;
+    rendering_info.layerCount = 1;
+    rendering_info.colorAttachmentCount = 2;
+    rendering_info.pColorAttachments = color_attachments;
+    rendering_info.pDepthAttachment = &depth_attachment;
+
+    disp.cmdBeginRendering(cmd, &rendering_info);
+
+    set_viewport(cmd, extent);
+}
+
 void begin_scene_rendering()
 {
     const vkb::DispatchTable& disp = vk::device::get_disp();
@@ -84,46 +169,29 @@ void begin_scene_rendering()
 
     const VkExtent2D extent = vk::frame::get_swapchain().extent;
 
-    vk::commands::transition_image(
-        cmd,
-        hdr.handle,
-        VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        0,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT
-    );
+    transition_color_target(cmd, hdr);
 
     vk::commands::transition_image(
         cmd,
         depth.handle,
-        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
         VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        0,
         VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
         VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
         VK_IMAGE_ASPECT_DEPTH_BIT
     );
 
-    VkRenderingAttachmentInfo color_attachment = {};
-    color_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-    color_attachment.imageView = hdr.view;
-    color_attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    color_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
-    color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    color_attachment.clearValue.color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+    const VkRenderingAttachmentInfo color_attachment = make_color_attachment(hdr.view, VK_ATTACHMENT_LOAD_OP_CLEAR);
 
     VkRenderingAttachmentInfo depth_attachment = {};
     depth_attachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
     depth_attachment.imageView = depth.view;
     depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
     depth_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
-    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depth_attachment.clearValue.depthStencil = { 0.0f, 0 };
 
     VkRenderingInfo rendering_info = {};
     rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
@@ -146,20 +214,8 @@ void begin_post_rendering()
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
     const swapchain_image_data& target = vk::frame::get_current_image();
-    const image& hdr = scene_render::it::get_hdr_image();
 
     const VkExtent2D extent = vk::frame::get_swapchain().extent;
-
-    vk::commands::transition_image(
-        cmd,
-        hdr.handle,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
-    );
 
     vk::commands::transition_image(
         cmd,
@@ -208,11 +264,21 @@ void record_command_buffer()
 
     scene_render::it::handle_all();
 
+    begin_prepass_rendering();
+
+    scene_render::it::draw_prepass();
+
+    vk::device::get_disp().cmdEndRendering(cmd);
+
+    scene_render::gtao::dispatch();
+
     begin_scene_rendering();
 
     scene_render::it::draw_all();
 
     vk::device::get_disp().cmdEndRendering(cmd);
+
+    scene_render::taa::dispatch();
 
     begin_post_rendering();
 

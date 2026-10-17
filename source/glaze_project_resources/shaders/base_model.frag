@@ -13,9 +13,10 @@ layout(location = 5) flat in uint frag_material_index;
 
 layout(location = 0) out vec4 out_color;
 
-layout(set = 1, binding = 1) uniform samplerCube env_irradiance;
-layout(set = 1, binding = 2) uniform samplerCube env_prefiltered;
-layout(set = 1, binding = 3) uniform sampler2D env_brdf_lut;
+layout(set = 1, binding = 1) uniform samplerCube env_prefiltered;
+layout(set = 1, binding = 2) uniform sampler2D env_brdf_lut;
+
+layout(set = 0, binding = 2) uniform sampler2D scene_gtao;
 
 const vec2  CHECKER_CELLS = vec2(16.0, 8.0);
 const float CHECKER_DARK  = 0.35;
@@ -24,7 +25,6 @@ const float CONE_EDGE_EPSILON = 0.0001;
 
 const float PI = 3.14159265359;
 
-const vec3  DIELECTRIC_F0 = vec3(0.04);
 const float MIN_ROUGHNESS = 0.045;
 const float MIN_N_DOT_V   = 0.0001;
 
@@ -37,6 +37,11 @@ const float SPECULAR_AA_THRESHOLD = 0.18;
 
 const float HORIZON_FADE = 1.3;
 
+const float MAX_HDR_VALUE = 60000.0;
+
+const float CLEARCOAT_F0    = 0.04;
+const float MIN_SHEEN_SIN2  = 0.0078125;
+const float MIN_SHEEN_ALPHA = 0.0001;
 
 struct surface_data
 {
@@ -57,6 +62,22 @@ struct surface_data
     float alpha;
     float n_dot_v;
     float energy_compensation;
+
+    float diffuse_transmission;
+    vec3  diffuse_transmission_color;
+
+    float clearcoat;
+    float clearcoat_roughness;
+    float clearcoat_alpha;
+    vec3  clearcoat_normal;
+    vec3  clearcoat_reflected;
+    float clearcoat_n_dot_v;
+
+    vec3  sheen_color;
+    float sheen_roughness;
+    float sheen_alpha;
+    float sheen_energy;
+    float sheen_scaling;
 };
 
 float checker_at(vec2 uv)
@@ -64,6 +85,16 @@ float checker_at(vec2 uv)
     vec2 cell = floor(uv * CHECKER_CELLS);
 
     return mod(cell.x + cell.y, 2.0) < 1.0 ? 1.0 : CHECKER_DARK;
+}
+
+float max3(vec3 value)
+{
+    return max(value.r, max(value.g, value.b));
+}
+
+vec4 sample_material(material_data material, uint texture_index, uint sampler_index, uint slot)
+{
+    return sample_scene_texture(texture_index, sampler_index, material_uv(material, slot, frag_uv));
 }
 
 float distribution_ggx(float n_dot_h, float alpha)
@@ -84,6 +115,24 @@ float visibility_smith_ggx_correlated(float n_dot_v, float n_dot_l, float alpha)
     return 0.5 / max(ggx_v + ggx_l, 0.000001);
 }
 
+float visibility_kelemen(float l_dot_h)
+{
+    return 0.25 / max(l_dot_h * l_dot_h, 0.0001);
+}
+
+float distribution_charlie(float alpha, float n_dot_h)
+{
+    float inv_alpha = 1.0 / alpha;
+    float sin2h     = max(1.0 - n_dot_h * n_dot_h, MIN_SHEEN_SIN2);
+
+    return (2.0 + inv_alpha) * pow(sin2h, inv_alpha * 0.5) / (2.0 * PI);
+}
+
+float visibility_neubelt(float n_dot_v, float n_dot_l)
+{
+    return 1.0 / max(4.0 * (n_dot_l + n_dot_v - n_dot_l * n_dot_v), 0.0001);
+}
+
 vec3 fresnel_schlick(float cos_theta, vec3 f0)
 {
     return f0 + (1.0 - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
@@ -92,6 +141,11 @@ vec3 fresnel_schlick(float cos_theta, vec3 f0)
 vec3 fresnel_schlick_roughness(float cos_theta, vec3 f0, float roughness)
 {
     return f0 + (max(vec3(1.0 - roughness), f0) - f0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
+}
+
+float clearcoat_fresnel(float cos_theta, float clearcoat)
+{
+    return (CLEARCOAT_F0 + (1.0 - CLEARCOAT_F0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0)) * clearcoat;
 }
 
 float specular_anti_aliasing(vec3 normal, float roughness)
@@ -158,14 +212,26 @@ vec3 disk_specular_direction(surface_data surface, light_data light, vec3 to_lig
     return normalize(to_light * light.cos_angular_radius + normalize(tangent) * light.sin_angular_radius);
 }
 
-vec3 brdf(surface_data surface, vec3 to_light, vec3 specular_to_light)
+vec3 apply_normal_map(material_data material, vec3 normal, uint texture_index, uint sampler_index, uint slot, float scale)
 {
-    float n_dot_l = clamp(dot(surface.normal, to_light), 0.0, 1.0);
+    vec3 orthogonal_tangent = frag_tangent.xyz - normal * dot(normal, frag_tangent.xyz);
 
-    if (n_dot_l <= 0.0) {
-        return vec3(0.0);
+    if (texture_index == NO_TEXTURE || frag_tangent.w == 0.0 || dot(orthogonal_tangent, orthogonal_tangent) <= MIN_TANGENT_LENGTH2) {
+        return normal;
     }
 
+    vec3 tangent   = normalize(orthogonal_tangent);
+    vec3 bitangent = cross(normal, tangent) * frag_tangent.w;
+
+    vec3 sampled = sample_material(material, texture_index, sampler_index, slot).xyz * 2.0 - 1.0;
+
+    sampled.xy *= scale;
+
+    return normalize(mat3(tangent, bitangent, normal) * sampled);
+}
+
+vec3 base_layer(surface_data surface, vec3 to_light, vec3 specular_to_light, float n_dot_l)
+{
     float specular_n_dot_l = clamp(dot(surface.normal, specular_to_light), 0.0, 1.0);
 
     vec3 half_vector = normalize(surface.view + specular_to_light);
@@ -185,29 +251,59 @@ vec3 brdf(surface_data surface, vec3 to_light, vec3 specular_to_light)
 
     vec3 diffuse = (1.0 - fresnel) * (1.0 - surface.metallic) * surface.albedo / PI
                  * burley_diffuse(n_dot_l, surface.n_dot_v, l_dot_h, surface.roughness)
+                 * (1.0 - surface.diffuse_transmission)
                  * n_dot_l;
 
     return diffuse + specular;
 }
 
-vec3 surface_normal(material_data material)
+vec3 sheen_layer(surface_data surface, vec3 to_light, float n_dot_l)
 {
-    vec3 normal = normalize(frag_normal);
+    vec3 half_vector = normalize(surface.view + to_light);
 
-    vec3 orthogonal_tangent = frag_tangent.xyz - normal * dot(normal, frag_tangent.xyz);
+    float n_dot_h = clamp(dot(surface.normal, half_vector), 0.0, 1.0);
 
-    if (material.normal_texture != NO_TEXTURE && frag_tangent.w != 0.0 && dot(orthogonal_tangent, orthogonal_tangent) > MIN_TANGENT_LENGTH2) {
-        vec3 tangent   = normalize(orthogonal_tangent);
-        vec3 bitangent = cross(normal, tangent) * frag_tangent.w;
+    return surface.sheen_color
+         * distribution_charlie(surface.sheen_alpha, n_dot_h)
+         * visibility_neubelt(surface.n_dot_v, n_dot_l)
+         * n_dot_l;
+}
 
-        vec3 sampled = sample_scene_texture(material.normal_texture, material.normal_sampler, frag_uv).xyz * 2.0 - 1.0;
+vec3 brdf(surface_data surface, vec3 to_light, vec3 specular_to_light)
+{
+    float n_dot_l_signed = dot(surface.normal, to_light);
+    float n_dot_l        = clamp(n_dot_l_signed, 0.0, 1.0);
 
-        sampled.xy *= material.normal_scale;
+    vec3 transmitted = surface.diffuse_transmission * surface.diffuse_transmission_color
+                     * (1.0 - surface.metallic) * surface.albedo / PI
+                     * clamp(-n_dot_l_signed, 0.0, 1.0);
 
-        normal = normalize(mat3(tangent, bitangent, normal) * sampled);
+    if (n_dot_l <= 0.0) {
+        return transmitted;
     }
 
-    return gl_FrontFacing ? normal : -normal;
+    vec3 color = base_layer(surface, to_light, specular_to_light, n_dot_l);
+
+    if (surface.sheen_scaling < 1.0) {
+        color = color * surface.sheen_scaling + sheen_layer(surface, to_light, n_dot_l);
+    }
+
+    if (surface.clearcoat > 0.0) {
+        vec3 half_vector = normalize(surface.view + to_light);
+
+        float n_dot_h = clamp(dot(surface.clearcoat_normal, half_vector), 0.0, 1.0);
+        float l_dot_h = clamp(dot(to_light, half_vector), 0.0, 1.0);
+
+        float clearcoat_n_dot_l = clamp(dot(surface.clearcoat_normal, to_light), 0.0, 1.0);
+
+        float fresnel = clearcoat_fresnel(l_dot_h, surface.clearcoat);
+
+        float specular = distribution_ggx(n_dot_h, surface.clearcoat_alpha) * visibility_kelemen(l_dot_h) * fresnel;
+
+        color = color * (1.0 - fresnel) + vec3(specular * clearcoat_n_dot_l);
+    }
+
+    return color + transmitted;
 }
 
 float cone_factor(light_data light, vec3 to_light)
@@ -234,10 +330,32 @@ vec3 ambient_contribution(light_data light, surface_data surface)
     return diffuse + specular;
 }
 
+vec3 environment_irradiance(vec3 n)
+{
+    vec4 result = pc.frame.environment_sh[0] * 0.282095
+                + pc.frame.environment_sh[1] * (0.488603 * n.y)
+                + pc.frame.environment_sh[2] * (0.488603 * n.z)
+                + pc.frame.environment_sh[3] * (0.488603 * n.x)
+                + pc.frame.environment_sh[4] * (1.092548 * n.x * n.y)
+                + pc.frame.environment_sh[5] * (1.092548 * n.y * n.z)
+                + pc.frame.environment_sh[6] * (0.315392 * (3.0 * n.z * n.z - 1.0))
+                + pc.frame.environment_sh[7] * (1.092548 * n.x * n.z)
+                + pc.frame.environment_sh[8] * (0.546274 * (n.x * n.x - n.y * n.y));
+
+    return max(result.rgb, vec3(0.0));
+}
+
+vec3 environment_radiance(vec3 direction, float roughness)
+{
+    return textureLod(env_prefiltered, direction, roughness * PREFILTERED_MAX_LOD).rgb;
+}
+
 vec3 environment_contribution(surface_data surface)
 {
-    vec3 irradiance = texture(env_irradiance, surface.normal).rgb;
-    vec3 radiance   = textureLod(env_prefiltered, surface.reflected, surface.roughness * PREFILTERED_MAX_LOD).rgb;
+    vec3 irradiance = environment_irradiance(surface.normal) * (1.0 - surface.diffuse_transmission)
+                    + environment_irradiance(-surface.normal) * surface.diffuse_transmission * surface.diffuse_transmission_color;
+
+    vec3 radiance = environment_radiance(surface.reflected, surface.roughness);
 
     vec3 fresnel = fresnel_schlick_roughness(surface.n_dot_v, surface.f0, surface.roughness);
 
@@ -255,7 +373,25 @@ vec3 environment_contribution(surface_data surface)
     vec3 specular = single_scatter * radiance * surface.specular_occlusion;
     vec3 ambient  = (multi_scatter * multi_energy + diffuse) * irradiance * surface.diffuse_occlusion;
 
-    return (specular + ambient) * pc.frame.environment_intensity;
+    vec3 color = specular + ambient;
+
+    if (surface.sheen_scaling < 1.0) {
+        vec3 sheen = surface.sheen_color * surface.sheen_energy
+                   * environment_radiance(surface.reflected, surface.sheen_roughness)
+                   * surface.specular_occlusion;
+
+        color = color * surface.sheen_scaling + sheen;
+    }
+
+    if (surface.clearcoat > 0.0) {
+        float clearcoat = clearcoat_fresnel(surface.clearcoat_n_dot_v, surface.clearcoat);
+
+        vec3 clearcoat_radiance = environment_radiance(surface.clearcoat_reflected, surface.clearcoat_roughness);
+
+        color = color * (1.0 - clearcoat) + clearcoat_radiance * clearcoat * surface.specular_occlusion;
+    }
+
+    return color * pc.frame.environment_intensity;
 }
 
 vec3 light_contribution(light_data light, surface_data surface)
@@ -297,7 +433,7 @@ void main()
     float alpha  = material.base_color.a;
 
     if (material.base_color_texture != NO_TEXTURE) {
-        vec4 sampled = sample_scene_texture(material.base_color_texture, material.base_color_sampler, frag_uv);
+        vec4 sampled = sample_material(material, material.base_color_texture, material.base_color_sampler, TEXTURE_SLOT_BASE_COLOR);
 
         surface = sampled.rgb;
         alpha  *= sampled.a;
@@ -311,31 +447,53 @@ void main()
     float roughness = material.roughness;
 
     if (material.metallic_roughness_texture != NO_TEXTURE) {
-        vec4 sampled = sample_scene_texture(material.metallic_roughness_texture, material.metallic_roughness_sampler, frag_uv);
+        vec4 sampled = sample_material(material, material.metallic_roughness_texture, material.metallic_roughness_sampler, TEXTURE_SLOT_METALLIC_ROUGHNESS);
 
         metallic  *= sampled.b;
         roughness *= sampled.g;
     }
 
-    float occlusion = 1.0;
+    float occlusion = texelFetch(scene_gtao, ivec2(gl_FragCoord.xy), 0).r;
 
     if (material.occlusion_texture != NO_TEXTURE) {
-        float sampled = sample_scene_texture(material.occlusion_texture, material.occlusion_sampler, frag_uv).r;
+        float sampled = sample_material(material, material.occlusion_texture, material.occlusion_sampler, TEXTURE_SLOT_OCCLUSION).r;
 
-        occlusion = 1.0 + material.occlusion_strength * (sampled - 1.0);
+        occlusion *= 1.0 + material.occlusion_strength * (sampled - 1.0);
     }
 
-    vec3 emissive = material.emissive;
+    vec3 emissive = material.emissive * material.emissive_strength;
 
     if (material.emissive_texture != NO_TEXTURE) {
-        emissive *= sample_scene_texture(material.emissive_texture, material.emissive_sampler, frag_uv).rgb;
+        emissive *= sample_material(material, material.emissive_texture, material.emissive_sampler, TEXTURE_SLOT_EMISSIVE).rgb;
     }
+
+    float specular_factor = material.specular_factor;
+    vec3  specular_color  = material.specular_color;
+
+    if (material.specular_texture != NO_TEXTURE) {
+        specular_factor *= sample_material(material, material.specular_texture, material.specular_sampler, TEXTURE_SLOT_SPECULAR).a;
+    }
+
+    if (material.specular_color_texture != NO_TEXTURE) {
+        specular_color *= sample_material(material, material.specular_color_texture, material.specular_color_sampler, TEXTURE_SLOT_SPECULAR_COLOR).rgb;
+    }
+
+    float ior_f0 = pow((material.ior - 1.0) / (material.ior + 1.0), 2.0);
+
+    vec3 dielectric_f0 = min(vec3(ior_f0) * specular_color, vec3(1.0)) * specular_factor;
+
+    vec3 geometric_normal = normalize(frag_normal);
+
+    vec3 base_normal      = apply_normal_map(material, geometric_normal, material.normal_texture, material.normal_sampler, TEXTURE_SLOT_NORMAL, material.normal_scale);
+    vec3 clearcoat_normal = apply_normal_map(material, geometric_normal, material.clearcoat_normal_texture, material.clearcoat_normal_sampler, TEXTURE_SLOT_CLEARCOAT_NORMAL, material.clearcoat_normal_scale);
+
+    float facing = gl_FrontFacing ? 1.0 : -1.0;
 
     surface_data data;
 
     data.albedo           = material.base_color.rgb * frag_color * surface;
-    data.normal           = surface_normal(material);
-    data.geometric_normal = gl_FrontFacing ? normalize(frag_normal) : -normalize(frag_normal);
+    data.normal           = base_normal * facing;
+    data.geometric_normal = geometric_normal * facing;
     data.view             = normalize(pc.frame.camera_pos - frag_world_pos);
     data.reflected        = reflect(-data.view, data.normal);
 
@@ -344,14 +502,59 @@ void main()
     data.alpha     = data.roughness * data.roughness;
     data.n_dot_v   = clamp(dot(data.normal, data.view), MIN_N_DOT_V, 1.0);
 
-    data.f0  = mix(DIELECTRIC_F0, data.albedo, data.metallic);
+    data.f0 = mix(dielectric_f0, data.albedo, data.metallic);
 
     data.diffuse_occlusion  = multi_bounce_occlusion(occlusion, data.albedo * (1.0 - data.metallic));
     data.specular_occlusion = multi_bounce_occlusion(specular_occlusion(data.n_dot_v, occlusion, data.roughness), data.f0)
                             * horizon_occlusion(data.reflected, data.geometric_normal);
+
     data.dfg = texture(env_brdf_lut, vec2(data.n_dot_v, data.roughness)).rg;
 
-    data.energy_compensation = 1.0 + max(data.f0.r, max(data.f0.g, data.f0.b)) * (1.0 / max(data.dfg.x + data.dfg.y, 0.0001) - 1.0);
+    data.energy_compensation = 1.0 + max3(data.f0) * (1.0 / max(data.dfg.x + data.dfg.y, 0.0001) - 1.0);
+
+    data.diffuse_transmission       = material.diffuse_transmission_factor;
+    data.diffuse_transmission_color = material.diffuse_transmission_color;
+
+    if (material.diffuse_transmission_texture != NO_TEXTURE) {
+        data.diffuse_transmission *= sample_material(material, material.diffuse_transmission_texture, material.diffuse_transmission_sampler, TEXTURE_SLOT_DIFFUSE_TRANSMISSION).a;
+    }
+
+    if (material.diffuse_transmission_color_texture != NO_TEXTURE) {
+        data.diffuse_transmission_color *= sample_material(material, material.diffuse_transmission_color_texture, material.diffuse_transmission_color_sampler, TEXTURE_SLOT_DIFFUSE_TRANSMISSION_COLOR).rgb;
+    }
+
+    data.clearcoat           = material.clearcoat_factor;
+    data.clearcoat_roughness = material.clearcoat_roughness;
+
+    if (material.clearcoat_texture != NO_TEXTURE) {
+        data.clearcoat *= sample_material(material, material.clearcoat_texture, material.clearcoat_sampler, TEXTURE_SLOT_CLEARCOAT).r;
+    }
+
+    if (material.clearcoat_roughness_texture != NO_TEXTURE) {
+        data.clearcoat_roughness *= sample_material(material, material.clearcoat_roughness_texture, material.clearcoat_roughness_sampler, TEXTURE_SLOT_CLEARCOAT_ROUGHNESS).g;
+    }
+
+    data.clearcoat_roughness = clamp(data.clearcoat_roughness, MIN_ROUGHNESS, 1.0);
+    data.clearcoat_alpha     = data.clearcoat_roughness * data.clearcoat_roughness;
+    data.clearcoat_normal    = clearcoat_normal * facing;
+    data.clearcoat_reflected = reflect(-data.view, data.clearcoat_normal);
+    data.clearcoat_n_dot_v   = clamp(dot(data.clearcoat_normal, data.view), MIN_N_DOT_V, 1.0);
+
+    data.sheen_color     = material.sheen_color;
+    data.sheen_roughness = material.sheen_roughness;
+
+    if (material.sheen_color_texture != NO_TEXTURE) {
+        data.sheen_color *= sample_material(material, material.sheen_color_texture, material.sheen_color_sampler, TEXTURE_SLOT_SHEEN_COLOR).rgb;
+    }
+
+    if (material.sheen_roughness_texture != NO_TEXTURE) {
+        data.sheen_roughness *= sample_material(material, material.sheen_roughness_texture, material.sheen_roughness_sampler, TEXTURE_SLOT_SHEEN_ROUGHNESS).a;
+    }
+
+    data.sheen_roughness = clamp(data.sheen_roughness, 0.0, 1.0);
+    data.sheen_alpha     = max(data.sheen_roughness * data.sheen_roughness, MIN_SHEEN_ALPHA);
+    data.sheen_energy    = texture(env_brdf_lut, vec2(data.n_dot_v, data.sheen_roughness)).b;
+    data.sheen_scaling   = 1.0 - max3(data.sheen_color) * data.sheen_energy;
 
     vec3 lighting = vec3(0.0);
 
@@ -363,5 +566,5 @@ void main()
         lighting += light_contribution(pc.frame.lights.data[i], data);
     }
 
-    out_color = vec4(lighting + emissive, 1.0);
+    out_color = vec4(min((lighting + emissive) * pc.frame.exposure, vec3(MAX_HDR_VALUE)), 1.0);
 }

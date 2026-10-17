@@ -19,7 +19,7 @@ gpu_model build(const model* target, const glm::mat4& local)
         node_matrices[i] = (node.parent < 0 ? local : node_matrices[node.parent]) * node.local;
 
         for (const model_part& part : node.parts) {
-            result.parts.push_back({ part.target_mesh, part.target_material, node_matrices[i] });
+            result.parts.push_back({ part.target_mesh, part.target_material, node_matrices[i], node_matrices[i] });
         }
     }
 

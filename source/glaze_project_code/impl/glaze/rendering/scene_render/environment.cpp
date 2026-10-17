@@ -37,7 +37,6 @@ void create_set_layout()
 {
     m_set_layout = vk::descriptors::create_set_layout({
         { SKY_BINDING,         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-        { IRRADIANCE_BINDING,  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
         { PREFILTERED_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
         { BRDF_LUT_BINDING,    VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
     });
@@ -172,10 +171,10 @@ void bake_images()
 
 void create_default_set()
 {
-    m_pool        = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 } });
+    m_pool        = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 } });
     m_default_set = vk::descriptors::allocate_set(m_pool, m_set_layout);
 
-    for (const uint32_t binding : { SKY_BINDING, IRRADIANCE_BINDING, PREFILTERED_BINDING }) {
+    for (const uint32_t binding : { SKY_BINDING, PREFILTERED_BINDING }) {
         vk::descriptors::write_image(
             m_default_set,
             binding,

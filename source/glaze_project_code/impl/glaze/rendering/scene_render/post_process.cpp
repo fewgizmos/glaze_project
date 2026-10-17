@@ -25,7 +25,6 @@ namespace
 
 struct tonemap_push
 {
-    float exposure;
     uint32_t tonemapper;
 };
 
@@ -66,7 +65,7 @@ void create_sampler()
 void create_tonemap_shader()
 {
     graphics_pipeline_create_info info;
-    info.color_format         = vk::frame::get_swapchain().image_format;
+    info.color_formats        = { vk::frame::get_swapchain().image_format };
     info.cull_mode            = VK_CULL_MODE_NONE;
     info.depth_write          = false;
     info.set_layouts          = { m_set_layout };
@@ -104,7 +103,7 @@ void clean_all()
 
 void handle_all()
 {
-    const VkImageView hdr_view = it::get_hdr_image().view;
+    const VkImageView hdr_view = it::get_taa_output_image().view;
 
     if (hdr_view == m_written_view) {
         return;
@@ -130,7 +129,7 @@ void draw_all()
 
     const gpu_post& post = frame_pipe::get_post();
 
-    const tonemap_push push = { post.exposure, post.tonemapper };
+    const tonemap_push push = { post.tonemapper };
 
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_tonemap_shader->graphics.handle);
 

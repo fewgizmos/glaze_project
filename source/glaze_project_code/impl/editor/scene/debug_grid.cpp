@@ -24,7 +24,7 @@ const glaze::rendering::scene_render::shader* debug_grid_shader()
 {
     static const glaze::rendering::scene_render::shader* shd = [] {
         glaze::rendering::graphics_pipeline_create_info info;
-        info.color_format         = glaze::rendering::HDR_FORMAT;
+        info.color_formats        = { glaze::rendering::HDR_FORMAT };
         info.depth_format         = glaze::rendering::DEPTH_FORMAT;
         info.cull_mode            = VK_CULL_MODE_NONE;
         info.depth_write          = false;

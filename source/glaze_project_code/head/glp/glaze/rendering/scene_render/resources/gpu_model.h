@@ -16,7 +16,8 @@ struct gpu_model_part
     const mesh* target_mesh = nullptr;
     const material* target_material = nullptr;
 
-    glm::mat4 transform = glm::mat4(1.0f);
+    glm::mat4 transform          = glm::mat4(1.0f);
+    glm::mat4 previous_transform = glm::mat4(1.0f);
 };
 
 struct gpu_model

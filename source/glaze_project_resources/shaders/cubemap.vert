@@ -25,7 +25,7 @@ void main()
 
     object_data object = pc.frame.objects.data[gl_InstanceIndex];
 
-    tint = pc.frame.materials.data[object.material_index].base_color.rgb;
+    tint = pc.frame.materials.data[object.material_index].base_color.rgb * pc.frame.exposure;
 
     gl_Position = vec4(corner, CUBEMAP_DEPTH, 1.0);
 }

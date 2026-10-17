@@ -13,6 +13,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 #include <string>
 
@@ -22,7 +23,7 @@ namespace glaze::world::res
 class cmp_cubemap : public scene::vol::volume_component
 {
 public:
-    cmp_cubemap(const std::string& path, float intensity, float sun_intensity);
+    cmp_cubemap(const std::string& path, float sky_illuminance, float sun_illuminance, glm::vec3 sun_color);
     ~cmp_cubemap() override;
 
     cmp_cubemap(const cmp_cubemap&) = delete;
@@ -38,10 +39,11 @@ public:
 
 private:
     rendering::image m_image;
-    rendering::image m_irradiance;
     rendering::image m_prefiltered;
 
     float m_intensity = 1.0f;
+
+    glm::vec4 m_irradiance_sh[rendering::scene_render::ENVIRONMENT_SH_COUNT] = {};
 
     bool m_has_sun = false;
 
@@ -58,7 +60,7 @@ private:
 class skybox : public scene::scene_entity
 {
 public:
-    skybox(const std::string& path, float intensity = 1.0f, float sun_intensity = 1.0f);
+    skybox(const std::string& path, float sky_illuminance = 30000.0f, float sun_illuminance = 100000.0f, glm::vec3 sun_color = glm::vec3(1.0f));
 };
 
 }

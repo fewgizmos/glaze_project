@@ -32,6 +32,7 @@ bool has_environment();
 const gpu_environment& get_environment();
 
 void handle_all();
+void draw_prepass();
 void draw_all();
 
 VkDeviceAddress get_objects_address();

@@ -5,6 +5,8 @@
 #include "glp/glaze/rendering/vk/samplers.h"
 #include "glp/glaze/rendering/defines.h"
 
+#include "glp/glaze/utilities/core/assert.h"
+
 #include <fastgltf/core.hpp>
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/tools.hpp>
@@ -22,6 +24,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 
@@ -42,6 +45,24 @@ struct stored_model
 constexpr const char* DEFAULT_SHADER_NAME = "base_model";
 
 constexpr int PIXEL_CHANNELS = 4;
+
+const fastgltf::Extensions PARSER_EXTENSIONS =
+    fastgltf::Extensions::KHR_texture_transform
+    | fastgltf::Extensions::KHR_mesh_quantization
+    | fastgltf::Extensions::KHR_lights_punctual
+    | fastgltf::Extensions::KHR_materials_specular
+    | fastgltf::Extensions::KHR_materials_ior
+    | fastgltf::Extensions::KHR_materials_iridescence
+    | fastgltf::Extensions::KHR_materials_volume
+    | fastgltf::Extensions::KHR_materials_transmission
+    | fastgltf::Extensions::KHR_materials_clearcoat
+    | fastgltf::Extensions::KHR_materials_emissive_strength
+    | fastgltf::Extensions::KHR_materials_sheen
+    | fastgltf::Extensions::KHR_materials_unlit
+    | fastgltf::Extensions::KHR_materials_anisotropy
+    | fastgltf::Extensions::KHR_materials_diffuse_transmission
+    | fastgltf::Extensions::EXT_mesh_gpu_instancing
+    | fastgltf::Extensions::MSFT_packing_normalRoughnessMetallic;
 
 std::vector<stored_model> m_models;
 
@@ -355,11 +376,21 @@ std::unique_ptr<model> build_gltf(const std::string& gltf_path, const shader* ta
 {
     const std::filesystem::path directory = std::filesystem::path(gltf_path).parent_path();
 
-    fastgltf::Parser parser;
+    fastgltf::Parser parser(PARSER_EXTENSIONS);
 
     auto data = fastgltf::GltfDataBuffer::FromPath(gltf_path);
 
+    GLAZE_ASSERT(
+        data.error() != fastgltf::Error::None,
+        "failed to read gltf: " + gltf_path + " (" + std::string(fastgltf::getErrorMessage(data.error())) + ")"
+    );
+
     auto loaded = parser.loadGltf(data.get(), directory, fastgltf::Options::LoadExternalBuffers);
+
+    GLAZE_ASSERT(
+        loaded.error() != fastgltf::Error::None,
+        "failed to parse gltf: " + gltf_path + " (" + std::string(fastgltf::getErrorMessage(loaded.error())) + ")"
+    );
 
     const fastgltf::Asset& asset = loaded.get();
 
@@ -370,21 +401,32 @@ std::unique_ptr<model> build_gltf(const std::string& gltf_path, const shader* ta
 
     std::vector<bool> image_is_srgb(asset.images.size(), false);
 
-    for (const fastgltf::Material& source : asset.materials) {
-        if (source.pbrData.baseColorTexture.has_value()) {
-            const fastgltf::Texture& used = asset.textures[source.pbrData.baseColorTexture.value().textureIndex];
-
-            if (used.imageIndex.has_value()) {
-                image_is_srgb[used.imageIndex.value()] = true;
-            }
+    const auto mark_srgb = [&](const fastgltf::Optional<fastgltf::TextureInfo>& info) {
+        if (!info.has_value()) {
+            return;
         }
 
-        if (source.emissiveTexture.has_value()) {
-            const fastgltf::Texture& used = asset.textures[source.emissiveTexture.value().textureIndex];
+        const fastgltf::Texture& used = asset.textures[info.value().textureIndex];
 
-            if (used.imageIndex.has_value()) {
-                image_is_srgb[used.imageIndex.value()] = true;
-            }
+        if (used.imageIndex.has_value()) {
+            image_is_srgb[used.imageIndex.value()] = true;
+        }
+    };
+
+    for (const fastgltf::Material& source : asset.materials) {
+        mark_srgb(source.pbrData.baseColorTexture);
+        mark_srgb(source.emissiveTexture);
+
+        if (source.specular != nullptr) {
+            mark_srgb(source.specular->specularColorTexture);
+        }
+
+        if (source.diffuseTransmission != nullptr) {
+            mark_srgb(source.diffuseTransmission->diffuseTransmissionColorTexture);
+        }
+
+        if (source.sheen != nullptr) {
+            mark_srgb(source.sheen->sheenColorTexture);
         }
     }
 
@@ -400,8 +442,8 @@ std::unique_ptr<model> build_gltf(const std::string& gltf_path, const shader* ta
         }
     }
 
-    const auto get_material_texture = [&](size_t texture_index) {
-        const fastgltf::Texture& source = asset.textures[texture_index];
+    const auto get_material_texture = [&](const fastgltf::TextureInfo& info) {
+        const fastgltf::Texture& source = asset.textures[info.textureIndex];
 
         material_texture result;
 
@@ -410,6 +452,12 @@ std::unique_ptr<model> build_gltf(const std::string& gltf_path, const shader* ta
         }
 
         result.sampler_index = make_sampler(asset, source);
+
+        if (info.transform != nullptr) {
+            result.uv_offset   = glm::vec2(info.transform->uvOffset[0], info.transform->uvOffset[1]);
+            result.uv_scale    = glm::vec2(info.transform->uvScale[0], info.transform->uvScale[1]);
+            result.uv_rotation = info.transform->rotation;
+        }
 
         return result;
     };
@@ -420,6 +468,7 @@ std::unique_ptr<model> build_gltf(const std::string& gltf_path, const shader* ta
         material_create_info create_info;
 
         create_info.target_shader = source.doubleSided ? std_base_model_double_sided_shader() : target_shader;
+        create_info.double_sided  = source.doubleSided;
 
         create_info.base_color = glm::vec4(
             source.pbrData.baseColorFactor[0],
@@ -439,28 +488,100 @@ std::unique_ptr<model> build_gltf(const std::string& gltf_path, const shader* ta
             ? material_alpha_mode::opaque
             : material_alpha_mode::mask;
 
+        create_info.ior               = source.ior;
+        create_info.emissive_strength = source.emissiveStrength;
+
         if (source.pbrData.baseColorTexture.has_value()) {
-            create_info.base_color_texture = get_material_texture(source.pbrData.baseColorTexture.value().textureIndex);
+            create_info.base_color_texture = get_material_texture(source.pbrData.baseColorTexture.value());
         }
 
         if (source.pbrData.metallicRoughnessTexture.has_value()) {
-            create_info.metallic_roughness_texture = get_material_texture(
-                source.pbrData.metallicRoughnessTexture.value().textureIndex
-            );
+            create_info.metallic_roughness_texture = get_material_texture(source.pbrData.metallicRoughnessTexture.value());
         }
 
         if (source.normalTexture.has_value()) {
-            create_info.normal_texture = get_material_texture(source.normalTexture.value().textureIndex);
+            create_info.normal_texture = get_material_texture(source.normalTexture.value());
             create_info.normal_scale   = source.normalTexture.value().scale;
         }
 
         if (source.occlusionTexture.has_value()) {
-            create_info.occlusion_texture  = get_material_texture(source.occlusionTexture.value().textureIndex);
+            create_info.occlusion_texture  = get_material_texture(source.occlusionTexture.value());
             create_info.occlusion_strength = source.occlusionTexture.value().strength;
         }
 
         if (source.emissiveTexture.has_value()) {
-            create_info.emissive_texture = get_material_texture(source.emissiveTexture.value().textureIndex);
+            create_info.emissive_texture = get_material_texture(source.emissiveTexture.value());
+        }
+
+        if (source.specular != nullptr) {
+            create_info.specular_factor = source.specular->specularFactor;
+            create_info.specular_color  = glm::vec3(
+                source.specular->specularColorFactor[0],
+                source.specular->specularColorFactor[1],
+                source.specular->specularColorFactor[2]
+            );
+
+            if (source.specular->specularTexture.has_value()) {
+                create_info.specular_texture = get_material_texture(source.specular->specularTexture.value());
+            }
+
+            if (source.specular->specularColorTexture.has_value()) {
+                create_info.specular_color_texture = get_material_texture(source.specular->specularColorTexture.value());
+            }
+        }
+
+        if (source.diffuseTransmission != nullptr) {
+            const fastgltf::MaterialDiffuseTransmission& transmission = *source.diffuseTransmission;
+
+            create_info.diffuse_transmission_factor = transmission.diffuseTransmissionFactor;
+            create_info.diffuse_transmission_color  = glm::vec3(
+                transmission.diffuseTransmissionColorFactor[0],
+                transmission.diffuseTransmissionColorFactor[1],
+                transmission.diffuseTransmissionColorFactor[2]
+            );
+
+            if (transmission.diffuseTransmissionTexture.has_value()) {
+                create_info.diffuse_transmission_texture = get_material_texture(transmission.diffuseTransmissionTexture.value());
+            }
+
+            if (transmission.diffuseTransmissionColorTexture.has_value()) {
+                create_info.diffuse_transmission_color_texture = get_material_texture(transmission.diffuseTransmissionColorTexture.value());
+            }
+        }
+
+        if (source.clearcoat != nullptr) {
+            const fastgltf::MaterialClearcoat& clearcoat = *source.clearcoat;
+
+            create_info.clearcoat_factor    = clearcoat.clearcoatFactor;
+            create_info.clearcoat_roughness = clearcoat.clearcoatRoughnessFactor;
+
+            if (clearcoat.clearcoatTexture.has_value()) {
+                create_info.clearcoat_texture = get_material_texture(clearcoat.clearcoatTexture.value());
+            }
+
+            if (clearcoat.clearcoatRoughnessTexture.has_value()) {
+                create_info.clearcoat_roughness_texture = get_material_texture(clearcoat.clearcoatRoughnessTexture.value());
+            }
+
+            if (clearcoat.clearcoatNormalTexture.has_value()) {
+                create_info.clearcoat_normal_texture = get_material_texture(clearcoat.clearcoatNormalTexture.value());
+                create_info.clearcoat_normal_scale   = clearcoat.clearcoatNormalTexture.value().scale;
+            }
+        }
+
+        if (source.sheen != nullptr) {
+            const fastgltf::MaterialSheen& sheen = *source.sheen;
+
+            create_info.sheen_color     = glm::vec3(sheen.sheenColorFactor[0], sheen.sheenColorFactor[1], sheen.sheenColorFactor[2]);
+            create_info.sheen_roughness = sheen.sheenRoughnessFactor;
+
+            if (sheen.sheenColorTexture.has_value()) {
+                create_info.sheen_color_texture = get_material_texture(sheen.sheenColorTexture.value());
+            }
+
+            if (sheen.sheenRoughnessTexture.has_value()) {
+                create_info.sheen_roughness_texture = get_material_texture(sheen.sheenRoughnessTexture.value());
+            }
         }
 
         const material* built = materials::build(create_info);

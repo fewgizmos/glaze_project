@@ -1,0 +1,151 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D depth_texture;
+layout(set = 0, binding = 1) uniform sampler2D normal_texture;
+layout(set = 0, binding = 2, r32f) uniform writeonly image2D target;
+
+layout(push_constant) uniform constants
+{
+    mat4 inv_proj;
+
+    vec2 screen_size;
+    float proj_scale;
+    float radius;
+
+    float intensity;
+    uint directions;
+    uint steps;
+    uint frame_index;
+} pc;
+
+const float PI      = 3.14159265359;
+const float HALF_PI = 1.57079632679;
+
+const float MAX_RADIUS_PIXELS = 256.0;
+const float FALLOFF_START     = 0.6;
+const float MIN_DISTANCE      = 0.0001;
+
+const uint  NOISE_FRAMES = 64u;
+const float NOISE_SHIFT  = 5.588238;
+
+vec3 view_position(vec2 uv, float depth)
+{
+    vec4 position = pc.inv_proj * vec4(uv * 2.0 - 1.0, depth, 1.0);
+
+    return position.xyz / position.w;
+}
+
+float interleaved_gradient_noise(vec2 position)
+{
+    return fract(52.9829189 * fract(dot(position, vec2(0.06711056, 0.00583715))));
+}
+
+void main()
+{
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+
+    if (id.x >= int(pc.screen_size.x) || id.y >= int(pc.screen_size.y)) {
+        return;
+    }
+
+    vec2 uv = (vec2(id) + 0.5) / pc.screen_size;
+
+    float depth = textureLod(depth_texture, uv, 0.0).r;
+
+    if (depth <= 0.0) {
+        imageStore(target, id, vec4(1.0));
+
+        return;
+    }
+
+    vec3 position = view_position(uv, depth);
+    vec3 view     = normalize(-position);
+    vec3 normal   = normalize(textureLod(normal_texture, uv, 0.0).xyz);
+
+    float radius_pixels = min(pc.radius * pc.proj_scale / max(-position.z, MIN_DISTANCE), MAX_RADIUS_PIXELS);
+
+    if (radius_pixels < 1.0) {
+        imageStore(target, id, vec4(1.0));
+
+        return;
+    }
+
+    float frame_shift = float(pc.frame_index % NOISE_FRAMES) * NOISE_SHIFT;
+
+    float rotation_noise = interleaved_gradient_noise(vec2(id) + frame_shift);
+    float step_noise     = interleaved_gradient_noise(vec2(id.yx) + frame_shift * 1.7);
+
+    uint directions = max(pc.directions, 1u);
+    uint steps      = max(pc.steps, 1u);
+
+    float visibility = 0.0;
+
+    for (uint d = 0u; d < directions; d++) {
+        float angle = (float(d) + rotation_noise) / float(directions) * PI;
+
+        vec2 omega = vec2(cos(angle), sin(angle));
+
+        vec3 direction = view_position(uv + omega / pc.screen_size, depth) - position;
+
+        vec3 ortho = normalize(direction - dot(direction, view) * view);
+        vec3 axis  = normalize(cross(ortho, view));
+
+        vec3  projected_normal = normal - axis * dot(normal, axis);
+        float projected_length = length(projected_normal);
+
+        float cos_normal = clamp(dot(projected_normal, view) / max(projected_length, MIN_DISTANCE), -1.0, 1.0);
+        float n          = sign(dot(ortho, projected_normal)) * acos(cos_normal);
+
+        float horizon_cos[2] = float[](-1.0, -1.0);
+
+        for (uint side = 0u; side < 2u; side++) {
+            float side_sign = side == 0u ? -1.0 : 1.0;
+
+            for (uint s = 0u; s < steps; s++) {
+                float t = (float(s) + step_noise) / float(steps);
+
+                vec2 sample_uv = uv + omega * side_sign * t * radius_pixels / pc.screen_size;
+
+                if (any(lessThan(sample_uv, vec2(0.0))) || any(greaterThan(sample_uv, vec2(1.0)))) {
+                    break;
+                }
+
+                float sample_depth = textureLod(depth_texture, sample_uv, 0.0).r;
+
+                if (sample_depth <= 0.0) {
+                    continue;
+                }
+
+                vec3  delta    = view_position(sample_uv, sample_depth) - position;
+                float distance = length(delta);
+
+                if (distance < MIN_DISTANCE) {
+                    continue;
+                }
+
+                float falloff = clamp(1.0 - (distance - pc.radius * FALLOFF_START) / (pc.radius * (1.0 - FALLOFF_START)), 0.0, 1.0);
+
+                float sample_cos = mix(-1.0, dot(delta / distance, view), falloff);
+
+                horizon_cos[side] = max(horizon_cos[side], sample_cos);
+            }
+        }
+
+        float h0 = n + max(-acos(horizon_cos[0]) - n, -HALF_PI);
+        float h1 = n + min( acos(horizon_cos[1]) - n,  HALF_PI);
+
+        float sin_n = sin(n);
+        float cos_n = cos(n);
+
+        float arc0 = 0.25 * (-cos(2.0 * h0 - n) + cos_n + 2.0 * h0 * sin_n);
+        float arc1 = 0.25 * (-cos(2.0 * h1 - n) + cos_n + 2.0 * h1 * sin_n);
+
+        visibility += projected_length * (arc0 + arc1);
+    }
+
+    float occlusion = pow(clamp(visibility / float(directions), 0.0, 1.0), max(pc.intensity, 0.0));
+
+    imageStore(target, id, vec4(occlusion));
+}
