@@ -26,11 +26,4 @@ gpu_model build(const model* target, const glm::mat4& local)
     return result;
 }
 
-void apply_world(gpu_model& target, const glm::mat4& world)
-{
-    for (gpu_model_part& part : target.parts) {
-        part.transform = world * part.transform;
-    }
-}
-
 }

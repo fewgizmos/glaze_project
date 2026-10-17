@@ -3,7 +3,6 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/matrix.hpp>
 #include <glm/trigonometric.hpp>
-#include <glm/vec4.hpp>
 
 namespace glaze::rendering::scene_render::res::gpu_cameras
 {
@@ -54,14 +53,6 @@ gpu_camera build_ortho(float ortho_size, float aspect, float near_plane, float f
     finish(result);
 
     return result;
-}
-
-void apply_world(gpu_camera& target, const glm::mat4& world)
-{
-    target.view     = target.view * glm::inverse(world);
-    target.position = glm::vec3(world * glm::vec4(target.position, 1.0f));
-
-    finish(target);
 }
 
 }

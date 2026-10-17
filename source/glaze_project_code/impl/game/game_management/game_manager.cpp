@@ -5,7 +5,9 @@
 #include "glp/glaze/io/input.h"
 
 #include "glp/glaze/scene/scene.h"
-#include "glp/glaze/scene/objects/game_object.h"
+#include "glp/glaze/scene/objects/light_object.h"
+#include "glp/glaze/scene/objects/post_object.h"
+#include "glp/glaze/scene/objects/static_camera_object.h"
 #include "glp/glaze/scene/objects/static_object.h"
 
 #include "glp/glaze/world/resources/skybox.h"
@@ -37,7 +39,7 @@ const glaze::scene::vol::component::light_create_info AMBIENT_LIGHT = {
     .type         = glaze::scene::vol::component::light_type::ambient,
     .color        = glm::vec3(0.35f, 0.45f, 0.6f),
     .ground_color = glm::vec3(0.15f, 0.12f, 0.1f),
-    .intensity    = 0.85f
+    .intensity    = 0.70f
 };
 
 const glaze::scene::vol::component::light_create_info BLUE_LIGHT = {
@@ -90,20 +92,20 @@ void init_session()
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(0.0f, 1.0f, 5.0f), glm::vec3(77.0f, 10.0f, 0.0f), glm::vec3(4.0f), GOLD_LOCK_MODEL_PATH);
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-8.0f, 0.0f, -6.0f), glm::vec3(0), glm::vec3(3.4f), WOODEN_CRATE_MODEL_PATH);
 
-        glaze::scene::it::create_entity<glaze::world::res::skybox>(SKYBOX_PATH, 0.4f, 1.0f);
+        glaze::scene::it::create_entity<glaze::world::res::skybox>(SKYBOX_PATH, 0.4f, 1.5f);
 
-        glaze::scene::it::create_entity<glaze::scene::obj::game_object_post_prim>(POST_SETTINGS);
+        glaze::scene::it::create_entity<glaze::scene::obj::post_object_prim>(POST_SETTINGS);
 
-        glaze::scene::it::create_entity<glaze::scene::obj::game_object_light_prim>(glm::vec3(0.0f), glm::vec3(0.0f), AMBIENT_LIGHT);
+        glaze::scene::it::create_entity<glaze::scene::obj::light_object_prim>(glm::vec3(0.0f), glm::vec3(0.0f), AMBIENT_LIGHT);
 
-        glaze::scene::it::create_entity<glaze::scene::obj::game_object_light_prim>(glm::vec3(1.4f, 1.0f, 0.0f), glm::vec3(0.0f), BLUE_LIGHT);
+        glaze::scene::it::create_entity<glaze::scene::obj::light_object_prim>(glm::vec3(1.4f, 1.0f, 0.0f), glm::vec3(0.0f), BLUE_LIGHT);
 
         if (glaze::scene::it::get_player_entity() == nullptr) {
 #ifndef NDEBUG
             glaze::scene::it::set_player_entity(glaze::scene::it::create_entity<trainer::scene::debug_camera_player_obj>());
 #else
             glaze::scene::it::set_player_entity(
-                glaze::scene::it::create_entity<glaze::scene::obj::game_object_static_camera_prim>(glm::vec3(2.5f, 3.0f, 2.5f), glm::vec3(-40.0f, 45.0f, 0.0f))
+                glaze::scene::it::create_entity<glaze::scene::obj::static_camera_object_prim>(glm::vec3(2.5f, 3.0f, 2.5f), glm::vec3(-40.0f, 45.0f, 0.0f))
             );
 #endif
         }
@@ -115,9 +117,6 @@ void cleanup_session()
     m_is_session_started = false;
 
     glaze::scene::it::erase_all_entities_typed<glaze::scene::obj::static_object_model_prim>();
-    glaze::scene::it::erase_all_entities_typed<glaze::world::res::skybox>();
-    glaze::scene::it::erase_all_entities_typed<glaze::scene::obj::game_object_post_prim>();
-    glaze::scene::it::erase_all_entities_typed<glaze::scene::obj::game_object_light_prim>();
 }
 
 }

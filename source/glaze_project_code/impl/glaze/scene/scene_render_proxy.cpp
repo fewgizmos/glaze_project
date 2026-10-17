@@ -9,6 +9,11 @@
 #include "glp/glaze/rendering/scene_render/resources/gpu_light.h"
 #include "glp/glaze/rendering/scene_render/resources/gpu_model.h"
 
+#include <glm/geometric.hpp>
+#include <glm/matrix.hpp>
+#include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
+
 #include <memory>
 
 namespace glaze::scene::render_proxy
@@ -34,7 +39,7 @@ void proxy_camera()
 
         rendering::scene_render::gpu_camera camera = comp->get_camera();
 
-        rendering::scene_render::res::gpu_cameras::apply_world(
+        util::apply_camera_world(
             camera,
             vol::compose_transform(volume.w_pos, volume.w_rot, glm::vec3(1.0f))
         );
@@ -56,7 +61,7 @@ void proxy_volume_models(const vol::scene_volume& volume)
 
         rendering::scene_render::gpu_model model = comp->get_model();
 
-        rendering::scene_render::res::gpu_models::apply_world(model, world);
+        util::apply_model_world(model, world);
 
         rendering::scene_render::frame_pipe::submit_model(model);
     }
@@ -103,7 +108,7 @@ void proxy_volume_lights(const vol::scene_volume& volume)
 
         rendering::scene_render::gpu_light light = comp->get_light();
 
-        rendering::scene_render::res::gpu_lights::apply_world(light, world);
+        util::apply_light_world(light, world);
 
         rendering::scene_render::frame_pipe::submit_light(light);
     }
@@ -139,6 +144,33 @@ void proxy_visibles()
             has_environment = proxy_volume_environment(ent->scene_volume()) || proxy_volume_environment(ent->scene_gizmo_volume());
         }
     }
+}
+
+namespace util
+{
+
+void apply_model_world(rendering::scene_render::gpu_model& target, const glm::mat4& world)
+{
+    for (rendering::scene_render::gpu_model_part& part : target.parts) {
+        part.transform = world * part.transform;
+    }
+}
+
+void apply_camera_world(rendering::scene_render::gpu_camera& target, const glm::mat4& world)
+{
+    target.view     = target.view * glm::inverse(world);
+    target.position = glm::vec3(world * glm::vec4(target.position, 1.0f));
+
+    target.view_proj     = target.proj * target.view;
+    target.inv_view_proj = glm::inverse(target.view_proj);
+}
+
+void apply_light_world(rendering::scene_render::gpu_light& target, const glm::mat4& world)
+{
+    target.position  = glm::vec3(world * glm::vec4(target.position, 1.0f));
+    target.direction = glm::normalize(glm::vec3(world * glm::vec4(target.direction, 0.0f)));
+}
+
 }
 
 }

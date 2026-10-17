@@ -1,6 +1,5 @@
 #pragma once
 
-#include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
 #include <cstdint>
@@ -26,12 +25,5 @@ struct gpu_light
     float sin_angular_radius = 0.0f;
     float padding[2]         = { 0.0f, 0.0f };
 };
-
-}
-
-namespace glaze::rendering::scene_render::res::gpu_lights
-{
-
-void apply_world(gpu_light& target, const glm::mat4& world);
 
 }

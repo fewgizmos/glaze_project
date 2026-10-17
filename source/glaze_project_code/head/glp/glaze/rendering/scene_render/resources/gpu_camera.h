@@ -24,6 +24,4 @@ namespace glaze::rendering::scene_render::res::gpu_cameras
 gpu_camera build_perspective(float fov, float aspect, float near_plane, float far_plane, const glm::mat4& local);
 gpu_camera build_ortho(float ortho_size, float aspect, float near_plane, float far_plane, const glm::mat4& local);
 
-void apply_world(gpu_camera& target, const glm::mat4& world);
-
 }

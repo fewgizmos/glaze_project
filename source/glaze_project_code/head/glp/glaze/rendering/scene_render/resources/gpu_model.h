@@ -31,6 +31,4 @@ namespace glaze::rendering::scene_render::res::gpu_models
 
 gpu_model build(const model* target, const glm::mat4& local);
 
-void apply_world(gpu_model& target, const glm::mat4& world);
-
 }
