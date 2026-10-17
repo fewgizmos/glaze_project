@@ -1,0 +1,284 @@
+#include "glp/glaze/rendering/scene_render/exposure.h"
+
+#include "glp/glaze/rendering/scene_render/frame_pipeline.h"
+#include "glp/glaze/rendering/scene_render/scene_render.h"
+
+#include "glp/glaze/rendering/scene_render/resources/gpu_post.h"
+#include "glp/glaze/rendering/scene_render/resources/shaders.h"
+
+#include "glp/glaze/rendering/vk/commands.h"
+#include "glp/glaze/rendering/vk/descriptors.h"
+#include "glp/glaze/rendering/vk/device.h"
+#include "glp/glaze/rendering/vk/frame.h"
+#include "glp/glaze/rendering/vk/resources.h"
+#include "glp/glaze/rendering/vk/samplers.h"
+#include "glp/glaze/rendering/vk/shaders.h"
+
+#include "glp/glaze/rendering/defines.h"
+
+#include "glp/glaze/utilities/core/timer.h"
+
+#include <vulkan/vulkan_core.h>
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+
+namespace glaze::rendering::scene_render::exposure
+{
+
+namespace
+{
+
+struct histogram_push
+{
+    VkDeviceAddress histogram;
+    float inverse_exposure;
+    float min_log_luminance;
+    float log_luminance_range;
+    uint32_t padding;
+};
+
+constexpr uint32_t BIN_COUNT  = 256;
+constexpr uint32_t GROUP_SIZE = 16;
+
+constexpr float MIN_LOG_LUMINANCE   = -10.0f;
+constexpr float LOG_LUMINANCE_RANGE = 30.0f;
+
+constexpr float LOW_PERCENT  = 0.1f;
+constexpr float HIGH_PERCENT = 0.9f;
+
+constexpr float EXPOSURE_SCALE      = 1.2f;
+constexpr float CALIBRATION_OFFSET  = 3.0f;
+
+VkDescriptorSetLayout m_set_layout = VK_NULL_HANDLE;
+VkDescriptorPool m_pool = VK_NULL_HANDLE;
+VkDescriptorSet m_set = VK_NULL_HANDLE;
+
+VkSampler m_sampler = VK_NULL_HANDLE;
+
+VkImageView m_written_view = VK_NULL_HANDLE;
+
+const shader* m_shader = nullptr;
+
+buffer m_histograms[MAX_FRAMES_IN_FLIGHT];
+bool m_histogram_ready[MAX_FRAMES_IN_FLIGHT] = {};
+
+float m_ev100    = 0.0f;
+float m_exposure = 1.0f;
+
+bool m_adapted = false;
+
+float to_exposure(float ev100)
+{
+    return 1.0f / (EXPOSURE_SCALE * std::exp2(ev100));
+}
+
+bool histogram_ev100(const std::array<uint32_t, BIN_COUNT>& bins, float& ev100)
+{
+    uint64_t total = 0;
+
+    for (uint32_t i = 1; i < BIN_COUNT; i++) {
+        total += bins[i];
+    }
+
+    if (total == 0) {
+        return false;
+    }
+
+    const float low  = static_cast<float>(total) * LOW_PERCENT;
+    const float high = static_cast<float>(total) * HIGH_PERCENT;
+
+    float cumulative = 0.0f;
+    float weight_sum = 0.0f;
+    float log_sum    = 0.0f;
+
+    for (uint32_t i = 1; i < BIN_COUNT; i++) {
+        const float count = static_cast<float>(bins[i]);
+
+        const float begin = std::max(cumulative, low);
+        const float end   = std::min(cumulative + count, high);
+
+        cumulative += count;
+
+        if (end <= begin) {
+            continue;
+        }
+
+        const float log_luminance = MIN_LOG_LUMINANCE + (static_cast<float>(i - 1) + 0.5f) / static_cast<float>(BIN_COUNT - 2) * LOG_LUMINANCE_RANGE;
+
+        log_sum    += log_luminance * (end - begin);
+        weight_sum += end - begin;
+    }
+
+    if (weight_sum <= 0.0f) {
+        return false;
+    }
+
+    ev100 = log_sum / weight_sum + CALIBRATION_OFFSET;
+
+    return true;
+}
+
+}
+
+void init_all()
+{
+    m_set_layout = vk::descriptors::create_set_layout({
+        { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr }
+    });
+
+    m_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 } });
+    m_set  = vk::descriptors::allocate_set(m_pool, m_set_layout);
+
+    sampler_create_info sampler_info;
+    sampler_info.mag_filter = VK_FILTER_NEAREST;
+    sampler_info.min_filter = VK_FILTER_NEAREST;
+    sampler_info.mip_mode   = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    sampler_info.wrap_u     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_info.wrap_v     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_info.wrap_w     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    sampler_info.anisotropy = false;
+
+    m_sampler = vk::samplers::get(vk::samplers::make(sampler_info));
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        m_histograms[i] = vk::resources::create_buffer(
+            sizeof(uint32_t) * BIN_COUNT,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
+        );
+
+        m_histogram_ready[i] = false;
+    }
+
+    compute_pipeline_create_info info;
+    info.set_layouts        = { m_set_layout };
+    info.push_constant_size = sizeof(histogram_push);
+
+    m_shader = res::shaders::build("exposure_histogram", "", "", "sys/exposure_histogram.comp", {}, info, render_queue::opaque);
+}
+
+void clean_all()
+{
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        vk::resources::destroy_buffer(m_histograms[i]);
+
+        m_histogram_ready[i] = false;
+    }
+
+    vk::descriptors::destroy_pool(m_pool);
+    vk::descriptors::destroy_set_layout(m_set_layout);
+
+    m_set_layout = VK_NULL_HANDLE;
+    m_pool       = VK_NULL_HANDLE;
+    m_set        = VK_NULL_HANDLE;
+
+    m_sampler      = VK_NULL_HANDLE;
+    m_written_view = VK_NULL_HANDLE;
+
+    m_shader = nullptr;
+
+    m_adapted = false;
+}
+
+void handle_all()
+{
+    const VkImageView hdr_view = it::get_taa_output_image().view;
+
+    if (hdr_view != m_written_view) {
+        vk::descriptors::write_image(m_set, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, hdr_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_sampler);
+
+        m_written_view = hdr_view;
+    }
+
+    const gpu_post& post = frame_pipe::get_post();
+
+    if (!post.auto_exposure) {
+        m_ev100    = post.ev100;
+        m_exposure = to_exposure(m_ev100);
+        m_adapted  = false;
+        return;
+    }
+
+    if (!m_adapted) {
+        m_ev100   = post.ev100;
+        m_adapted = true;
+    }
+
+    const uint32_t frame = vk::frame::get_current_frame_index();
+
+    if (m_histogram_ready[frame]) {
+        std::array<uint32_t, BIN_COUNT> bins = {};
+
+        vk::resources::download_buffer(m_histograms[frame], bins.data(), sizeof(uint32_t) * BIN_COUNT);
+
+        float target = 0.0f;
+
+        if (histogram_ev100(bins, target)) {
+            const float speed = target > m_ev100 ? post.exposure_speed_up : post.exposure_speed_down;
+
+            m_ev100 += (target - m_ev100) * (1.0f - std::exp(-utilities::core::timer::delta * speed));
+        }
+    }
+
+    m_ev100    = std::clamp(m_ev100, post.min_ev100, post.max_ev100);
+    m_exposure = to_exposure(m_ev100 - post.exposure_compensation);
+}
+
+void dispatch()
+{
+    const vkb::DispatchTable& disp = vk::device::get_disp();
+
+    VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
+
+    const uint32_t frame = vk::frame::get_current_frame_index();
+
+    const buffer& histogram = m_histograms[frame];
+
+    disp.cmdFillBuffer(cmd, histogram.handle, 0, histogram.size, 0);
+
+    vk::commands::memory_barrier(
+        cmd,
+        VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT,
+        VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
+    );
+
+    const image& hdr = it::get_taa_output_image();
+
+    histogram_push push;
+    push.histogram           = histogram.address;
+    push.inverse_exposure    = 1.0f / m_exposure;
+    push.min_log_luminance   = MIN_LOG_LUMINANCE;
+    push.log_luminance_range = LOG_LUMINANCE_RANGE;
+    push.padding             = 0;
+
+    disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_shader->compute.layout, 0, 1, &m_set, 0, nullptr);
+
+    vk::commands::dispatch(
+        cmd,
+        m_shader->compute,
+        &push,
+        sizeof(push),
+        (hdr.extent.width + GROUP_SIZE - 1) / GROUP_SIZE,
+        (hdr.extent.height + GROUP_SIZE - 1) / GROUP_SIZE,
+        1
+    );
+
+    vk::commands::memory_barrier(
+        cmd,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_HOST_BIT,
+        VK_ACCESS_2_HOST_READ_BIT
+    );
+
+    m_histogram_ready[frame] = true;
+}
+
+float get_exposure() { return m_exposure; }
+
+}

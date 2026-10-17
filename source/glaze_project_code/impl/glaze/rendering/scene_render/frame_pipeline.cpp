@@ -54,6 +54,9 @@ gpu_post m_post;
 gpu_environment m_environment;
 bool m_has_environment = false;
 
+gpu_atmosphere m_atmosphere;
+bool m_has_atmosphere = false;
+
 buffer m_object_buffers[MAX_FRAMES_IN_FLIGHT];
 buffer m_material_buffers[MAX_FRAMES_IN_FLIGHT];
 buffer m_light_buffers[MAX_FRAMES_IN_FLIGHT];
@@ -235,6 +238,9 @@ void clear()
 
     m_environment     = {};
     m_has_environment = false;
+
+    m_atmosphere     = {};
+    m_has_atmosphere = false;
 }
 
 void set_camera(const gpu_camera& camera)
@@ -265,6 +271,12 @@ void set_environment(const gpu_environment& environment)
     m_has_environment = true;
 }
 
+void set_atmosphere(const gpu_atmosphere& atmosphere)
+{
+    m_atmosphere     = atmosphere;
+    m_has_atmosphere = true;
+}
+
 void submit_light(const gpu_light& light)
 {
     m_lights.push_back(light);
@@ -279,6 +291,10 @@ const gpu_post& get_post() { return m_post; }
 bool has_environment() { return m_has_environment; }
 
 const gpu_environment& get_environment() { return m_environment; }
+
+bool has_atmosphere() { return m_has_atmosphere; }
+
+const gpu_atmosphere& get_atmosphere() { return m_atmosphere; }
 
 void handle_all()
 {

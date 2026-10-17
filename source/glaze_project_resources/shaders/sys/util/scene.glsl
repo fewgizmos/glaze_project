@@ -1,5 +1,7 @@
 #extension GL_EXT_nonuniform_qualifier : require
 
+#include "sys/util/atmosphere_params.glsl"
+
 struct vertex
 {
     vec3 pos;
@@ -168,6 +170,11 @@ layout(buffer_reference, std430) readonly buffer light_buffer
     light_data data[];
 };
 
+layout(buffer_reference, std430) readonly buffer environment_sh_buffer
+{
+    vec4 coefficients[9];
+};
+
 layout(buffer_reference, std430) readonly buffer frame_buffer
 {
     mat4 view;
@@ -193,7 +200,11 @@ layout(buffer_reference, std430) readonly buffer frame_buffer
     mat4 unjittered_view_proj;
     mat4 previous_view_proj;
 
-    vec4 environment_sh[9];
+    environment_sh_buffer environment_sh;
+    atmosphere_buffer atmosphere;
+
+    uint has_atmosphere;
+    uint padding1;
 };
 
 layout(push_constant) uniform constants

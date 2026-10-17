@@ -1,5 +1,10 @@
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
+#include "glp/glaze/rendering/scene_render/atmosphere.h"
+#include "glp/glaze/rendering/scene_render/bloom.h"
+#include "glp/glaze/rendering/scene_render/clouds.h"
+#include "glp/glaze/rendering/scene_render/exposure.h"
+#include "glp/glaze/rendering/scene_render/light_shafts.h"
 #include "glp/glaze/rendering/scene_render/environment.h"
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 #include "glp/glaze/rendering/scene_render/gtao.h"
@@ -61,7 +66,11 @@ struct frame_scene_data
     glm::mat4 unjittered_view_proj;
     glm::mat4 previous_view_proj;
 
-    glm::vec4 environment_sh[ENVIRONMENT_SH_COUNT];
+    VkDeviceAddress environment_sh;
+    VkDeviceAddress atmosphere;
+
+    uint32_t has_atmosphere;
+    uint32_t padding1;
 };
 
 constexpr uint32_t GTAO_BINDING = 2;
@@ -311,11 +320,13 @@ void handle_frame_data()
     data.lights    = frame_pipe::get_lights_address();
 
     data.frame_index = m_frame_index;
-    data.exposure    = frame_pipe::get_post().exposure;
+    data.exposure    = exposure::get_exposure();
 
-    for (uint32_t i = 0; i < ENVIRONMENT_SH_COUNT; i++) {
-        data.environment_sh[i] = frame_pipe::get_environment().irradiance_sh[i];
-    }
+    data.environment_sh = frame_pipe::get_environment().irradiance_sh;
+    data.atmosphere     = atmosphere::get_params_address();
+
+    data.has_atmosphere = frame_pipe::has_atmosphere() ? 1 : 0;
+    data.padding1       = 0;
 
     data.unjittered_view_proj = camera.view_proj;
     data.previous_view_proj   = m_has_previous_view_proj ? m_previous_view_proj : camera.view_proj;
@@ -347,8 +358,15 @@ void init()
 
     frame_pipe::init_all();
 
+    atmosphere::init_all();
+    clouds::init_all();
+
     gtao::init_all();
     taa::init_all();
+
+    light_shafts::init_all();
+    exposure::init_all();
+    bloom::init_all();
 
     post_process::init_all();
 }
@@ -357,8 +375,15 @@ void cleanup()
 {
     post_process::clean_all();
 
+    bloom::clean_all();
+    exposure::clean_all();
+    light_shafts::clean_all();
+
     taa::clean_all();
     gtao::clean_all();
+
+    clouds::clean_all();
+    atmosphere::clean_all();
 
     frame_pipe::clean_all();
 
@@ -383,10 +408,17 @@ void handle_all()
 
     handle_scene_set();
 
+    clouds::handle_all();
+    atmosphere::handle_all();
+
     frame_pipe::handle_all();
 
     gtao::handle_all();
     taa::handle_all();
+
+    light_shafts::handle_all();
+    exposure::handle_all();
+    bloom::handle_all();
 
     post_process::handle_all();
 

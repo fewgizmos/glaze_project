@@ -1,0 +1,83 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "sys/util/atmosphere.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D scene_depth;
+layout(set = 0, binding = 1) uniform sampler2D clouds;
+layout(set = 0, binding = 2) uniform sampler2D transmittance_lut;
+
+layout(set = 0, binding = 4, rgba16f) uniform writeonly image2D target;
+
+layout(push_constant) uniform constants
+{
+    atmosphere_buffer atmosphere;
+    vec2 sun_uv;
+    float intensity;
+    float aspect;
+} pc;
+
+const uint SAMPLE_COUNT = 64u;
+
+const float SAMPLE_LENGTH = 0.9;
+const float DECAY         = 0.97;
+const float SUN_RADIUS    = 0.35;
+
+float occlusion(vec2 uv)
+{
+    if (textureLod(scene_depth, uv, 0.0).r > 0.0) {
+        return 0.0;
+    }
+
+    vec2 offset = (uv - pc.sun_uv) * vec2(pc.aspect, 1.0);
+
+    float falloff = clamp(1.0 - length(offset) / SUN_RADIUS, 0.0, 1.0);
+
+    return textureLod(clouds, uv, 0.0).a * falloff * falloff;
+}
+
+float interleaved_gradient_noise(vec2 pixel, uint frame)
+{
+    pixel += 5.588238 * float(frame % 64u);
+
+    return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
+}
+
+void main()
+{
+    ivec2 size = imageSize(target);
+    ivec2 id   = ivec2(gl_GlobalInvocationID.xy);
+
+    if (id.x >= size.x || id.y >= size.y) {
+        return;
+    }
+
+    atmosphere_params params = pc.atmosphere.params;
+
+    vec2 uv    = (vec2(id) + 0.5) / vec2(size);
+    vec2 delta = (pc.sun_uv - uv) * SAMPLE_LENGTH / float(SAMPLE_COUNT);
+
+    vec2 position = uv + delta * interleaved_gradient_noise(vec2(id), params.frame_index);
+
+    float weight = 1.0;
+    float sum    = 0.0;
+
+    for (uint i = 0u; i < SAMPLE_COUNT; i++) {
+        if (any(lessThan(position, vec2(0.0))) || any(greaterThan(position, vec2(1.0)))) {
+            break;
+        }
+
+        sum    += occlusion(position) * weight;
+        weight *= DECAY;
+
+        position += delta;
+    }
+
+    float radius = length(params.camera_position);
+
+    vec3 sun_color = sample_transmittance(params, transmittance_lut, radius, dot(params.sun_direction, params.camera_position / radius));
+
+    imageStore(target, id, vec4(sun_color * sum / float(SAMPLE_COUNT) * pc.intensity, 1.0));
+}

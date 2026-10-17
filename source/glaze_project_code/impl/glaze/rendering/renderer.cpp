@@ -2,6 +2,11 @@
 
 #include "glp/glaze/rendering/queue_deletor.h"
 
+#include "glp/glaze/rendering/scene_render/atmosphere.h"
+#include "glp/glaze/rendering/scene_render/bloom.h"
+#include "glp/glaze/rendering/scene_render/clouds.h"
+#include "glp/glaze/rendering/scene_render/exposure.h"
+#include "glp/glaze/rendering/scene_render/light_shafts.h"
 #include "glp/glaze/rendering/scene_render/gtao.h"
 #include "glp/glaze/rendering/scene_render/post_process.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
@@ -191,7 +196,7 @@ void begin_scene_rendering()
     depth_attachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
     depth_attachment.resolveMode = VK_RESOLVE_MODE_NONE;
     depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
     VkRenderingInfo rendering_info = {};
     rendering_info.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
@@ -264,6 +269,9 @@ void record_command_buffer()
 
     scene_render::it::handle_all();
 
+    scene_render::atmosphere::dispatch();
+    scene_render::clouds::dispatch();
+
     begin_prepass_rendering();
 
     scene_render::it::draw_prepass();
@@ -279,6 +287,10 @@ void record_command_buffer()
     vk::device::get_disp().cmdEndRendering(cmd);
 
     scene_render::taa::dispatch();
+
+    scene_render::light_shafts::dispatch();
+    scene_render::exposure::dispatch();
+    scene_render::bloom::dispatch();
 
     begin_post_rendering();
 

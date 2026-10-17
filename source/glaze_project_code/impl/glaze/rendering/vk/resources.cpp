@@ -308,6 +308,15 @@ void upload_buffer(const buffer& target, const void* data, VkDeviceSize size)
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to upload buffer");
 }
 
+void download_buffer(const buffer& source, void* data, VkDeviceSize size)
+{
+    GLAZE_ASSERT(size > source.size, "download exceeds buffer size");
+
+    const VkResult result = vmaCopyAllocationToMemory(m_allocator, source.allocation, 0, data, size);
+
+    GLAZE_ASSERT(result != VK_SUCCESS, "failed to download buffer");
+}
+
 void queue_upload(const buffer& target, const void* data, VkDeviceSize size)
 {
     pending_upload upload;
@@ -481,6 +490,56 @@ image create_image(
     result = device::get_disp().createImageView(&view_create_info, nullptr, &result_image.view);
 
     GLAZE_ASSERT(result != VK_SUCCESS, "failed to create image view");
+
+    return result_image;
+}
+
+image create_volume_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage)
+{
+    VkImageCreateInfo image_create_info = {};
+    image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    image_create_info.imageType = VK_IMAGE_TYPE_3D;
+    image_create_info.format = format;
+    image_create_info.extent = extent;
+    image_create_info.mipLevels = 1;
+    image_create_info.arrayLayers = 1;
+    image_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+    image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    image_create_info.usage = usage;
+    image_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VmaAllocationCreateInfo alloc_create_info = {};
+    alloc_create_info.usage = VMA_MEMORY_USAGE_AUTO;
+    alloc_create_info.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+    image result_image;
+    result_image.extent = extent;
+    result_image.format = format;
+
+    VkResult result = vmaCreateImage(
+        m_allocator,
+        &image_create_info,
+        &alloc_create_info,
+        &result_image.handle,
+        &result_image.allocation,
+        nullptr
+    );
+
+    GLAZE_ASSERT(result != VK_SUCCESS, "failed to create volume image");
+
+    VkImageViewCreateInfo view_create_info = {};
+    view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    view_create_info.image = result_image.handle;
+    view_create_info.viewType = VK_IMAGE_VIEW_TYPE_3D;
+    view_create_info.format = format;
+    view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    view_create_info.subresourceRange.levelCount = 1;
+    view_create_info.subresourceRange.layerCount = 1;
+
+    result = device::get_disp().createImageView(&view_create_info, nullptr, &result_image.view);
+
+    GLAZE_ASSERT(result != VK_SUCCESS, "failed to create volume image view");
 
     return result_image;
 }

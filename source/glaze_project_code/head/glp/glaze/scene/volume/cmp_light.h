@@ -40,6 +40,9 @@ public:
 
     rendering::scene_render::gpu_light get_light() override;
 
+    void set_color(glm::vec3 color)     { m_create_info.color = color; }
+    void set_intensity(float intensity) { m_create_info.intensity = intensity; }
+
 private:
     light_create_info m_create_info;
 };

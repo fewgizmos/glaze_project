@@ -10,7 +10,7 @@
 #include "glp/glaze/scene/objects/static_camera_object.h"
 #include "glp/glaze/scene/objects/static_object.h"
 
-#include "glp/glaze/world/resources/skybox.h"
+#include "glp/glaze/world/resources/sky_atmosphere.h"
 
 #ifndef NDEBUG
 #include "glp/trainer/scene/debug_camera.h"
@@ -33,11 +33,7 @@ constexpr const char* WOODEN_CRATE_MODEL_PATH = "source/glaze_project_resources/
 constexpr const char* PCB_MODEL_PATH = "source/glaze_project_resources/gltf/circuit_board/circuit_board_2k.gltf";
 constexpr const char* SERVICE_PISTOL_MODEL_PATH = "source/glaze_project_resources/gltf/pistol/service_pistol_2k.gltf";
 
-constexpr const char* SKYBOX_PATH = "source/glaze_project_resources/skybox/sky.hdr";
-
 const glm::vec3 FOX_SCALE = glm::vec3(0.02f);
-
-const glm::vec3 SUNSET_SUN_COLOR = glm::vec3(1.0f, 0.55f, 0.25f);
 
 const glaze::scene::vol::component::light_create_info BLUE_LIGHT = {
     .type      = glaze::scene::vol::component::light_type::point,
@@ -46,8 +42,17 @@ const glaze::scene::vol::component::light_create_info BLUE_LIGHT = {
     .range     = 8.0f
 };
 
+const glaze::world::res::atmosphere_create_info SUNSET_ATMOSPHERE = {
+    .time_of_day     = 17.5f,
+    .sun_light_scale = 1.5f,
+    .cloud_density   = 0.3f
+};
+
 const glaze::scene::vol::component::post_create_info POST_SETTINGS = {
-    .ev100 = 13.5f
+    .ev100                  = 13.5f,
+    .exposure_compensation  = 1.0f,
+    .bloom_intensity        = 0.08f,
+    .light_shafts_intensity = 2.0f
 };
 
 }
@@ -91,7 +96,7 @@ void init_session()
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-10.0f, 0.0f, -6.0f), glm::vec3(0), glm::vec3(3.4f), PCB_MODEL_PATH);
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-6.0f, 0.0f, 6.0f), glm::vec3(0), glm::vec3(3.4f), SERVICE_PISTOL_MODEL_PATH);
 
-        glaze::scene::it::create_entity<glaze::world::res::skybox>(SKYBOX_PATH, 30000.0f, 100000.0f, SUNSET_SUN_COLOR);
+        glaze::scene::it::create_entity<glaze::world::res::sky_atmosphere>(SUNSET_ATMOSPHERE);
 
         glaze::scene::it::create_entity<glaze::scene::obj::post_object_prim>(POST_SETTINGS);
 

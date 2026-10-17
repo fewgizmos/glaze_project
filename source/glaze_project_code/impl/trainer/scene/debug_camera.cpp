@@ -29,7 +29,7 @@ namespace
 
 constexpr float START_SPEED = 10.0f;
 constexpr float MIN_SPEED   = 0.1f;
-constexpr float MAX_SPEED   = 300.0f;
+constexpr float MAX_SPEED   = 600.0f;
 
 constexpr float SPEED_SCROLL_FACTOR = 1.2f;
 

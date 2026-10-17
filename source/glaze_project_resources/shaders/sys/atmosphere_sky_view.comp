@@ -1,0 +1,70 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "sys/util/atmosphere.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D transmittance_lut;
+layout(set = 0, binding = 1) uniform sampler2D multi_scattering_lut;
+layout(set = 0, binding = 3, rgba16f) uniform writeonly image2D target;
+
+layout(push_constant) uniform constants
+{
+    atmosphere_buffer atmosphere;
+} pc;
+
+const uint SAMPLE_COUNT = 30u;
+
+const float VERY_FAR = 1000000.0;
+
+void main()
+{
+    ivec2 size = imageSize(target);
+    ivec2 id   = ivec2(gl_GlobalInvocationID.xy);
+
+    if (id.x >= size.x || id.y >= size.y) {
+        return;
+    }
+
+    atmosphere_params params = pc.atmosphere.params;
+
+    float radius = length(params.camera_position);
+
+    float view_zenith_cos;
+    float light_view_cos;
+
+    sky_view_params(params, (vec2(id) + 0.5) / vec2(size), radius, view_zenith_cos, light_view_cos);
+
+    float view_zenith_sin = sqrt(max(1.0 - view_zenith_cos * view_zenith_cos, 0.0));
+
+    vec3 direction = vec3(
+        view_zenith_sin * light_view_cos,
+        view_zenith_cos,
+        view_zenith_sin * sqrt(max(1.0 - light_view_cos * light_view_cos, 0.0))
+    );
+
+    float sun_up = clamp(params.sun_direction.y, -1.0, 1.0);
+
+    vec3 sun_direction = vec3(sqrt(max(1.0 - sun_up * sun_up, 0.0)), sun_up, 0.0);
+
+    vec3 origin = vec3(0.0, radius, 0.0);
+
+    vec3 transmittance;
+
+    vec3 luminance = integrate_luminance(
+        params,
+        transmittance_lut,
+        multi_scattering_lut,
+        origin,
+        direction,
+        sun_direction,
+        VERY_FAR,
+        SAMPLE_COUNT,
+        true,
+        true,
+        transmittance
+    );
+
+    imageStore(target, id, vec4(luminance, 1.0));
+}

@@ -1,0 +1,62 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "sys/util/scene.glsl"
+#include "sys/util/atmosphere.glsl"
+
+layout(set = 1, binding = 0) uniform sampler2D transmittance_lut;
+layout(set = 1, binding = 2) uniform sampler2D sky_view_lut;
+layout(set = 1, binding = 4) uniform sampler2D clouds;
+
+layout(location = 0) in vec3 view_ray;
+layout(location = 1) in vec2 screen_uv;
+
+layout(location = 0) out vec4 out_color;
+
+const float MAX_HDR_VALUE = 60000.0;
+
+const vec3 LIMB_DARKENING = vec3(0.397, 0.503, 0.652);
+
+vec3 sun_disk(atmosphere_params params, vec3 origin, vec3 direction)
+{
+    float angle = asin(clamp(length(cross(direction, params.sun_direction)), 0.0, 1.0));
+
+    if (dot(direction, params.sun_direction) <= 0.0 || angle > params.sun_angular_radius) {
+        return vec3(0.0);
+    }
+
+    float radius = length(origin);
+
+    vec3 sun_transmittance = sample_transmittance(params, transmittance_lut, radius, dot(direction, origin / radius));
+
+    float edge = angle / params.sun_angular_radius;
+    float mu   = sqrt(max(1.0 - edge * edge, 0.0));
+
+    vec3 limb = pow(vec3(mu), LIMB_DARKENING) * (LIMB_DARKENING + 2.0) * 0.5;
+
+    float solid_angle = ATMOSPHERE_PI * params.sun_angular_radius * params.sun_angular_radius;
+
+    return sun_transmittance * limb / solid_angle;
+}
+
+void main()
+{
+    atmosphere_params params = pc.frame.atmosphere.params;
+
+    vec3 direction = normalize(view_ray);
+    vec3 origin    = params.camera_position;
+
+    vec3 luminance = sample_sky_view(params, sky_view_lut, origin, direction, true);
+
+    if (ray_sphere_nearest(origin, direction, params.bottom_radius) < 0.0) {
+        luminance += sun_disk(params, origin, direction);
+    }
+
+    if (params.clouds_enabled != 0u) {
+        vec4 cloud = textureLod(clouds, screen_uv, 0.0);
+
+        luminance = luminance * cloud.a + cloud.rgb;
+    }
+
+    out_color = vec4(min(luminance * params.sun_illuminance * pc.frame.exposure, vec3(MAX_HDR_VALUE)), 1.0);
+}

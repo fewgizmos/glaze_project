@@ -12,7 +12,6 @@
 #include "glp/glaze/rendering/vk/shaders.h"
 
 #include "glp/glaze/rendering/defines.h"
-#include "glp/glaze/rendering/queue_deletor.h"
 
 #include "glp/glaze/utilities/core/assert.h"
 
@@ -35,15 +34,13 @@ namespace glaze::world::res
 namespace
 {
 
-constexpr uint32_t FACES_COUNT = 6;
+constexpr uint32_t FACES_COUNT = rendering::scene_render::environment::CUBE_FACES;
 constexpr uint32_t PIXEL_SIZE  = 4;
 
-constexpr uint32_t PREFILTERED_SIZE = 128;
-constexpr uint32_t PREFILTERED_MIPS = 5;
+constexpr uint32_t PREFILTERED_SIZE = rendering::scene_render::environment::PREFILTERED_SIZE;
+constexpr uint32_t PREFILTERED_MIPS = rendering::scene_render::environment::PREFILTERED_MIPS;
 
-constexpr uint32_t BAKE_GROUP = 8;
-
-constexpr VkFormat IBL_FORMAT = VK_FORMAT_R16G16B16A16_SFLOAT;
+constexpr VkFormat IBL_FORMAT = rendering::scene_render::environment::IBL_FORMAT;
 
 constexpr float PANORAMA_MAX_VALUE = 60000.0f;
 
@@ -69,12 +66,6 @@ struct sky_lighting
     float upward_irradiance = 0.0f;
 };
 
-struct prefilter_push
-{
-    float roughness;
-    float source_resolution;
-};
-
 struct sky_source
 {
     rendering::buffer staging;
@@ -85,22 +76,6 @@ struct sky_source
     VkDescriptorPool pool = VK_NULL_HANDLE;
     VkDescriptorSet set   = VK_NULL_HANDLE;
 };
-
-VkDescriptorSetLayout bake_set_layout()
-{
-    static VkDescriptorSetLayout layout = [] {
-        const VkDescriptorSetLayout created = rendering::vk::descriptors::create_set_layout({
-            { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
-            { 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr }
-        });
-
-        rendering::queue_deletor::push([created]() { rendering::vk::descriptors::destroy_set_layout(created); });
-
-        return created;
-    }();
-
-    return layout;
-}
 
 const rendering::scene_render::shader* cubemap_shader()
 {
@@ -124,22 +99,9 @@ const rendering::scene_render::shader* panorama_shader()
 {
     static const rendering::scene_render::shader* shd = [] {
         rendering::compute_pipeline_create_info info;
-        info.set_layouts = { bake_set_layout() };
+        info.set_layouts = { rendering::scene_render::environment::get_bake_set_layout() };
 
         return rendering::scene_render::res::shaders::build("ibl_panorama", "", "", "sys/ibl_panorama.comp", {}, info, rendering::scene_render::render_queue::opaque);
-    }();
-
-    return shd;
-}
-
-const rendering::scene_render::shader* prefilter_shader()
-{
-    static const rendering::scene_render::shader* shd = [] {
-        rendering::compute_pipeline_create_info info;
-        info.set_layouts        = { bake_set_layout() };
-        info.push_constant_size = sizeof(prefilter_push);
-
-        return rendering::scene_render::res::shaders::build("ibl_prefilter", "", "", "sys/ibl_prefilter.comp", {}, info, rendering::scene_render::render_queue::opaque);
     }();
 
     return shd;
@@ -154,44 +116,6 @@ uint32_t get_mip_levels(uint32_t size)
     }
 
     return levels;
-}
-
-uint32_t get_groups(uint32_t size)
-{
-    return (size + BAKE_GROUP - 1) / BAKE_GROUP;
-}
-
-void write_bake_set(VkDescriptorSet set, const rendering::image& source, VkImageView target)
-{
-    rendering::vk::descriptors::write_image(
-        set,
-        0,
-        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        source.view,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        rendering::scene_render::environment::get_cube_sampler()
-    );
-
-    rendering::vk::descriptors::write_image(set, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, target, VK_IMAGE_LAYOUT_GENERAL);
-}
-
-void transition_bake_target(VkCommandBuffer cmd, const rendering::image& target, VkImageLayout old_layout, VkImageLayout new_layout)
-{
-    const bool to_general = new_layout == VK_IMAGE_LAYOUT_GENERAL;
-
-    rendering::vk::commands::transition_image(
-        cmd,
-        target.handle,
-        old_layout,
-        new_layout,
-        to_general ? VK_PIPELINE_STAGE_2_NONE : VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-        to_general ? 0 : VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
-        to_general ? VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT : VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-        to_general ? VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT : VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
-        VK_IMAGE_ASPECT_COLOR_BIT,
-        target.mip_levels,
-        target.array_layers
-    );
 }
 
 float pixel_luminance(const float* pixel)
@@ -439,7 +363,7 @@ rendering::image load_panorama(const std::string& path, sky_source& source, sun_
         }
     );
 
-    source.set = rendering::vk::descriptors::allocate_set(source.pool, bake_set_layout());
+    source.set = rendering::vk::descriptors::allocate_set(source.pool, rendering::scene_render::environment::get_bake_set_layout());
 
     rendering::vk::descriptors::write_image(
         source.set,
@@ -480,7 +404,7 @@ void record_sky(VkCommandBuffer cmd, const rendering::image& sky, const sky_sour
         VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
     );
 
-    transition_bake_target(cmd, sky, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+    rendering::scene_render::environment::transition_bake_target(cmd, sky, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
     const rendering::scene_render::shader* panorama_target = panorama_shader();
 
@@ -491,8 +415,8 @@ void record_sky(VkCommandBuffer cmd, const rendering::image& sky, const sky_sour
         panorama_target->compute,
         nullptr,
         0,
-        get_groups(sky.extent.width),
-        get_groups(sky.extent.height),
+        rendering::scene_render::environment::get_bake_groups(sky.extent.width),
+        rendering::scene_render::environment::get_bake_groups(sky.extent.height),
         FACES_COUNT
     );
 
@@ -530,16 +454,12 @@ void bake(const rendering::image& sky, const sky_source& source, const rendering
 
     for (uint32_t mip = 0; mip < PREFILTERED_MIPS; mip++) {
         prefiltered_views.push_back(rendering::vk::resources::create_image_view(prefiltered, VK_IMAGE_VIEW_TYPE_2D_ARRAY, mip, 1));
-        prefiltered_sets.push_back(rendering::vk::descriptors::allocate_set(pool, bake_set_layout()));
+        prefiltered_sets.push_back(rendering::vk::descriptors::allocate_set(pool, rendering::scene_render::environment::get_bake_set_layout()));
 
-        write_bake_set(prefiltered_sets.back(), sky, prefiltered_views.back());
+        rendering::scene_render::environment::write_bake_set(prefiltered_sets.back(), sky, prefiltered_views.back());
     }
 
-    const rendering::scene_render::shader* prefilter_target = prefilter_shader();
-
     rendering::vk::commands::immediate_submit([&](VkCommandBuffer cmd) {
-        const vkb::DispatchTable& disp = rendering::vk::device::get_disp();
-
         record_sky(cmd, sky, source);
 
         rendering::vk::commands::memory_barrier(
@@ -550,30 +470,7 @@ void bake(const rendering::image& sky, const sky_source& source, const rendering
             VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
         );
 
-        transition_bake_target(cmd, prefiltered, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
-
-        for (uint32_t mip = 0; mip < PREFILTERED_MIPS; mip++) {
-            const uint32_t mip_size = std::max(PREFILTERED_SIZE >> mip, 1u);
-
-            const prefilter_push push = {
-                static_cast<float>(mip) / static_cast<float>(PREFILTERED_MIPS - 1),
-                static_cast<float>(sky.extent.width)
-            };
-
-            disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, prefilter_target->compute.layout, 0, 1, &prefiltered_sets[mip], 0, nullptr);
-
-            rendering::vk::commands::dispatch(
-                cmd,
-                prefilter_target->compute,
-                &push,
-                sizeof(push),
-                get_groups(mip_size),
-                get_groups(mip_size),
-                FACES_COUNT
-            );
-        }
-
-        transition_bake_target(cmd, prefiltered, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        rendering::scene_render::environment::record_prefilter(cmd, prefiltered, prefiltered_sets.data(), static_cast<float>(sky.extent.width));
     });
 
     for (const VkImageView view : prefiltered_views) {
@@ -610,9 +507,19 @@ cmp_cubemap::cmp_cubemap(const std::string& path, float sky_illuminance, float s
 
     m_intensity = lighting.upward_irradiance > 0.0f ? sky_illuminance / lighting.upward_irradiance : 0.0f;
 
+    glm::vec4 irradiance_sh[rendering::scene_render::ENVIRONMENT_SH_COUNT];
+
     for (uint32_t i = 0; i < rendering::scene_render::ENVIRONMENT_SH_COUNT; i++) {
-        m_irradiance_sh[i] = glm::vec4(lighting.irradiance_sh[i], 0.0f);
+        irradiance_sh[i] = glm::vec4(lighting.irradiance_sh[i], 0.0f);
     }
+
+    m_sh_buffer = rendering::vk::resources::create_buffer(
+        sizeof(irradiance_sh),
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+        VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT
+    );
+
+    rendering::vk::resources::upload_buffer(m_sh_buffer, irradiance_sh, sizeof(irradiance_sh));
 
     if (sun.found) {
         const glm::vec3 forward = -sun.direction;
@@ -644,13 +551,14 @@ cmp_cubemap::cmp_cubemap(const std::string& path, float sky_illuminance, float s
 
     destroy_sky_source(source);
 
-    m_pool = rendering::vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 } });
+    m_pool = rendering::vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 } });
     m_set  = rendering::vk::descriptors::allocate_set(m_pool, rendering::scene_render::environment::get_set_layout());
 
     write_environment_image(m_set, rendering::scene_render::environment::SKY_BINDING, m_image);
     write_environment_image(m_set, rendering::scene_render::environment::PREFILTERED_BINDING, m_prefiltered);
 
     rendering::scene_render::environment::write_brdf_lut(m_set);
+    rendering::scene_render::environment::write_default_aerial_perspective(m_set);
 
     const std::vector<rendering::scene_render::vertex> vertices(3, rendering::scene_render::vertex{});
     const std::vector<uint32_t> indices = { 0, 1, 2 };
@@ -674,6 +582,7 @@ cmp_cubemap::~cmp_cubemap()
 
     rendering::vk::descriptors::destroy_pool(m_pool);
 
+    rendering::vk::resources::destroy_buffer(m_sh_buffer);
     rendering::vk::resources::destroy_image(m_prefiltered);
     rendering::vk::resources::destroy_image(m_image);
 }
@@ -691,12 +600,9 @@ rendering::scene_render::gpu_environment cmp_cubemap::get_environment()
 {
     rendering::scene_render::gpu_environment result;
 
-    result.set       = m_set;
-    result.intensity = m_intensity;
-
-    for (uint32_t i = 0; i < rendering::scene_render::ENVIRONMENT_SH_COUNT; i++) {
-        result.irradiance_sh[i] = m_irradiance_sh[i];
-    }
+    result.set           = m_set;
+    result.intensity     = m_intensity;
+    result.irradiance_sh = m_sh_buffer.address;
 
     return result;
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "glp/glaze/rendering/scene_render/resources/gpu_atmosphere.h"
 #include "glp/glaze/rendering/scene_render/resources/gpu_camera.h"
 #include "glp/glaze/rendering/scene_render/resources/gpu_environment.h"
 #include "glp/glaze/rendering/scene_render/resources/gpu_light.h"
@@ -26,6 +27,7 @@ enum class component_flags : unsigned int
     light   = 1U << 2,
     post        = 1U << 3,
     environment = 1U << 4,
+    atmosphere  = 1U << 5,
 };
 
 class volume_component
@@ -42,6 +44,7 @@ public:
     virtual rendering::scene_render::gpu_light get_light() { return {}; }
     virtual rendering::scene_render::gpu_post get_post() { return {}; }
     virtual rendering::scene_render::gpu_environment get_environment() { return {}; }
+    virtual rendering::scene_render::gpu_atmosphere get_atmosphere() { return {}; }
 
     bool has_flag(component_flags flag) const { return m_flags.is_state_set(flag); }
 

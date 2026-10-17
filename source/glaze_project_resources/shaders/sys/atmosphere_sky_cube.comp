@@ -1,0 +1,35 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "sys/util/atmosphere.glsl"
+#include "sys/util/ibl.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 2) uniform sampler2D sky_view_lut;
+layout(set = 0, binding = 3, rgba16f) uniform writeonly image2DArray target;
+
+layout(push_constant) uniform constants
+{
+    atmosphere_buffer atmosphere;
+} pc;
+
+const float MAX_VALUE = 60000.0;
+
+void main()
+{
+    ivec2 size = imageSize(target).xy;
+    ivec3 id   = ivec3(gl_GlobalInvocationID);
+
+    if (id.x >= size.x || id.y >= size.y) {
+        return;
+    }
+
+    atmosphere_params params = pc.atmosphere.params;
+
+    vec3 direction = cube_direction(uint(id.z), (vec2(id.xy) + 0.5) / vec2(size));
+
+    vec3 luminance = sample_sky_view(params, sky_view_lut, params.camera_position, direction, false) * params.sun_illuminance;
+
+    imageStore(target, id, vec4(min(luminance, vec3(MAX_VALUE)), 1.0));
+}

@@ -1,0 +1,37 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D source;
+layout(set = 0, binding = 1, rgba16f) uniform image2D target;
+
+const float FILTER_RADIUS = 1.0;
+
+void main()
+{
+    ivec2 size = imageSize(target);
+    ivec2 id   = ivec2(gl_GlobalInvocationID.xy);
+
+    if (id.x >= size.x || id.y >= size.y) {
+        return;
+    }
+
+    vec2 offset = FILTER_RADIUS / vec2(textureSize(source, 0));
+    vec2 uv     = (vec2(id) + 0.5) / vec2(size);
+
+    vec3 result = textureLod(source, uv, 0.0).rgb * 4.0;
+
+    result += textureLod(source, uv + vec2(-offset.x,  0.0), 0.0).rgb * 2.0;
+    result += textureLod(source, uv + vec2( offset.x,  0.0), 0.0).rgb * 2.0;
+    result += textureLod(source, uv + vec2( 0.0, -offset.y), 0.0).rgb * 2.0;
+    result += textureLod(source, uv + vec2( 0.0,  offset.y), 0.0).rgb * 2.0;
+
+    result += textureLod(source, uv + vec2(-offset.x, -offset.y), 0.0).rgb;
+    result += textureLod(source, uv + vec2( offset.x, -offset.y), 0.0).rgb;
+    result += textureLod(source, uv + vec2(-offset.x,  offset.y), 0.0).rgb;
+    result += textureLod(source, uv + vec2( offset.x,  offset.y), 0.0).rgb;
+
+    vec3 current = imageLoad(target, id).rgb;
+
+    imageStore(target, id, vec4(current + result / 16.0, 1.0));
+}

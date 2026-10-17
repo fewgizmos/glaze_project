@@ -1,0 +1,27 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 3) uniform sampler2D shafts;
+
+layout(set = 0, binding = 5, rgba16f) uniform image2D hdr_image;
+
+const float MAX_HDR_VALUE = 60000.0;
+
+void main()
+{
+    ivec2 size = imageSize(hdr_image);
+    ivec2 id   = ivec2(gl_GlobalInvocationID.xy);
+
+    if (id.x >= size.x || id.y >= size.y) {
+        return;
+    }
+
+    vec2 uv = (vec2(id) + 0.5) / vec2(size);
+
+    vec4 color = imageLoad(hdr_image, id);
+
+    color.rgb = min(color.rgb + textureLod(shafts, uv, 0.0).rgb, vec3(MAX_HDR_VALUE));
+
+    imageStore(hdr_image, id, color);
+}

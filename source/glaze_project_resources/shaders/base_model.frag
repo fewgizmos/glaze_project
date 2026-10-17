@@ -1,7 +1,7 @@
 #version 450
 #extension GL_EXT_buffer_reference : require
 
-#include "util/scene.glsl"
+#include "sys/util/scene.glsl"
 
 layout(location = 0) in vec3 frag_color;
 layout(location = 1) in vec3 frag_normal;
@@ -15,6 +15,7 @@ layout(location = 0) out vec4 out_color;
 
 layout(set = 1, binding = 1) uniform samplerCube env_prefiltered;
 layout(set = 1, binding = 2) uniform sampler2D env_brdf_lut;
+layout(set = 1, binding = 3) uniform sampler3D env_aerial_perspective;
 
 layout(set = 0, binding = 2) uniform sampler2D scene_gtao;
 
@@ -38,6 +39,8 @@ const float SPECULAR_AA_THRESHOLD = 0.18;
 const float HORIZON_FADE = 1.3;
 
 const float MAX_HDR_VALUE = 60000.0;
+
+const float METERS_TO_KILOMETERS = 0.001;
 
 const float CLEARCOAT_F0    = 0.04;
 const float MIN_SHEEN_SIN2  = 0.0078125;
@@ -332,15 +335,17 @@ vec3 ambient_contribution(light_data light, surface_data surface)
 
 vec3 environment_irradiance(vec3 n)
 {
-    vec4 result = pc.frame.environment_sh[0] * 0.282095
-                + pc.frame.environment_sh[1] * (0.488603 * n.y)
-                + pc.frame.environment_sh[2] * (0.488603 * n.z)
-                + pc.frame.environment_sh[3] * (0.488603 * n.x)
-                + pc.frame.environment_sh[4] * (1.092548 * n.x * n.y)
-                + pc.frame.environment_sh[5] * (1.092548 * n.y * n.z)
-                + pc.frame.environment_sh[6] * (0.315392 * (3.0 * n.z * n.z - 1.0))
-                + pc.frame.environment_sh[7] * (1.092548 * n.x * n.z)
-                + pc.frame.environment_sh[8] * (0.546274 * (n.x * n.x - n.y * n.y));
+    environment_sh_buffer sh = pc.frame.environment_sh;
+
+    vec4 result = sh.coefficients[0] * 0.282095
+                + sh.coefficients[1] * (0.488603 * n.y)
+                + sh.coefficients[2] * (0.488603 * n.z)
+                + sh.coefficients[3] * (0.488603 * n.x)
+                + sh.coefficients[4] * (1.092548 * n.x * n.y)
+                + sh.coefficients[5] * (1.092548 * n.y * n.z)
+                + sh.coefficients[6] * (0.315392 * (3.0 * n.z * n.z - 1.0))
+                + sh.coefficients[7] * (1.092548 * n.x * n.z)
+                + sh.coefficients[8] * (0.546274 * (n.x * n.x - n.y * n.y));
 
     return max(result.rgb, vec3(0.0));
 }
@@ -566,5 +571,19 @@ void main()
         lighting += light_contribution(pc.frame.lights.data[i], data);
     }
 
-    out_color = vec4(min((lighting + emissive) * pc.frame.exposure, vec3(MAX_HDR_VALUE)), 1.0);
+    vec3 color = lighting + emissive;
+
+    if (pc.frame.has_atmosphere != 0u) {
+        atmosphere_params atmosphere = pc.frame.atmosphere.params;
+
+        float distance = length(frag_world_pos - pc.frame.camera_pos) * METERS_TO_KILOMETERS;
+
+        vec3 coord = vec3(gl_FragCoord.xy / vec2(textureSize(scene_gtao, 0)), clamp(distance / atmosphere.aerial_max_distance, 0.0, 1.0));
+
+        vec4 aerial = texture(env_aerial_perspective, coord);
+
+        color = color * aerial.a + aerial.rgb * atmosphere.sun_illuminance;
+    }
+
+    out_color = vec4(min(color * pc.frame.exposure, vec3(MAX_HDR_VALUE)), 1.0);
 }

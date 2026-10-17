@@ -43,7 +43,7 @@ private:
 
     float m_intensity = 1.0f;
 
-    glm::vec4 m_irradiance_sh[rendering::scene_render::ENVIRONMENT_SH_COUNT] = {};
+    rendering::buffer m_sh_buffer;
 
     bool m_has_sun = false;
 

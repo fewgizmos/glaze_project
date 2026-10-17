@@ -1,7 +1,7 @@
 #version 450
 #extension GL_EXT_buffer_reference : require
 
-#include "util/scene.glsl"
+#include "sys/util/scene.glsl"
 
 layout(location = 1) in vec3 frag_normal;
 layout(location = 2) in vec2 frag_uv;

@@ -1,5 +1,6 @@
 #include "glp/glaze/rendering/scene_render/post_process.h"
 
+#include "glp/glaze/rendering/scene_render/bloom.h"
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
@@ -26,6 +27,9 @@ namespace
 struct tonemap_push
 {
     uint32_t tonemapper;
+    float sharpen;
+    float bloom_intensity;
+    float bloom_normalization;
 };
 
 VkDescriptorSetLayout m_set_layout = VK_NULL_HANDLE;
@@ -33,18 +37,21 @@ VkDescriptorPool m_pool = VK_NULL_HANDLE;
 VkDescriptorSet m_set = VK_NULL_HANDLE;
 
 VkSampler m_sampler = VK_NULL_HANDLE;
+VkSampler m_bloom_sampler = VK_NULL_HANDLE;
 
 VkImageView m_written_view = VK_NULL_HANDLE;
+VkImageView m_written_bloom_view = VK_NULL_HANDLE;
 
 const shader* m_tonemap_shader = nullptr;
 
 void create_set()
 {
     m_set_layout = vk::descriptors::create_set_layout({
-        { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
+        { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+        { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
     });
 
-    m_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 } });
+    m_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 } });
     m_set  = vk::descriptors::allocate_set(m_pool, m_set_layout);
 }
 
@@ -60,6 +67,11 @@ void create_sampler()
     sampler_info.anisotropy = false;
 
     m_sampler = vk::samplers::get(vk::samplers::make(sampler_info));
+
+    sampler_info.mag_filter = VK_FILTER_LINEAR;
+    sampler_info.min_filter = VK_FILTER_LINEAR;
+
+    m_bloom_sampler = vk::samplers::get(vk::samplers::make(sampler_info));
 }
 
 void create_tonemap_shader()
@@ -95,30 +107,31 @@ void clean_all()
     m_pool       = VK_NULL_HANDLE;
     m_set        = VK_NULL_HANDLE;
 
-    m_sampler      = VK_NULL_HANDLE;
-    m_written_view = VK_NULL_HANDLE;
+    m_sampler       = VK_NULL_HANDLE;
+    m_bloom_sampler = VK_NULL_HANDLE;
+
+    m_written_view       = VK_NULL_HANDLE;
+    m_written_bloom_view = VK_NULL_HANDLE;
 
     m_tonemap_shader = nullptr;
 }
 
 void handle_all()
 {
-    const VkImageView hdr_view = it::get_taa_output_image().view;
+    const VkImageView hdr_view   = it::get_taa_output_image().view;
+    const VkImageView bloom_view = bloom::get_output_view();
 
-    if (hdr_view == m_written_view) {
-        return;
+    if (hdr_view != m_written_view) {
+        vk::descriptors::write_image(m_set, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, hdr_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_sampler);
+
+        m_written_view = hdr_view;
     }
 
-    vk::descriptors::write_image(
-        m_set,
-        0,
-        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        hdr_view,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        m_sampler
-    );
+    if (bloom_view != m_written_bloom_view) {
+        vk::descriptors::write_image(m_set, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, bloom_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_bloom_sampler);
 
-    m_written_view = hdr_view;
+        m_written_bloom_view = bloom_view;
+    }
 }
 
 void draw_all()
@@ -129,7 +142,7 @@ void draw_all()
 
     const gpu_post& post = frame_pipe::get_post();
 
-    const tonemap_push push = { post.tonemapper };
+    const tonemap_push push = { post.tonemapper, post.sharpen, post.bloom_intensity, 1.0f / static_cast<float>(bloom::get_mip_count()) };
 
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_tonemap_shader->graphics.handle);
 

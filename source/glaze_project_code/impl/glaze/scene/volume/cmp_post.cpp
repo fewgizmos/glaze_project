@@ -1,16 +1,7 @@
 #include "glp/glaze/scene/volume/cmp_post.h"
 
-#include <cmath>
-
 namespace glaze::scene::vol::component
 {
-
-namespace
-{
-
-constexpr float EXPOSURE_SCALE = 1.2f;
-
-}
 
 post::post(const post_create_info& create_info) : m_create_info(create_info)
 {
@@ -21,8 +12,21 @@ rendering::scene_render::gpu_post post::get_post()
 {
     rendering::scene_render::gpu_post result;
 
-    result.exposure   = 1.0f / (EXPOSURE_SCALE * std::exp2(m_create_info.ev100));
+    result.ev100 = m_create_info.ev100;
+
+    result.auto_exposure         = m_create_info.auto_exposure;
+    result.exposure_compensation = m_create_info.exposure_compensation;
+    result.min_ev100             = m_create_info.min_ev100;
+    result.max_ev100             = m_create_info.max_ev100;
+    result.exposure_speed_up     = m_create_info.exposure_speed_up;
+    result.exposure_speed_down   = m_create_info.exposure_speed_down;
+
     result.tonemapper = static_cast<uint32_t>(m_create_info.tonemapper);
+    result.sharpen    = m_create_info.sharpen;
+
+    result.bloom_intensity = m_create_info.bloom_intensity;
+
+    result.light_shafts_intensity = m_create_info.light_shafts_intensity;
 
     result.gtao_radius    = m_create_info.gtao_radius;
     result.gtao_intensity = m_create_info.gtao_intensity;

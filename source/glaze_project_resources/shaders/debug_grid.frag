@@ -1,7 +1,7 @@
 #version 450
 #extension GL_EXT_buffer_reference : require
 
-#include "util/scene.glsl"
+#include "sys/util/scene.glsl"
 
 layout(location = 0) in vec3 world_pos;
 

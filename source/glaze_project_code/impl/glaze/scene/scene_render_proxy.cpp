@@ -92,6 +92,21 @@ bool proxy_volume_post(const vol::scene_volume& volume)
     return false;
 }
 
+bool proxy_volume_atmosphere(const vol::scene_volume& volume)
+{
+    for (const std::unique_ptr<vol::volume_component>& comp : volume.components) {
+        if (!comp->has_flag(vol::component_flags::atmosphere)) {
+            continue;
+        }
+
+        rendering::scene_render::frame_pipe::set_atmosphere(comp->get_atmosphere());
+
+        return true;
+    }
+
+    return false;
+}
+
 bool proxy_volume_environment(const vol::scene_volume& volume)
 {
     for (const std::unique_ptr<vol::volume_component>& comp : volume.components) {
@@ -134,6 +149,7 @@ void proxy_visibles()
 
     bool has_post        = false;
     bool has_environment = false;
+    bool has_atmosphere  = false;
 
     for (const std::unique_ptr<scene_entity>& ent : it::get_all_entities()) {
         if (it::util::is_entity_pending_erase(ent.get())) {
@@ -152,6 +168,10 @@ void proxy_visibles()
 
         if (!has_environment) {
             has_environment = proxy_volume_environment(ent->scene_volume()) || proxy_volume_environment(ent->scene_gizmo_volume());
+        }
+
+        if (!has_atmosphere) {
+            has_atmosphere = proxy_volume_atmosphere(ent->scene_volume()) || proxy_volume_atmosphere(ent->scene_gizmo_volume());
         }
     }
 

@@ -1,0 +1,58 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D hdr_image;
+
+layout(buffer_reference, std430) buffer histogram_buffer
+{
+    uint bins[];
+};
+
+layout(push_constant) uniform constants
+{
+    histogram_buffer histogram;
+    float inverse_exposure;
+    float min_log_luminance;
+    float log_luminance_range;
+    uint padding;
+} pc;
+
+const uint BIN_COUNT = 256u;
+
+const float MIN_LUMINANCE = 0.000001;
+
+shared uint local_bins[BIN_COUNT];
+
+void main()
+{
+    uint index = gl_LocalInvocationIndex;
+
+    local_bins[index] = 0u;
+
+    barrier();
+
+    ivec2 size = textureSize(hdr_image, 0);
+    ivec2 id   = ivec2(gl_GlobalInvocationID.xy);
+
+    if (id.x < size.x && id.y < size.y) {
+        vec3 color = texelFetch(hdr_image, id, 0).rgb * pc.inverse_exposure;
+
+        float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
+
+        uint bin = 0u;
+
+        if (luminance > MIN_LUMINANCE) {
+            float position = clamp((log2(luminance) - pc.min_log_luminance) / pc.log_luminance_range, 0.0, 1.0);
+
+            bin = uint(position * float(BIN_COUNT - 2u)) + 1u;
+        }
+
+        atomicAdd(local_bins[bin], 1u);
+    }
+
+    barrier();
+
+    atomicAdd(pc.histogram.bins[index], local_bins[index]);
+}

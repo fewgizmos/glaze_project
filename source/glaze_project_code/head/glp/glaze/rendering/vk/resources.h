@@ -41,6 +41,7 @@ buffer create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationC
 void destroy_buffer(buffer& target);
 
 void upload_buffer(const buffer& target, const void* data, VkDeviceSize size);
+void download_buffer(const buffer& source, void* data, VkDeviceSize size);
 
 void queue_upload(const buffer& target, const void* data, VkDeviceSize size);
 void queue_image_upload(const image& target, const void* pixels, VkDeviceSize size);
@@ -60,6 +61,8 @@ image create_image(
     uint32_t array_layers = 1,
     bool is_cube = false
 );
+
+image create_volume_image(VkExtent3D extent, VkFormat format, VkImageUsageFlags usage);
 
 void destroy_image(image& target);
 

@@ -3,6 +3,7 @@
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
+#include "glp/glaze/rendering/scene_render/resources/gpu_camera.h"
 #include "glp/glaze/rendering/scene_render/resources/gpu_post.h"
 #include "glp/glaze/rendering/scene_render/resources/shaders.h"
 
@@ -13,6 +14,8 @@
 #include "glp/glaze/rendering/vk/samplers.h"
 #include "glp/glaze/rendering/vk/shaders.h"
 
+#include <glm/mat4x4.hpp>
+#include <glm/matrix.hpp>
 #include <glm/vec2.hpp>
 
 #include <cstdint>
@@ -25,6 +28,7 @@ namespace
 
 struct taa_push
 {
+    glm::mat4 sky_reprojection;
     glm::vec2 screen_size;
     float history_weight;
     uint32_t reset;
@@ -44,6 +48,9 @@ VkImageView m_written_view = VK_NULL_HANDLE;
 const shader* m_shader = nullptr;
 
 bool m_history_valid = false;
+
+glm::mat4 m_previous_view_proj = glm::mat4(1.0f);
+bool m_has_previous_view_proj  = false;
 
 VkSampler make_sampler(VkFilter filter)
 {
@@ -67,13 +74,14 @@ void init_all()
         { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
         { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
         { 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
-        { 3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr }
+        { 3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
+        { 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr }
     });
 
     m_pool = vk::descriptors::create_pool(
         1,
         {
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 },
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          1 }
         }
     );
@@ -107,6 +115,8 @@ void clean_all()
     m_shader = nullptr;
 
     m_history_valid = false;
+
+    m_has_previous_view_proj = false;
 }
 
 void handle_all()
@@ -121,6 +131,7 @@ void handle_all()
     vk::descriptors::write_image(m_set, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, it::get_taa_history_image().view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_linear_sampler);
     vk::descriptors::write_image(m_set, 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, it::get_velocity_image().view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_nearest_sampler);
     vk::descriptors::write_image(m_set, 3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, output.view, VK_IMAGE_LAYOUT_GENERAL);
+    vk::descriptors::write_image(m_set, 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, it::get_depth_image().view, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL, m_nearest_sampler);
 
     m_written_view  = output.view;
     m_history_valid = false;
@@ -136,6 +147,19 @@ void dispatch()
     const image& velocity = it::get_velocity_image();
     const image& history  = it::get_taa_history_image();
     const image& output   = it::get_taa_output_image();
+    const image& depth    = it::get_depth_image();
+
+    vk::commands::transition_image(
+        cmd,
+        depth.handle,
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+        VK_IMAGE_ASPECT_DEPTH_BIT
+    );
 
     vk::commands::transition_image(
         cmd,
@@ -183,8 +207,14 @@ void dispatch()
 
     const gpu_post& post = frame_pipe::get_post();
 
+    const glm::mat4 view_proj = frame_pipe::has_camera() ? frame_pipe::get_camera().view_proj : glm::mat4(1.0f);
+
     taa_push push;
-    push.screen_size    = glm::vec2(static_cast<float>(output.extent.width), static_cast<float>(output.extent.height));
+    push.sky_reprojection = (m_has_previous_view_proj ? m_previous_view_proj : view_proj) * glm::inverse(view_proj);
+    push.screen_size      = glm::vec2(static_cast<float>(output.extent.width), static_cast<float>(output.extent.height));
+
+    m_previous_view_proj     = view_proj;
+    m_has_previous_view_proj = true;
     push.history_weight = post.taa_enabled ? post.taa_history_weight : 0.0f;
     push.reset          = m_history_valid ? 0 : 1;
 
