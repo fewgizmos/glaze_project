@@ -52,9 +52,10 @@ const glaze::scene::vol::component::light_create_info BLUE_LIGHT = {
 };
 
 const glaze::world::res::atmosphere_create_info SUNSET_ATMOSPHERE = {
-    .time_of_day                = 17.7f,
+    .time_of_day                = 18.3f,
     .sun_light_scale            = 1.275f,
     .horizon_light_fade         = 5.0f,
+    .horizon_light_twilight     = 10.0f,
     .horizon_light_desaturation = 0.5f,
     .evening_sun_pink           = 5.0f,
     .evening_halo_pink          = 12.0f,

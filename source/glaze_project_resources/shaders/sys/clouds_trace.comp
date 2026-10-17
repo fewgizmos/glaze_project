@@ -13,7 +13,7 @@ layout(set = 0, binding = 3) uniform sampler3D shape_noise;
 layout(set = 0, binding = 4) uniform sampler3D detail_noise;
 layout(set = 0, binding = 5) uniform sampler2D weather_map;
 
-layout(set = 0, binding = 7, rgba16f) uniform writeonly image2D trace_target;
+layout(set = 0, binding = 7, rgba32f) uniform writeonly image2D trace_target;
 layout(set = 0, binding = 8, r32f) uniform writeonly image2D depth_target;
 
 layout(push_constant) uniform constants

@@ -26,7 +26,9 @@ constexpr float SUNSET_HOUR    = 18.0f;
 
 constexpr float MAX_MOON_OVERLAP_HOURS = 5.0f;
 
-constexpr float HORIZON_FADE_START = -0.5f;
+constexpr float TWILIGHT_BASE           = 0.15f;
+constexpr float TWILIGHT_DECADE_DEGREES = 3.0f;
+constexpr float MIN_LIGHT_ELEVATION     = 1.0f;
 
 constexpr float PLANET_SURFACE_OFFSET = 0.001f;
 
@@ -106,15 +108,46 @@ glm::vec3 arc_direction(float hour, float rise_hour, float visible_hours, float 
     ));
 }
 
-float horizon_factor(glm::vec3 direction, float fade_degrees)
+float horizon_factor(glm::vec3 direction, float fade_degrees, float twilight_degrees)
 {
-    if (fade_degrees <= 0.0f) {
-        return 1.0f;
-    }
-
     const float elevation = glm::degrees(std::asin(std::clamp(direction.y, -1.0f, 1.0f)));
 
-    return glm::smoothstep(HORIZON_FADE_START, fade_degrees, elevation);
+    if (elevation >= 0.0f) {
+        if (fade_degrees <= 0.0f) {
+            return 1.0f;
+        }
+
+        return glm::mix(TWILIGHT_BASE, 1.0f, glm::smoothstep(0.0f, fade_degrees, elevation));
+    }
+
+    if (twilight_degrees <= 0.0f) {
+        return 0.0f;
+    }
+
+    const float decay = std::pow(10.0f, elevation / TWILIGHT_DECADE_DEGREES);
+    const float cut   = glm::smoothstep(-twilight_degrees, 0.0f, elevation);
+
+    return TWILIGHT_BASE * decay * cut;
+}
+
+glm::vec3 lift_to_horizon(glm::vec3 direction)
+{
+    const float min_height = std::sin(glm::radians(MIN_LIGHT_ELEVATION));
+
+    if (direction.y >= min_height) {
+        return direction;
+    }
+
+    const glm::vec2 horizontal(direction.x, direction.z);
+    const float length = glm::length(horizontal);
+
+    if (length <= 0.0f) {
+        return glm::vec3(0.0f, 1.0f, 0.0f);
+    }
+
+    const glm::vec2 scaled = horizontal / length * std::sqrt(1.0f - min_height * min_height);
+
+    return glm::vec3(scaled.x, min_height, scaled.y);
 }
 
 glm::vec3 horizon_desaturate(glm::vec3 color, float amount, float horizon)
@@ -200,27 +233,29 @@ void cmp_atmosphere::update()
     m_celestial_rotation = celestial_rotation(m_create_info.time_of_day, m_create_info.sun_max_elevation);
 
     if (m_sun != nullptr) {
-        const float horizon = horizon_factor(m_sun_direction, m_create_info.horizon_light_fade);
+        const float horizon     = horizon_factor(m_sun_direction, m_create_info.horizon_light_fade, m_create_info.horizon_light_twilight);
+        const glm::vec3 lighted = lift_to_horizon(m_sun_direction);
 
-        const glm::vec3 color = evening_tint(m_create_info.time_of_day, m_create_info.evening_sun_pink) * light_transmittance(with_evening_aerosol(m_create_info), m_sun_direction);
+        const glm::vec3 color = evening_tint(m_create_info.time_of_day, m_create_info.evening_sun_pink) * light_transmittance(with_evening_aerosol(m_create_info), lighted);
 
         orient_light(
             m_sun,
-            m_sun_direction,
-            horizon_desaturate(color, m_create_info.horizon_light_desaturation, horizon),
+            lighted,
+            horizon_desaturate(color, m_create_info.horizon_light_desaturation, std::min(horizon, 1.0f)),
             m_create_info.sun_illuminance * m_create_info.sun_light_scale * horizon
         );
     }
 
     if (m_moon != nullptr) {
-        const float horizon = horizon_factor(m_moon_direction, m_create_info.horizon_light_fade);
+        const float horizon     = horizon_factor(m_moon_direction, m_create_info.horizon_light_fade, m_create_info.horizon_light_twilight);
+        const glm::vec3 lighted = lift_to_horizon(m_moon_direction);
 
-        const glm::vec3 color = m_create_info.moon_color * light_transmittance(with_evening_aerosol(m_create_info), m_moon_direction);
+        const glm::vec3 color = m_create_info.moon_color * light_transmittance(with_evening_aerosol(m_create_info), lighted);
 
         orient_light(
             m_moon,
-            m_moon_direction,
-            horizon_desaturate(color, m_create_info.horizon_light_desaturation, horizon),
+            lighted,
+            horizon_desaturate(color, m_create_info.horizon_light_desaturation, std::min(horizon, 1.0f)),
             m_create_info.moon_illuminance * m_create_info.moon_light_scale * horizon
         );
     }

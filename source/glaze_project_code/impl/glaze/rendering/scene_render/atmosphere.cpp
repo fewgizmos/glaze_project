@@ -129,7 +129,8 @@ constexpr uint32_t SKY_CUBE_SIZE = 64;
 constexpr uint32_t GROUP_SIZE        = 8;
 constexpr uint32_t VOLUME_GROUP_SIZE = 4;
 
-constexpr VkFormat LUT_FORMAT = VK_FORMAT_R16G16B16A16_SFLOAT;
+constexpr VkFormat LUT_FORMAT         = VK_FORMAT_R16G16B16A16_SFLOAT;
+constexpr VkFormat PRECISE_LUT_FORMAT = VK_FORMAT_R32G32B32A32_SFLOAT;
 
 constexpr float METERS_TO_KILOMETERS = 0.001f;
 constexpr float PLANET_SURFACE_OFFSET = 0.001f;
@@ -390,15 +391,15 @@ void create_images()
     m_multi_scattering = create_lut(MULTI_SCATTERING_SIZE);
     m_sky_view = vk::resources::create_image(
         SKY_VIEW_SIZE,
-        LUT_FORMAT,
+        PRECISE_LUT_FORMAT,
         VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
         VK_IMAGE_ASPECT_COLOR_BIT,
         1,
         SKY_VIEW_LAYERS
     );
 
-    m_aerial_perspective      = vk::resources::create_volume_image(AERIAL_PERSPECTIVE_SIZE, LUT_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
-    m_moon_aerial_perspective = vk::resources::create_volume_image(AERIAL_PERSPECTIVE_SIZE, LUT_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+    m_aerial_perspective      = vk::resources::create_volume_image(AERIAL_PERSPECTIVE_SIZE, PRECISE_LUT_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+    m_moon_aerial_perspective = vk::resources::create_volume_image(AERIAL_PERSPECTIVE_SIZE, PRECISE_LUT_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 
     m_sky_cube = vk::resources::create_image(
         { SKY_CUBE_SIZE, SKY_CUBE_SIZE, 1 },

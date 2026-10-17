@@ -40,6 +40,8 @@ constexpr float MOUSE_SENSITIVITY = 0.1f;
 debug_camera_player_obj::debug_camera_player_obj() : m_speed(START_SPEED)
 {
     m_scene_volume().components.push_back(std::make_unique<glaze::scene::vol::component::camera>());
+
+    m_scene_volume().w_rot.y = 60.0f;
 }
 
 void debug_camera_player_obj::update()

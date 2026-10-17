@@ -22,6 +22,7 @@ struct atmosphere_create_info
     float sun_light_scale    = 1.0f;
 
     float horizon_light_fade         = 0.0f;
+    float horizon_light_twilight     = 0.0f;
     float horizon_light_desaturation = 0.0f;
 
     float evening_sun_pink   = 1.0f;

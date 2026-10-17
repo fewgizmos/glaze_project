@@ -40,7 +40,7 @@ constexpr VkExtent3D DETAIL_NOISE_SIZE = { 32, 32, 32 };
 constexpr VkExtent3D WEATHER_MAP_SIZE  = { 512, 512, 1 };
 
 constexpr VkFormat NOISE_FORMAT = VK_FORMAT_R8G8B8A8_UNORM;
-constexpr VkFormat TRACE_FORMAT = VK_FORMAT_R16G16B16A16_SFLOAT;
+constexpr VkFormat TRACE_FORMAT = VK_FORMAT_R32G32B32A32_SFLOAT;
 constexpr VkFormat DEPTH_FORMAT = VK_FORMAT_R32_SFLOAT;
 
 constexpr uint32_t GROUP_SIZE        = 8;

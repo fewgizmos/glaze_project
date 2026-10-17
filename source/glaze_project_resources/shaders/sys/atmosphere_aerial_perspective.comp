@@ -7,8 +7,8 @@ layout(local_size_x = 4, local_size_y = 4, local_size_z = 4) in;
 
 layout(set = 0, binding = 0) uniform sampler2D transmittance_lut;
 layout(set = 0, binding = 1) uniform sampler2D multi_scattering_lut;
-layout(set = 0, binding = 3, rgba16f) uniform writeonly image3D target;
-layout(set = 0, binding = 5, rgba16f) uniform writeonly image3D moon_target;
+layout(set = 0, binding = 3, rgba32f) uniform writeonly image3D target;
+layout(set = 0, binding = 5, rgba32f) uniform writeonly image3D moon_target;
 
 layout(push_constant) uniform constants
 {
