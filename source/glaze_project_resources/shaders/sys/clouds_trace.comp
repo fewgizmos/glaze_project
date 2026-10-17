@@ -8,7 +8,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 layout(set = 0, binding = 0) uniform sampler2D transmittance_lut;
 layout(set = 0, binding = 1) uniform sampler2D multi_scattering_lut;
-layout(set = 0, binding = 2) uniform sampler2D sky_view_lut;
+layout(set = 0, binding = 2) uniform sampler2DArray sky_view_lut;
 layout(set = 0, binding = 3) uniform sampler3D shape_noise;
 layout(set = 0, binding = 4) uniform sampler3D detail_noise;
 layout(set = 0, binding = 5) uniform sampler2D weather_map;
@@ -48,9 +48,9 @@ const float LIGHT_STEP_GROWTH = 1.8;
 
 const uint OCTAVES = 3u;
 
-const float EXTINCTION_FALLOFF = 0.5;
-const float SCATTERING_FALLOFF = 0.5;
-const float PHASE_FALLOFF      = 0.5;
+const float PHASE_FALLOFF        = 0.5;
+const float MAX_MULTI_SCATTERING = 0.95;
+const float POWDER_SCALE         = 2.0;
 
 const float FORWARD_G      = 0.85;
 const float BACKWARD_G     = -0.3;
@@ -63,6 +63,11 @@ const float TRANSMITTANCE_CUTOFF = 0.01;
 const float MIN_DENSITY          = 0.0001;
 
 const uint AERIAL_SAMPLES = 8u;
+
+const uint LIGHT_COUNT = 2u;
+
+const float MIN_LIGHT_CONTRIBUTION = 0.00001;
+const float MIN_LIGHT_HEIGHT       = -0.3;
 
 const vec4 STRATUS_GRADIENT       = vec4(0.0, 0.3, 0.3, 0.7);
 const vec4 STRATOCUMULUS_GRADIENT = vec4(0.0, 0.45, 0.5, 1.0);
@@ -167,16 +172,16 @@ float light_optical_depth(atmosphere_params params, vec3 position, vec3 sun_dire
 
 vec3 sky_ambient(atmosphere_params params, vec3 origin)
 {
-    vec3 ambient = sample_sky_view(params, sky_view_lut, origin, vec3(0.0, 1.0, 0.0), false);
+    vec3 ambient = sky_luminance(params, sky_view_lut, origin, vec3(0.0, 1.0, 0.0), false);
 
     float horizontal = sqrt(1.0 - AMBIENT_ELEVATION * AMBIENT_ELEVATION);
 
-    ambient += sample_sky_view(params, sky_view_lut, origin, vec3( horizontal, AMBIENT_ELEVATION, 0.0), false);
-    ambient += sample_sky_view(params, sky_view_lut, origin, vec3(-horizontal, AMBIENT_ELEVATION, 0.0), false);
-    ambient += sample_sky_view(params, sky_view_lut, origin, vec3(0.0, AMBIENT_ELEVATION,  horizontal), false);
-    ambient += sample_sky_view(params, sky_view_lut, origin, vec3(0.0, AMBIENT_ELEVATION, -horizontal), false);
+    ambient += sky_luminance(params, sky_view_lut, origin, vec3( horizontal, AMBIENT_ELEVATION, 0.0), false);
+    ambient += sky_luminance(params, sky_view_lut, origin, vec3(-horizontal, AMBIENT_ELEVATION, 0.0), false);
+    ambient += sky_luminance(params, sky_view_lut, origin, vec3(0.0, AMBIENT_ELEVATION,  horizontal), false);
+    ambient += sky_luminance(params, sky_view_lut, origin, vec3(0.0, AMBIENT_ELEVATION, -horizontal), false);
 
-    return ambient / 5.0;
+    return ambient / 5.0 + params.night_sky_luminance * NIGHT_SKY_COLOR;
 }
 
 bool cloud_segment(atmosphere_params params, vec3 origin, vec3 direction, out float t0, out float t1)
@@ -247,17 +252,35 @@ void main()
 
     float offset = interleaved_gradient_noise(vec2(id), params.frame_index);
 
-    vec3 sun_direction = params.sun_direction;
+    vec3 light_directions[LIGHT_COUNT] = vec3[](params.sun_direction, params.moon_direction);
 
-    float cos_theta = dot(direction, sun_direction);
+    vec3 light_illuminances[LIGHT_COUNT] = vec3[](
+        vec3(params.sun_illuminance) * params.cloud_luminance_scale,
+        moon_illuminance_color(params) * params.cloud_luminance_scale
+    );
 
-    float phases[OCTAVES];
+    bool light_active[LIGHT_COUNT];
 
-    for (uint n = 0u; n < OCTAVES; n++) {
-        phases[n] = cloud_phase(cos_theta, pow(PHASE_FALLOFF, float(n)));
+    float phases[LIGHT_COUNT][OCTAVES];
+    float powder_weights[LIGHT_COUNT];
+
+    float scattering_falloff = clamp(params.cloud_multi_scattering, 0.0, MAX_MULTI_SCATTERING);
+    float extinction_falloff = 1.0 - scattering_falloff;
+
+    for (uint l = 0u; l < LIGHT_COUNT; l++) {
+        light_active[l] = max(light_illuminances[l].r, max(light_illuminances[l].g, light_illuminances[l].b)) > MIN_LIGHT_CONTRIBUTION
+            && light_directions[l].y > MIN_LIGHT_HEIGHT;
+
+        float cos_theta = dot(direction, light_directions[l]);
+
+        powder_weights[l] = params.cloud_powder * (0.5 - 0.5 * cos_theta);
+
+        for (uint n = 0u; n < OCTAVES; n++) {
+            phases[l][n] = cloud_phase(cos_theta, pow(PHASE_FALLOFF, float(n)));
+        }
     }
 
-    vec3 ambient = sky_ambient(params, origin);
+    vec3 ambient = sky_ambient(params, origin) * params.cloud_luminance_scale;
 
     vec3 luminance     = vec3(0.0);
     float transmittance = 1.0;
@@ -281,19 +304,33 @@ void main()
 
         vec3 up = position / radius;
 
-        float planet_shadow = ray_sphere_nearest(position, sun_direction, params.bottom_radius) >= 0.0 ? 0.0 : 1.0;
+        vec3 source = ambient * mix(AMBIENT_BOTTOM, 1.0, clamp(height_fraction, 0.0, 1.0));
 
-        vec3 sun_transmittance = sample_transmittance(params, transmittance_lut, radius, dot(sun_direction, up)) * planet_shadow;
+        for (uint l = 0u; l < LIGHT_COUNT; l++) {
+            if (!light_active[l]) {
+                continue;
+            }
 
-        float optical_depth = light_optical_depth(params, position, sun_direction);
+            vec3 light_direction = light_directions[l];
 
-        float sun_scattering = 0.0;
+            if (ray_sphere_nearest(position, light_direction, params.bottom_radius) >= 0.0) {
+                continue;
+            }
 
-        for (uint n = 0u; n < OCTAVES; n++) {
-            sun_scattering += pow(SCATTERING_FALLOFF, float(n)) * phases[n] * exp(-optical_depth * pow(EXTINCTION_FALLOFF, float(n)));
+            vec3 light_transmittance = sample_transmittance(params, transmittance_lut, radius, dot(light_direction, up));
+
+            float optical_depth = light_optical_depth(params, position, light_direction);
+
+            float scattering = 0.0;
+
+            for (uint n = 0u; n < OCTAVES; n++) {
+                scattering += pow(scattering_falloff, float(n)) * phases[l][n] * exp(-optical_depth * pow(extinction_falloff, float(n)));
+            }
+
+            float powder = mix(1.0, 1.0 - exp(-POWDER_SCALE * density), powder_weights[l]);
+
+            source += light_illuminances[l] * light_transmittance * scattering * powder;
         }
-
-        vec3 source = sun_transmittance * sun_scattering + ambient * mix(AMBIENT_BOTTOM, 1.0, clamp(height_fraction, 0.0, 1.0));
 
         float step_transmittance = exp(-extinction * dt);
         float step_opacity       = transmittance * (1.0 - step_transmittance);
@@ -313,21 +350,32 @@ void main()
 
     float depth = opacity > MIN_DENSITY ? depth_sum / opacity : MAX_CLOUD_DISTANCE;
 
-    vec3 segment_transmittance;
+    vec3 segment_transmittance = vec3(1.0);
+    vec3 inscatter             = vec3(0.0);
 
-    vec3 inscatter = integrate_luminance(
-        params,
-        transmittance_lut,
-        multi_scattering_lut,
-        origin,
-        direction,
-        sun_direction,
-        depth,
-        AERIAL_SAMPLES,
-        true,
-        false,
-        segment_transmittance
-    );
+    for (uint l = 0u; l < LIGHT_COUNT; l++) {
+        if (!light_active[l]) {
+            continue;
+        }
+
+        vec3 light_segment_transmittance;
+
+        inscatter += light_illuminances[l] * integrate_luminance(
+            params,
+            transmittance_lut,
+            multi_scattering_lut,
+            origin,
+            direction,
+            light_directions[l],
+            depth,
+            AERIAL_SAMPLES,
+            true,
+            false,
+            light_segment_transmittance
+        );
+
+        segment_transmittance = light_segment_transmittance;
+    }
 
     vec3 result = luminance * segment_transmittance + inscatter * opacity;
 

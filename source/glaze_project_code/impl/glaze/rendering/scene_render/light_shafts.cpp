@@ -36,6 +36,8 @@ namespace
 
 struct shafts_push
 {
+    glm::vec4 light_direction;
+    glm::vec4 light_color;
     VkDeviceAddress params;
     glm::vec2 sun_uv;
     float intensity;
@@ -124,11 +126,11 @@ void recreate_targets(const image& hdr)
     vk::descriptors::write_image(m_composite_set, HDR_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, hdr.view, VK_IMAGE_LAYOUT_GENERAL);
 }
 
-bool sun_screen_position(glm::vec2& sun_uv, float& fade)
+bool light_screen_position(glm::vec3 light_direction, glm::vec2& sun_uv, float& fade)
 {
     const gpu_camera& camera = frame_pipe::get_camera();
 
-    const glm::vec4 clip = camera.view_proj * glm::vec4(frame_pipe::get_atmosphere().sun_direction, 0.0f);
+    const glm::vec4 clip = camera.view_proj * glm::vec4(light_direction, 0.0f);
 
     if (clip.w <= 0.0f) {
         return false;
@@ -232,10 +234,19 @@ void dispatch()
         return;
     }
 
+    const gpu_atmosphere& atmosphere = frame_pipe::get_atmosphere();
+
+    const glm::vec3 light_direction   = atmosphere.sun_direction;
+    const glm::vec3 light_illuminance = atmosphere.sun_tint * atmosphere.sun_illuminance;
+
+    if (light_direction.y <= 0.0f) {
+        return;
+    }
+
     glm::vec2 sun_uv;
     float fade = 0.0f;
 
-    if (!sun_screen_position(sun_uv, fade)) {
+    if (!light_screen_position(light_direction, sun_uv, fade)) {
         return;
     }
 
@@ -267,8 +278,10 @@ void dispatch()
     shafts_push push;
     push.params    = atmosphere::get_params_address();
     push.sun_uv    = sun_uv;
-    push.intensity = frame_pipe::get_atmosphere().sun_illuminance * exposure::get_exposure() * SHAFTS_SCALE * intensity * fade;
-    push.aspect    = static_cast<float>(hdr.extent.width) / static_cast<float>(hdr.extent.height);
+    push.intensity       = exposure::get_exposure() * SHAFTS_SCALE * intensity * fade;
+    push.aspect          = static_cast<float>(hdr.extent.width) / static_cast<float>(hdr.extent.height);
+    push.light_direction = glm::vec4(glm::normalize(light_direction), 0.0f);
+    push.light_color     = glm::vec4(light_illuminance, 0.0f);
 
     disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_shafts_shader->compute.layout, 0, 1, &m_shafts_set, 0, nullptr);
 

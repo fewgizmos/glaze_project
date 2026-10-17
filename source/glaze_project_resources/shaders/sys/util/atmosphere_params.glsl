@@ -43,8 +43,32 @@ struct atmosphere_params
 
     float cloud_type;
     uint clouds_enabled;
-    float padding1;
-    float padding2;
+    float cloud_luminance_scale;
+    float time;
+
+    vec3 moon_direction;
+    float moon_illuminance;
+
+    vec3 moon_color;
+    float moon_angular_radius;
+
+    mat4 celestial_rotation;
+
+    float night_sky_luminance;
+    float star_intensity;
+    float star_twinkle;
+    float night_ambient_scale;
+
+    float cloud_multi_scattering;
+    float cloud_powder;
+    float moon_flare_size;
+    float moon_flare_falloff;
+
+    vec3 moon_flare_tint;
+    float moon_flare_multiplier;
+
+    vec3 sun_tint;
+    float twilight_desaturation;
 };
 
 layout(buffer_reference, std430) readonly buffer atmosphere_buffer

@@ -9,10 +9,13 @@
 namespace glaze::rendering::scene_render::environment
 {
 
-constexpr uint32_t SKY_BINDING                = 0;
-constexpr uint32_t PREFILTERED_BINDING        = 1;
-constexpr uint32_t BRDF_LUT_BINDING           = 2;
-constexpr uint32_t AERIAL_PERSPECTIVE_BINDING = 3;
+constexpr uint32_t SKY_BINDING                     = 0;
+constexpr uint32_t PREFILTERED_BINDING             = 1;
+constexpr uint32_t BRDF_LUT_BINDING                = 2;
+constexpr uint32_t AERIAL_PERSPECTIVE_BINDING      = 3;
+constexpr uint32_t MOON_AERIAL_PERSPECTIVE_BINDING = 4;
+
+constexpr uint32_t SET_SAMPLERS_COUNT = 5;
 
 constexpr uint32_t PREFILTERED_SIZE = 128;
 constexpr uint32_t PREFILTERED_MIPS = 5;

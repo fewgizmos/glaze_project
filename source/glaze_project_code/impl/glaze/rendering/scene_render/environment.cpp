@@ -52,10 +52,11 @@ const shader* m_irradiance_sh_shader = nullptr;
 void create_set_layouts()
 {
     m_set_layout = vk::descriptors::create_set_layout({
-        { SKY_BINDING,                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-        { PREFILTERED_BINDING,        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-        { BRDF_LUT_BINDING,           VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-        { AERIAL_PERSPECTIVE_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
+        { SKY_BINDING,                     VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+        { PREFILTERED_BINDING,             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+        { BRDF_LUT_BINDING,                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+        { AERIAL_PERSPECTIVE_BINDING,      VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+        { MOON_AERIAL_PERSPECTIVE_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
     });
 
     m_bake_set_layout = vk::descriptors::create_set_layout({
@@ -216,7 +217,7 @@ void bake_images()
 
 void create_default_set()
 {
-    m_pool        = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 } });
+    m_pool        = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, SET_SAMPLERS_COUNT } });
     m_default_set = vk::descriptors::allocate_set(m_pool, m_set_layout);
 
     for (const uint32_t binding : { SKY_BINDING, PREFILTERED_BINDING }) {
@@ -292,14 +293,16 @@ void write_brdf_lut(VkDescriptorSet set)
 
 void write_default_aerial_perspective(VkDescriptorSet set)
 {
-    vk::descriptors::write_image(
-        set,
-        AERIAL_PERSPECTIVE_BINDING,
-        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-        m_default_aerial.view,
-        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        m_lut_sampler
-    );
+    for (const uint32_t binding : { AERIAL_PERSPECTIVE_BINDING, MOON_AERIAL_PERSPECTIVE_BINDING }) {
+        vk::descriptors::write_image(
+            set,
+            binding,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            m_default_aerial.view,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            m_lut_sampler
+        );
+    }
 }
 
 VkDescriptorSetLayout get_bake_set_layout() { return m_bake_set_layout; }

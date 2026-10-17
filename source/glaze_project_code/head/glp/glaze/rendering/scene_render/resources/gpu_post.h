@@ -17,6 +17,8 @@ struct gpu_post
     float exposure_speed_up     = 3.0f;
     float exposure_speed_down   = 1.0f;
 
+    float exposure_night_darkening = 0.6f;
+
     uint32_t tonemapper = 0;
 
     float sharpen = 0.5f;
@@ -24,6 +26,8 @@ struct gpu_post
     float bloom_intensity = 0.04f;
 
     float light_shafts_intensity = 1.0f;
+
+    float night_vision_intensity = 1.0f;
 
     float gtao_radius    = 1.0f;
     float gtao_intensity = 1.0f;

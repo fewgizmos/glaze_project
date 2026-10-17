@@ -1,6 +1,7 @@
 #include "glp/glaze/rendering/scene_render/post_process.h"
 
 #include "glp/glaze/rendering/scene_render/bloom.h"
+#include "glp/glaze/rendering/scene_render/exposure.h"
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
@@ -30,6 +31,8 @@ struct tonemap_push
     float sharpen;
     float bloom_intensity;
     float bloom_normalization;
+    float inverse_exposure;
+    float night_vision;
 };
 
 VkDescriptorSetLayout m_set_layout = VK_NULL_HANDLE;
@@ -142,7 +145,13 @@ void draw_all()
 
     const gpu_post& post = frame_pipe::get_post();
 
-    const tonemap_push push = { post.tonemapper, post.sharpen, post.bloom_intensity, 1.0f / static_cast<float>(bloom::get_mip_count()) };
+    tonemap_push push;
+    push.tonemapper          = post.tonemapper;
+    push.sharpen             = post.sharpen;
+    push.bloom_intensity     = post.bloom_intensity;
+    push.bloom_normalization = 1.0f / static_cast<float>(bloom::get_mip_count());
+    push.inverse_exposure    = 1.0f / exposure::get_exposure();
+    push.night_vision        = post.night_vision_intensity;
 
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_tonemap_shader->graphics.handle);
 

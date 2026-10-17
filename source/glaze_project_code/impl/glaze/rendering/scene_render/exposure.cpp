@@ -52,6 +52,10 @@ constexpr float HIGH_PERCENT = 0.9f;
 constexpr float EXPOSURE_SCALE      = 1.2f;
 constexpr float CALIBRATION_OFFSET  = 3.0f;
 
+constexpr float KEY_OFFSET              = 1.03f;
+constexpr float KEY_SCALE               = 2.0f;
+constexpr float KEY_REFERENCE_LUMINANCE = 1000.0f;
+
 VkDescriptorSetLayout m_set_layout = VK_NULL_HANDLE;
 VkDescriptorPool m_pool = VK_NULL_HANDLE;
 VkDescriptorSet m_set = VK_NULL_HANDLE;
@@ -68,14 +72,27 @@ bool m_histogram_ready[MAX_FRAMES_IN_FLIGHT] = {};
 float m_ev100    = 0.0f;
 float m_exposure = 1.0f;
 
-bool m_adapted = false;
+bool m_adapted      = false;
+bool m_snap_pending = false;
 
 float to_exposure(float ev100)
 {
     return 1.0f / (EXPOSURE_SCALE * std::exp2(ev100));
 }
 
-bool histogram_ev100(const std::array<uint32_t, BIN_COUNT>& bins, float& ev100)
+float adaptation_key(float luminance)
+{
+    return KEY_OFFSET - KEY_SCALE / (KEY_SCALE + std::log10(luminance + 1.0f));
+}
+
+float night_darkening_ev(float log_luminance, float strength)
+{
+    const float luminance = std::exp2(log_luminance);
+
+    return std::max(std::log2(adaptation_key(KEY_REFERENCE_LUMINANCE) / adaptation_key(luminance)), 0.0f) * strength;
+}
+
+bool histogram_ev100(const std::array<uint32_t, BIN_COUNT>& bins, float night_darkening, float& ev100)
 {
     uint64_t total = 0;
 
@@ -116,7 +133,9 @@ bool histogram_ev100(const std::array<uint32_t, BIN_COUNT>& bins, float& ev100)
         return false;
     }
 
-    ev100 = log_sum / weight_sum + CALIBRATION_OFFSET;
+    const float average_log = log_sum / weight_sum;
+
+    ev100 = average_log + CALIBRATION_OFFSET + night_darkening_ev(average_log, night_darkening);
 
     return true;
 }
@@ -203,8 +222,9 @@ void handle_all()
     }
 
     if (!m_adapted) {
-        m_ev100   = post.ev100;
-        m_adapted = true;
+        m_ev100        = post.ev100;
+        m_adapted      = true;
+        m_snap_pending = true;
     }
 
     const uint32_t frame = vk::frame::get_current_frame_index();
@@ -216,10 +236,15 @@ void handle_all()
 
         float target = 0.0f;
 
-        if (histogram_ev100(bins, target)) {
+        if (histogram_ev100(bins, post.exposure_night_darkening, target)) {
             const float speed = target > m_ev100 ? post.exposure_speed_up : post.exposure_speed_down;
 
             m_ev100 += (target - m_ev100) * (1.0f - std::exp(-utilities::core::timer::delta * speed));
+
+            if (m_snap_pending) {
+                m_ev100        = target;
+                m_snap_pending = false;
+            }
         }
     }
 

@@ -21,12 +21,15 @@ rendering::scene_render::gpu_post post::get_post()
     result.exposure_speed_up     = m_create_info.exposure_speed_up;
     result.exposure_speed_down   = m_create_info.exposure_speed_down;
 
+    result.exposure_night_darkening = m_create_info.exposure_night_darkening;
+
     result.tonemapper = static_cast<uint32_t>(m_create_info.tonemapper);
     result.sharpen    = m_create_info.sharpen;
 
     result.bloom_intensity = m_create_info.bloom_intensity;
 
     result.light_shafts_intensity = m_create_info.light_shafts_intensity;
+    result.night_vision_intensity = m_create_info.night_vision_intensity;
 
     result.gtao_radius    = m_create_info.gtao_radius;
     result.gtao_intensity = m_create_info.gtao_intensity;

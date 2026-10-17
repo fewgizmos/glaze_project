@@ -551,7 +551,7 @@ cmp_cubemap::cmp_cubemap(const std::string& path, float sky_illuminance, float s
 
     destroy_sky_source(source);
 
-    m_pool = rendering::vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 } });
+    m_pool = rendering::vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, rendering::scene_render::environment::SET_SAMPLERS_COUNT } });
     m_set  = rendering::vk::descriptors::allocate_set(m_pool, rendering::scene_render::environment::get_set_layout());
 
     write_environment_image(m_set, rendering::scene_render::environment::SKY_BINDING, m_image);

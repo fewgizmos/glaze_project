@@ -23,13 +23,16 @@
 #include "glp/glaze/rendering/defines.h"
 
 #include "glp/glaze/utilities/core/assert.h"
+#include "glp/glaze/utilities/core/timer.h"
 
+#include <glm/common.hpp>
 #include <glm/geometric.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/trigonometric.hpp>
 #include <glm/vec3.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -81,8 +84,32 @@ struct params_data
 
     float cloud_type;
     uint32_t clouds_enabled;
-    float padding1;
-    float padding2;
+    float cloud_luminance_scale;
+    float time;
+
+    glm::vec3 moon_direction;
+    float moon_illuminance;
+
+    glm::vec3 moon_color;
+    float moon_angular_radius;
+
+    glm::mat4 celestial_rotation;
+
+    float night_sky_luminance;
+    float star_intensity;
+    float star_twinkle;
+    float night_ambient_scale;
+
+    float cloud_multi_scattering;
+    float cloud_powder;
+    float moon_flare_size;
+    float moon_flare_falloff;
+
+    glm::vec3 moon_flare_tint;
+    float moon_flare_multiplier;
+
+    glm::vec3 sun_tint;
+    float twilight_desaturation;
 };
 
 struct compute_push
@@ -95,6 +122,8 @@ constexpr VkExtent3D MULTI_SCATTERING_SIZE   = { 32, 32, 1 };
 constexpr VkExtent3D SKY_VIEW_SIZE           = { 192, 108, 1 };
 constexpr VkExtent3D AERIAL_PERSPECTIVE_SIZE = { 32, 32, 32 };
 
+constexpr uint32_t SKY_VIEW_LAYERS = 2;
+
 constexpr uint32_t SKY_CUBE_SIZE = 64;
 
 constexpr uint32_t GROUP_SIZE        = 8;
@@ -105,7 +134,20 @@ constexpr VkFormat LUT_FORMAT = VK_FORMAT_R16G16B16A16_SFLOAT;
 constexpr float METERS_TO_KILOMETERS = 0.001f;
 constexpr float PLANET_SURFACE_OFFSET = 0.001f;
 
-constexpr float IBL_UPDATE_COS = 0.99996192f;
+constexpr float IBL_UPDATE_COS = 0.99999962f;
+
+constexpr float IBL_MEDIUM_TOLERANCE = 0.002f;
+
+constexpr float MIN_CLOUD_REFERENCE = 0.000001f;
+constexpr float NIGHT_SUN_HEIGHT    = -0.2f;
+constexpr float DAY_SUN_HEIGHT      = -0.1f;
+
+constexpr float TWILIGHT_START_HEIGHT = 0.05f;
+constexpr float TWILIGHT_PEAK_HEIGHT  = -0.1f;
+constexpr float TWILIGHT_END_HEIGHT   = -0.25f;
+
+constexpr float NIGHT_AMBIENT_SUN_HEIGHT = -0.1f;
+constexpr float DAY_AMBIENT_SUN_HEIGHT   = 0.1f;
 
 constexpr uint32_t SETS_COUNT = 6;
 
@@ -131,6 +173,7 @@ image m_transmittance;
 image m_multi_scattering;
 image m_sky_view;
 image m_aerial_perspective;
+image m_moon_aerial_perspective;
 image m_sky_cube;
 image m_prefiltered;
 
@@ -152,7 +195,8 @@ const shader* m_sky_shader = nullptr;
 const mesh* m_sky_mesh = nullptr;
 const material* m_sky_material = nullptr;
 
-gpu_atmosphere m_baked_atmosphere;
+gpu_atmosphere m_lut_atmosphere;
+gpu_atmosphere m_ibl_atmosphere;
 
 bool m_luts_dirty = true;
 bool m_ibl_dirty  = true;
@@ -198,6 +242,43 @@ bool same_medium(const gpu_atmosphere& left, const gpu_atmosphere& right)
         && left.ground_albedo == right.ground_albedo;
 }
 
+float night_ambient_scale(const gpu_atmosphere& atmosphere)
+{
+    const float night = 1.0f - glm::smoothstep(NIGHT_AMBIENT_SUN_HEIGHT, DAY_AMBIENT_SUN_HEIGHT, glm::normalize(atmosphere.sun_direction).y);
+
+    return glm::mix(1.0f, atmosphere.night_ambient_scale, night);
+}
+
+float twilight_desaturation(const gpu_atmosphere& atmosphere)
+{
+    const float height = glm::normalize(atmosphere.sun_direction).y;
+
+    const float twilight = glm::smoothstep(TWILIGHT_END_HEIGHT, TWILIGHT_PEAK_HEIGHT, height) * (1.0f - glm::smoothstep(TWILIGHT_PEAK_HEIGHT, TWILIGHT_START_HEIGHT, height));
+
+    return atmosphere.twilight_desaturation * twilight;
+}
+
+bool similar(glm::vec3 left, glm::vec3 right)
+{
+    return glm::length(left - right) <= IBL_MEDIUM_TOLERANCE * glm::length(right);
+}
+
+bool similar_medium(const gpu_atmosphere& left, const gpu_atmosphere& right)
+{
+    return similar(left.mie_scattering, right.mie_scattering)
+        && similar(left.mie_absorption, right.mie_absorption)
+        && std::abs(left.mie_scale_height - right.mie_scale_height) <= IBL_MEDIUM_TOLERANCE * right.mie_scale_height
+        && left.bottom_radius == right.bottom_radius
+        && left.top_radius == right.top_radius
+        && left.rayleigh_scattering == right.rayleigh_scattering
+        && left.rayleigh_scale_height == right.rayleigh_scale_height
+        && left.mie_anisotropy == right.mie_anisotropy
+        && left.ozone_absorption == right.ozone_absorption
+        && left.ozone_center == right.ozone_center
+        && left.ozone_width == right.ozone_width
+        && left.ground_albedo == right.ground_albedo;
+}
+
 image create_lut(VkExtent3D extent)
 {
     return vk::resources::create_image(extent, LUT_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -231,14 +312,15 @@ void create_layout_and_sets()
         { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stages, nullptr },
         { 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stages, nullptr },
         { 3, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          1, stages, nullptr },
-        { 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stages, nullptr }
+        { 4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, stages, nullptr },
+        { 5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          1, stages, nullptr }
     });
 
     m_pool = vk::descriptors::create_pool(
         SETS_COUNT,
         {
             { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, SETS_COUNT * 4 },
-            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          SETS_COUNT }
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          SETS_COUNT * 2 }
         }
     );
 
@@ -262,18 +344,22 @@ void create_layout_and_sets()
     write_sampled(m_aerial_set, 1, m_multi_scattering);
     write_storage(m_aerial_set, m_aerial_perspective.view);
 
+    vk::descriptors::write_image(m_aerial_set, 5, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, m_moon_aerial_perspective.view, VK_IMAGE_LAYOUT_GENERAL);
+
+    write_sampled(m_sky_cube_set, 0, m_transmittance);
     write_sampled(m_sky_cube_set, 2, m_sky_view);
     write_storage(m_sky_cube_set, m_sky_cube_storage_view);
 
     write_sampled(m_draw_set, 0, m_transmittance);
     write_sampled(m_draw_set, 2, m_sky_view);
 
-    m_environment_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 } });
+    m_environment_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, environment::SET_SAMPLERS_COUNT } });
     m_environment_set  = vk::descriptors::allocate_set(m_environment_pool, environment::get_set_layout());
 
     vk::descriptors::write_image(m_environment_set, environment::SKY_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, m_sky_cube.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, environment::get_cube_sampler());
     vk::descriptors::write_image(m_environment_set, environment::PREFILTERED_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, m_prefiltered.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, environment::get_cube_sampler());
     vk::descriptors::write_image(m_environment_set, environment::AERIAL_PERSPECTIVE_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, m_aerial_perspective.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_sampler);
+    vk::descriptors::write_image(m_environment_set, environment::MOON_AERIAL_PERSPECTIVE_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, m_moon_aerial_perspective.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_sampler);
 
     environment::write_brdf_lut(m_environment_set);
 
@@ -302,13 +388,17 @@ void create_images()
 {
     m_transmittance    = create_lut(TRANSMITTANCE_SIZE);
     m_multi_scattering = create_lut(MULTI_SCATTERING_SIZE);
-    m_sky_view         = create_lut(SKY_VIEW_SIZE);
-
-    m_aerial_perspective = vk::resources::create_volume_image(
-        AERIAL_PERSPECTIVE_SIZE,
+    m_sky_view = vk::resources::create_image(
+        SKY_VIEW_SIZE,
         LUT_FORMAT,
-        VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_IMAGE_ASPECT_COLOR_BIT,
+        1,
+        SKY_VIEW_LAYERS
     );
+
+    m_aerial_perspective      = vk::resources::create_volume_image(AERIAL_PERSPECTIVE_SIZE, LUT_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+    m_moon_aerial_perspective = vk::resources::create_volume_image(AERIAL_PERSPECTIVE_SIZE, LUT_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 
     m_sky_cube = vk::resources::create_image(
         { SKY_CUBE_SIZE, SKY_CUBE_SIZE, 1 },
@@ -444,10 +534,37 @@ params_data build_params(const gpu_atmosphere& atmosphere)
     data.cloud_coverage = atmosphere.cloud_coverage;
     data.cloud_density  = atmosphere.cloud_density;
 
-    data.cloud_type     = atmosphere.cloud_type;
-    data.clouds_enabled = atmosphere.clouds_enabled ? 1 : 0;
-    data.padding1       = 0.0f;
-    data.padding2       = 0.0f;
+    const float moon_reference = std::max(atmosphere.moon_illuminance * std::max({ atmosphere.moon_color.r, atmosphere.moon_color.g, atmosphere.moon_color.b }), MIN_CLOUD_REFERENCE);
+    const float day_factor     = glm::smoothstep(NIGHT_SUN_HEIGHT, DAY_SUN_HEIGHT, data.sun_direction.y);
+
+    data.cloud_type            = atmosphere.cloud_type;
+    data.clouds_enabled        = atmosphere.clouds_enabled ? 1 : 0;
+    data.cloud_luminance_scale = 1.0f / glm::mix(moon_reference, atmosphere.sun_illuminance, day_factor);
+    data.time                  = utilities::core::timer::timestamp;
+
+    data.moon_direction   = glm::normalize(atmosphere.moon_direction);
+    data.moon_illuminance = atmosphere.moon_illuminance;
+
+    data.moon_color          = atmosphere.moon_color;
+    data.moon_angular_radius = glm::radians(atmosphere.moon_angular_radius);
+
+    data.celestial_rotation = atmosphere.celestial_rotation;
+
+    data.night_sky_luminance = atmosphere.night_sky_luminance;
+    data.star_intensity      = atmosphere.star_intensity;
+    data.star_twinkle        = atmosphere.star_twinkle;
+    data.night_ambient_scale = night_ambient_scale(atmosphere);
+
+    data.cloud_multi_scattering = atmosphere.cloud_multi_scattering;
+    data.cloud_powder           = atmosphere.cloud_powder;
+    data.moon_flare_size        = glm::radians(atmosphere.moon_flare_size);
+    data.moon_flare_falloff     = atmosphere.moon_flare_falloff;
+
+    data.moon_flare_tint       = atmosphere.moon_flare_tint;
+    data.moon_flare_multiplier = atmosphere.moon_flare_multiplier;
+
+    data.sun_tint              = atmosphere.sun_tint;
+    data.twilight_desaturation = twilight_desaturation(atmosphere);
 
     return data;
 }
@@ -553,6 +670,7 @@ void clean_all()
 
     vk::resources::destroy_image(m_prefiltered);
     vk::resources::destroy_image(m_sky_cube);
+    vk::resources::destroy_image(m_moon_aerial_perspective);
     vk::resources::destroy_image(m_aerial_perspective);
     vk::resources::destroy_image(m_sky_view);
     vk::resources::destroy_image(m_multi_scattering);
@@ -589,13 +707,17 @@ void handle_all()
 
     const gpu_atmosphere& atmosphere = frame_pipe::get_atmosphere();
 
-    if (!same_medium(atmosphere, m_baked_atmosphere)) {
+    if (!same_medium(atmosphere, m_lut_atmosphere)) {
         m_luts_dirty = true;
-        m_ibl_dirty  = true;
     }
 
-    if (glm::dot(glm::normalize(atmosphere.sun_direction), glm::normalize(m_baked_atmosphere.sun_direction)) < IBL_UPDATE_COS
-        || atmosphere.sun_illuminance != m_baked_atmosphere.sun_illuminance) {
+    if (!similar_medium(atmosphere, m_ibl_atmosphere)
+        || glm::dot(glm::normalize(atmosphere.sun_direction), glm::normalize(m_ibl_atmosphere.sun_direction)) < IBL_UPDATE_COS
+        || glm::dot(glm::normalize(atmosphere.moon_direction), glm::normalize(m_ibl_atmosphere.moon_direction)) < IBL_UPDATE_COS
+        || atmosphere.sun_illuminance != m_ibl_atmosphere.sun_illuminance
+        || atmosphere.moon_illuminance != m_ibl_atmosphere.moon_illuminance
+        || atmosphere.moon_color != m_ibl_atmosphere.moon_color
+        || atmosphere.night_sky_luminance != m_ibl_atmosphere.night_sky_luminance) {
         m_ibl_dirty = true;
     }
 
@@ -618,7 +740,7 @@ void handle_all()
 
     gpu_environment environment_data;
     environment_data.set           = m_environment_set;
-    environment_data.intensity     = 1.0f;
+    environment_data.intensity     = night_ambient_scale(atmosphere);
     environment_data.irradiance_sh = m_sh_buffer.address;
 
     frame_pipe::set_environment(environment_data);
@@ -641,9 +763,13 @@ void dispatch()
     if (m_luts_dirty) {
         dispatch_lut(cmd, m_transmittance_shader, m_transmittance_set, m_transmittance, get_groups(TRANSMITTANCE_SIZE.width, GROUP_SIZE), get_groups(TRANSMITTANCE_SIZE.height, GROUP_SIZE), 1);
         dispatch_lut(cmd, m_multi_scattering_shader, m_multi_scattering_set, m_multi_scattering, get_groups(MULTI_SCATTERING_SIZE.width, GROUP_SIZE), get_groups(MULTI_SCATTERING_SIZE.height, GROUP_SIZE), 1);
+
+        m_lut_atmosphere = frame_pipe::get_atmosphere();
     }
 
-    dispatch_lut(cmd, m_sky_view_shader, m_sky_view_set, m_sky_view, get_groups(SKY_VIEW_SIZE.width, GROUP_SIZE), get_groups(SKY_VIEW_SIZE.height, GROUP_SIZE), 1);
+    dispatch_lut(cmd, m_sky_view_shader, m_sky_view_set, m_sky_view, get_groups(SKY_VIEW_SIZE.width, GROUP_SIZE), get_groups(SKY_VIEW_SIZE.height, GROUP_SIZE), SKY_VIEW_LAYERS);
+
+    environment::transition_bake_target(cmd, m_moon_aerial_perspective, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
 
     dispatch_lut(
         cmd,
@@ -655,11 +781,13 @@ void dispatch()
         get_groups(AERIAL_PERSPECTIVE_SIZE.depth, VOLUME_GROUP_SIZE)
     );
 
+    environment::transition_bake_target(cmd, m_moon_aerial_perspective, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
     if (m_ibl_dirty) {
         dispatch_environment(cmd);
-    }
 
-    m_baked_atmosphere = frame_pipe::get_atmosphere();
+        m_ibl_atmosphere = frame_pipe::get_atmosphere();
+    }
 
     m_luts_dirty = false;
     m_ibl_dirty  = false;

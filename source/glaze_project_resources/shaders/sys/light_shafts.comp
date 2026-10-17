@@ -13,6 +13,8 @@ layout(set = 0, binding = 4, rgba16f) uniform writeonly image2D target;
 
 layout(push_constant) uniform constants
 {
+    vec4 light_direction;
+    vec4 light_color;
     atmosphere_buffer atmosphere;
     vec2 sun_uv;
     float intensity;
@@ -77,7 +79,7 @@ void main()
 
     float radius = length(params.camera_position);
 
-    vec3 sun_color = sample_transmittance(params, transmittance_lut, radius, dot(params.sun_direction, params.camera_position / radius));
+    vec3 sun_color = pc.light_color.rgb * sample_transmittance(params, transmittance_lut, radius, dot(pc.light_direction.xyz, params.camera_position / radius));
 
     imageStore(target, id, vec4(sun_color * sum / float(SAMPLE_COUNT) * pc.intensity, 1.0));
 }

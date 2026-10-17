@@ -16,6 +16,7 @@ layout(location = 0) out vec4 out_color;
 layout(set = 1, binding = 1) uniform samplerCube env_prefiltered;
 layout(set = 1, binding = 2) uniform sampler2D env_brdf_lut;
 layout(set = 1, binding = 3) uniform sampler3D env_aerial_perspective;
+layout(set = 1, binding = 4) uniform sampler3D env_moon_aerial_perspective;
 
 layout(set = 0, binding = 2) uniform sampler2D scene_gtao;
 
@@ -580,9 +581,10 @@ void main()
 
         vec3 coord = vec3(gl_FragCoord.xy / vec2(textureSize(scene_gtao, 0)), clamp(distance / atmosphere.aerial_max_distance, 0.0, 1.0));
 
-        vec4 aerial = texture(env_aerial_perspective, coord);
+        vec4 aerial      = texture(env_aerial_perspective, coord);
+        vec3 moon_aerial = texture(env_moon_aerial_perspective, coord).rgb;
 
-        color = color * aerial.a + aerial.rgb * atmosphere.sun_illuminance;
+        color = color * aerial.a + aerial.rgb * atmosphere.sun_illuminance + moon_aerial * atmosphere.moon_color * atmosphere.moon_illuminance;
     }
 
     out_color = vec4(min(color * pc.frame.exposure, vec3(MAX_HDR_VALUE)), 1.0);

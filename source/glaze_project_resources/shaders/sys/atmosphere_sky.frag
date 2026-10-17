@@ -2,10 +2,10 @@
 #extension GL_EXT_buffer_reference : require
 
 #include "sys/util/scene.glsl"
-#include "sys/util/atmosphere.glsl"
+#include "sys/util/night_sky.glsl"
 
 layout(set = 1, binding = 0) uniform sampler2D transmittance_lut;
-layout(set = 1, binding = 2) uniform sampler2D sky_view_lut;
+layout(set = 1, binding = 2) uniform sampler2DArray sky_view_lut;
 layout(set = 1, binding = 4) uniform sampler2D clouds;
 
 layout(location = 0) in vec3 view_ray;
@@ -16,6 +16,8 @@ layout(location = 0) out vec4 out_color;
 const float MAX_HDR_VALUE = 60000.0;
 
 const vec3 LIMB_DARKENING = vec3(0.397, 0.503, 0.652);
+
+const float NIGHT_SKY_SUN_HEIGHT = 0.1;
 
 vec3 sun_disk(atmosphere_params params, vec3 origin, vec3 direction)
 {
@@ -36,7 +38,7 @@ vec3 sun_disk(atmosphere_params params, vec3 origin, vec3 direction)
 
     float solid_angle = ATMOSPHERE_PI * params.sun_angular_radius * params.sun_angular_radius;
 
-    return sun_transmittance * limb / solid_angle;
+    return sun_transmittance * params.sun_tint * limb / solid_angle * params.sun_illuminance;
 }
 
 void main()
@@ -46,17 +48,34 @@ void main()
     vec3 direction = normalize(view_ray);
     vec3 origin    = params.camera_position;
 
-    vec3 luminance = sample_sky_view(params, sky_view_lut, origin, direction, true);
+    vec3 luminance = sky_luminance(params, sky_view_lut, origin, direction, true);
 
-    if (ray_sphere_nearest(origin, direction, params.bottom_radius) < 0.0) {
+    bool above_horizon = ray_sphere_nearest(origin, direction, params.bottom_radius) < 0.0;
+
+    if (above_horizon) {
         luminance += sun_disk(params, origin, direction);
+
+        if (params.sun_direction.y < NIGHT_SKY_SUN_HEIGHT) {
+            vec3 celestial = normalize(mat3(params.celestial_rotation) * direction);
+
+            float pixel_radius = length(fwidth(direction)) * 0.5;
+
+            float radius = length(origin);
+
+            vec3 transmittance = sample_transmittance(params, transmittance_lut, radius, dot(direction, origin / radius));
+
+            luminance += night_sky_glow(params, transmittance_lut, origin, direction);
+            luminance += stars(params, direction, celestial, pixel_radius, pc.frame.exposure) * transmittance;
+        }
+
+        luminance += moon_disk(params, transmittance_lut, origin, direction, pc.frame.exposure);
     }
 
     if (params.clouds_enabled != 0u) {
         vec4 cloud = textureLod(clouds, screen_uv, 0.0);
 
-        luminance = luminance * cloud.a + cloud.rgb;
+        luminance = luminance * cloud.a + cloud.rgb / params.cloud_luminance_scale;
     }
 
-    out_color = vec4(min(luminance * params.sun_illuminance * pc.frame.exposure, vec3(MAX_HDR_VALUE)), 1.0);
+    out_color = vec4(min(luminance * params.night_ambient_scale * pc.frame.exposure, vec3(MAX_HDR_VALUE)), 1.0);
 }

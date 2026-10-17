@@ -245,20 +245,46 @@ void sky_view_params(atmosphere_params params, vec2 uv, float radius, out float 
     light_view_cos = -(coord * 2.0 - 1.0);
 }
 
-vec3 sample_sky_view(atmosphere_params params, sampler2D sky_view_lut, vec3 origin, vec3 direction, bool clamp_to_horizon)
+const uint SKY_VIEW_SUN_LAYER  = 0u;
+const uint SKY_VIEW_MOON_LAYER = 1u;
+
+const float NIGHT_SKY_LAYER_HEIGHT = 100.0;
+
+const float HORIZON_AZIMUTH_FADE = 0.15;
+
+const vec3 NIGHT_SKY_COLOR = vec3(0.9, 1.0, 0.85);
+
+vec3 moon_illuminance_color(atmosphere_params params)
+{
+    return params.moon_color * params.moon_illuminance;
+}
+
+vec3 sample_sky_view(
+    atmosphere_params params,
+    sampler2DArray sky_view_lut,
+    vec3 origin,
+    vec3 direction,
+    bool clamp_to_horizon,
+    uint layer,
+    vec3 light_direction
+)
 {
     float radius = length(origin);
 
-    vec2 sun_horizontal  = params.sun_direction.xz;
-    vec2 view_horizontal = direction.xz;
+    vec2 light_horizontal = light_direction.xz;
+    vec2 view_horizontal  = direction.xz;
 
     float light_view_cos = 1.0;
 
-    if (dot(sun_horizontal, sun_horizontal) > 0.000001 && dot(view_horizontal, view_horizontal) > 0.000001) {
-        light_view_cos = dot(normalize(sun_horizontal), normalize(view_horizontal));
+    if (dot(light_horizontal, light_horizontal) > 0.000001 && dot(view_horizontal, view_horizontal) > 0.000001) {
+        light_view_cos = dot(normalize(light_horizontal), normalize(view_horizontal));
     }
 
     bool intersects_ground = ray_sphere_nearest(origin, direction, params.bottom_radius) >= 0.0;
+
+    if (clamp_to_horizon && intersects_ground) {
+        light_view_cos = mix(light_view_cos, 0.0, smoothstep(0.0, HORIZON_AZIMUTH_FADE, -direction.y));
+    }
 
     vec2 uv = sky_view_uv(params, intersects_ground, direction.y, light_view_cos, radius);
 
@@ -266,7 +292,33 @@ vec3 sample_sky_view(atmosphere_params params, sampler2D sky_view_lut, vec3 orig
         uv.y = min(uv.y, 0.5 - 0.5 / float(textureSize(sky_view_lut, 0).y));
     }
 
-    return textureLod(sky_view_lut, uv, 0.0).rgb;
+    return textureLod(sky_view_lut, vec3(uv, float(layer)), 0.0).rgb;
+}
+
+vec3 sky_luminance(atmosphere_params params, sampler2DArray sky_view_lut, vec3 origin, vec3 direction, bool clamp_to_horizon)
+{
+    vec3 sun  = sample_sky_view(params, sky_view_lut, origin, direction, clamp_to_horizon, SKY_VIEW_SUN_LAYER, params.sun_direction);
+    vec3 moon = sample_sky_view(params, sky_view_lut, origin, direction, clamp_to_horizon, SKY_VIEW_MOON_LAYER, params.moon_direction);
+
+    vec3 luminance = sun * params.sun_illuminance + moon * moon_illuminance_color(params);
+
+    float bluish = clamp((luminance.b - luminance.r) / max(luminance.b, 0.000001), 0.0, 1.0);
+
+    return mix(luminance, vec3(dot(luminance, vec3(0.2126, 0.7152, 0.0722))), params.twilight_desaturation * bluish);
+}
+
+vec3 night_sky_glow(atmosphere_params params, sampler2D transmittance_lut, vec3 origin, vec3 direction)
+{
+    float radius = length(origin);
+    float mu     = max(direction.y, 0.0);
+
+    float ratio = params.bottom_radius / (params.bottom_radius + NIGHT_SKY_LAYER_HEIGHT);
+
+    float van_rhijn = 1.0 / sqrt(max(1.0 - ratio * ratio * (1.0 - mu * mu), 0.000001));
+
+    vec3 transmittance = sample_transmittance(params, transmittance_lut, radius, mu);
+
+    return NIGHT_SKY_COLOR * params.night_sky_luminance * van_rhijn * transmittance;
 }
 
 #endif
