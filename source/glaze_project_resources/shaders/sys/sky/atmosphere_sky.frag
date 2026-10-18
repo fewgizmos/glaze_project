@@ -4,6 +4,7 @@
 #include "head/scene.glsl"
 #include "head/night_sky.glsl"
 #include "head/height_fog.glsl"
+#include "head/volumetric_fog.glsl"
 
 layout(set = 1, binding = 0) uniform sampler2D transmittance_lut;
 layout(set = 1, binding = 2) uniform sampler2DArray sky_view_lut;
@@ -73,17 +74,24 @@ void main()
     }
 
     if (params.clouds_enabled != 0u) {
-        vec4 cloud = textureLod(clouds, screen_uv, 0.0);
+        vec2 cloud_texel = 0.5 / vec2(textureSize(clouds, 0));
+
+        vec4 cloud = 0.25 * (
+            textureLod(clouds, screen_uv + vec2(-cloud_texel.x, -cloud_texel.y), 0.0) +
+            textureLod(clouds, screen_uv + vec2( cloud_texel.x, -cloud_texel.y), 0.0) +
+            textureLod(clouds, screen_uv + vec2(-cloud_texel.x,  cloud_texel.y), 0.0) +
+            textureLod(clouds, screen_uv + vec2( cloud_texel.x,  cloud_texel.y), 0.0)
+        );
 
         luminance = luminance * cloud.a + cloud.rgb / params.cloud_luminance_scale;
     }
 
-    luminance *= params.night_ambient_scale;
+    luminance *= params.sky_luminance_scale;
 
     vec3 fog_direction = normalize(vec3(direction.x, max(direction.y, 0.0), direction.z));
     vec3 fog_ambient   = pc.frame.environment_sh.coefficients[0].rgb * FOG_SH_BAND0 * pc.frame.environment_intensity;
 
-    vec4 fog = height_fog(params, params.camera_world_position, params.camera_world_position + fog_direction * params.fog_max_distance, fog_ambient);
+    vec4 fog = apply_fog(params, screen_uv, params.camera_world_position, params.camera_world_position + fog_direction * params.fog_max_distance, fog_ambient);
 
     luminance = luminance * fog.a + fog.rgb;
 

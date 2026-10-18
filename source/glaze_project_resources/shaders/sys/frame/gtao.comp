@@ -44,7 +44,8 @@ float interleaved_gradient_noise(vec2 position)
 
 void main()
 {
-    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 cell = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 id   = ivec2(cell.x * 2 + ((cell.y + int(pc.frame_index)) & 1), cell.y);
 
     if (id.x >= int(pc.screen_size.x) || id.y >= int(pc.screen_size.y)) {
         return;

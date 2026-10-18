@@ -1,0 +1,49 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "head/scene_types.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler3D scattering;
+layout(set = 0, binding = 1, rgba16f) uniform writeonly image3D integrated;
+
+layout(push_constant) uniform constants
+{
+    frame_buffer frame;
+    fog_params_buffer fog;
+} pc;
+
+const float MIN_EXTINCTION = 0.0000001;
+
+void main()
+{
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+
+    if (any(greaterThanEqual(uvec2(id), FOG_GRID.xy))) {
+        return;
+    }
+
+    vec3  inscatter     = vec3(0.0);
+    float transmittance = 1.0;
+
+    float previous_distance = fog_slice_distance(pc.fog, 0.0);
+
+    for (int z = 0; z < int(FOG_GRID.z); z++) {
+        float distance = fog_slice_distance(pc.fog, float(z + 1));
+        float segment  = distance - previous_distance;
+
+        vec4 data = texelFetch(scattering, ivec3(id, z), 0);
+
+        float step_transmittance = exp(-data.a * segment);
+
+        vec3 integrated_scattering = data.a > MIN_EXTINCTION ? data.rgb * (1.0 - step_transmittance) / data.a : data.rgb * segment;
+
+        inscatter     += transmittance * integrated_scattering;
+        transmittance *= step_transmittance;
+
+        imageStore(integrated, ivec3(id, z), vec4(inscatter, transmittance));
+
+        previous_distance = distance;
+    }
+}

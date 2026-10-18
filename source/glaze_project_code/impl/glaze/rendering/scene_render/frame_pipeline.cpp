@@ -14,9 +14,12 @@
 
 #include "glp/glaze/rendering/defines.h"
 
+#include <glm/geometric.hpp>
 #include <glm/mat4x4.hpp>
+#include <glm/matrix.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <vector>
@@ -34,17 +37,54 @@ struct object_data
     VkDeviceAddress vertices;
     uint32_t vertex_count;
     uint32_t material_index;
+    VkDeviceAddress indices;
+    uint32_t index_count;
+    uint32_t padding0;
 };
 
 constexpr uint32_t OBJECTS_START_CAPACITY   = 64;
 constexpr uint32_t MATERIALS_START_CAPACITY = 64;
 constexpr uint32_t LIGHTS_START_CAPACITY    = 16;
 
+constexpr uint32_t LIGHT_TYPE_DIRECTIONAL = 0;
+
+const glm::vec3 LUMINANCE_WEIGHTS = glm::vec3(0.2126f, 0.7152f, 0.0722f);
+
 std::vector<gpu_model_part> m_objects;
 
 std::vector<object_data> m_objects_data;
 
 std::vector<gpu_light> m_lights;
+
+int32_t m_shadow_light = -1;
+
+struct draw_item
+{
+    uint32_t first_object;
+    uint32_t instance_count;
+    uint32_t first_index;
+    uint32_t index_count;
+};
+
+enum class visibility
+{
+    outside,
+    partial,
+    inside
+};
+
+constexpr uint32_t FRUSTUM_PLANES = 6;
+
+constexpr float MIN_PLANE_LENGTH = 0.000001f;
+
+constexpr uint32_t MAX_RANGE_GAP_INDICES = 2 * 128 * 3;
+constexpr size_t   MAX_OBJECT_RANGES     = 8;
+constexpr size_t   CLUSTERS_PER_GROUP    = 16;
+
+std::array<glm::vec4, FRUSTUM_PLANES> m_frustum = {};
+std::array<glm::vec4, FRUSTUM_PLANES> m_local_frustum = {};
+
+std::vector<draw_item> m_draw_items;
 
 gpu_camera m_camera;
 bool m_has_camera = false;
@@ -134,6 +174,222 @@ void handle_objects()
     });
 }
 
+void extract_frustum()
+{
+    const glm::mat4& m = m_camera.view_proj;
+
+    const glm::vec4 row0(m[0][0], m[1][0], m[2][0], m[3][0]);
+    const glm::vec4 row1(m[0][1], m[1][1], m[2][1], m[3][1]);
+    const glm::vec4 row2(m[0][2], m[1][2], m[2][2], m[3][2]);
+    const glm::vec4 row3(m[0][3], m[1][3], m[2][3], m[3][3]);
+
+    m_frustum = { row3 + row0, row3 - row0, row3 + row1, row3 - row1, row2, row3 - row2 };
+
+    for (glm::vec4& plane : m_frustum) {
+        const float length = glm::length(glm::vec3(plane));
+
+        plane = length > MIN_PLANE_LENGTH ? plane / length : glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    }
+}
+
+visibility classify(const std::array<glm::vec4, FRUSTUM_PLANES>& planes, const glm::vec3& bounds_min, const glm::vec3& bounds_max)
+{
+    visibility result = visibility::inside;
+
+    for (const glm::vec4& plane : planes) {
+        const float positive_x = plane.x >= 0.0f ? bounds_max.x : bounds_min.x;
+        const float positive_y = plane.y >= 0.0f ? bounds_max.y : bounds_min.y;
+        const float positive_z = plane.z >= 0.0f ? bounds_max.z : bounds_min.z;
+
+        if (plane.x * positive_x + plane.y * positive_y + plane.z * positive_z + plane.w < 0.0f) {
+            return visibility::outside;
+        }
+
+        const float negative_x = plane.x >= 0.0f ? bounds_min.x : bounds_max.x;
+        const float negative_y = plane.y >= 0.0f ? bounds_min.y : bounds_max.y;
+        const float negative_z = plane.z >= 0.0f ? bounds_min.z : bounds_max.z;
+
+        if (plane.x * negative_x + plane.y * negative_y + plane.z * negative_z + plane.w < 0.0f) {
+            result = visibility::partial;
+        }
+    }
+
+    return result;
+}
+
+void append_range(uint32_t object_index, uint32_t first_index, uint32_t index_count, uint32_t& range_first, uint32_t& range_count)
+{
+    if (range_count > 0 && first_index - (range_first + range_count) <= MAX_RANGE_GAP_INDICES) {
+        range_count = first_index + index_count - range_first;
+        return;
+    }
+
+    if (range_count > 0) {
+        m_draw_items.push_back({ object_index, 1, range_first, range_count });
+    }
+
+    range_first = first_index;
+    range_count = index_count;
+}
+
+void emit_clusters(uint32_t object_index)
+{
+    const gpu_model_part& part = m_objects[object_index];
+
+    const glm::mat4 transposed = glm::transpose(part.transform);
+
+    for (uint32_t i = 0; i < FRUSTUM_PLANES; i++) {
+        m_local_frustum[i] = transposed * m_frustum[i];
+    }
+
+    const size_t items_start = m_draw_items.size();
+
+    uint32_t range_first = 0;
+    uint32_t range_count = 0;
+
+    const std::vector<mesh_cluster>& clusters = part.target_mesh->clusters;
+    const std::vector<mesh_cluster>& groups   = part.target_mesh->cluster_groups;
+
+    for (size_t group_index = 0; group_index < groups.size(); group_index++) {
+        const mesh_cluster& group = groups[group_index];
+
+        const visibility group_state = classify(m_local_frustum, group.bounds_min, group.bounds_max);
+
+        if (group_state == visibility::outside) {
+            continue;
+        }
+
+        if (group_state == visibility::inside) {
+            append_range(object_index, group.first_index, group.index_count, range_first, range_count);
+            continue;
+        }
+
+        const size_t first_cluster = group_index * CLUSTERS_PER_GROUP;
+        const size_t last_cluster  = std::min(first_cluster + CLUSTERS_PER_GROUP, clusters.size());
+
+        for (size_t i = first_cluster; i < last_cluster; i++) {
+            const mesh_cluster& cluster = clusters[i];
+
+            if (classify(m_local_frustum, cluster.bounds_min, cluster.bounds_max) != visibility::outside) {
+                append_range(object_index, cluster.first_index, cluster.index_count, range_first, range_count);
+            }
+        }
+    }
+
+    if (range_count > 0) {
+        m_draw_items.push_back({ object_index, 1, range_first, range_count });
+    }
+
+    if (m_draw_items.size() - items_start > MAX_OBJECT_RANGES) {
+        m_draw_items.resize(items_start);
+        m_draw_items.push_back({ object_index, 1, 0, part.target_mesh->index_count });
+    }
+}
+
+void build_draw_items()
+{
+    m_draw_items.clear();
+
+    extract_frustum();
+
+    const uint32_t objects_count = static_cast<uint32_t>(m_objects.size());
+
+    uint32_t first = 0;
+
+    while (first < objects_count) {
+        const gpu_model_part& target = m_objects[first];
+
+        uint32_t count = 1;
+
+        while (first + count < objects_count) {
+            const gpu_model_part& next = m_objects[first + count];
+
+            if (
+                next.target_mesh != target.target_mesh
+                || next.target_material->target_shader != target.target_material->target_shader
+                || next.target_material->extra_set != target.target_material->extra_set
+            ) {
+                break;
+            }
+
+            count++;
+        }
+
+        if (target.target_material->target_shader->queue != render_queue::opaque) {
+            m_draw_items.push_back({ first, count, 0, target.target_mesh->index_count });
+
+            first += count;
+            continue;
+        }
+
+        uint32_t run_first = first;
+        uint32_t run_count = 0;
+
+        for (uint32_t object_index = first; object_index < first + count; object_index++) {
+            const gpu_model_part& part = m_objects[object_index];
+
+            glm::vec3 bounds_min;
+            glm::vec3 bounds_max;
+
+            res::meshes::world_bounds(part.target_mesh->bounds_min, part.target_mesh->bounds_max, part.transform, bounds_min, bounds_max);
+
+            const visibility state = classify(m_frustum, bounds_min, bounds_max);
+
+            if (state == visibility::inside) {
+                if (run_count == 0) {
+                    run_first = object_index;
+                }
+
+                run_count++;
+                continue;
+            }
+
+            if (run_count > 0) {
+                m_draw_items.push_back({ run_first, run_count, 0, part.target_mesh->index_count });
+                run_count = 0;
+            }
+
+            if (state == visibility::partial) {
+                emit_clusters(object_index);
+            }
+        }
+
+        if (run_count > 0) {
+            m_draw_items.push_back({ run_first, run_count, 0, target.target_mesh->index_count });
+        }
+
+        first += count;
+    }
+}
+
+void handle_shadow_light()
+{
+    m_shadow_light = -1;
+
+    if (!m_post.shadows_enabled) {
+        return;
+    }
+
+    float brightest = 0.0f;
+
+    for (size_t i = 0; i < m_lights.size(); i++) {
+        if (m_lights[i].type != static_cast<uint32_t>(LIGHT_TYPE_DIRECTIONAL)) {
+            continue;
+        }
+
+        const float luminance = glm::dot(m_lights[i].color, LUMINANCE_WEIGHTS);
+
+        if (luminance > brightest) {
+            brightest      = luminance;
+            m_shadow_light = static_cast<int32_t>(i);
+        }
+    }
+
+    if (m_shadow_light >= 0) {
+        m_lights[m_shadow_light].shadowed = 1;
+    }
+}
+
 void handle_buffers()
 {
     const uint32_t frame_index = vk::frame::get_current_frame_index();
@@ -146,7 +402,10 @@ void handle_buffers()
             target.previous_transform,
             target.target_mesh->vertex_buffer.address,
             target.target_mesh->vertex_count,
-            target.target_material->index
+            target.target_material->index,
+            target.target_mesh->index_buffer.address,
+            target.target_mesh->index_count,
+            0
         });
     }
 
@@ -232,6 +491,8 @@ void clear()
     m_objects.clear();
     m_lights.clear();
 
+    m_shadow_light = -1;
+
     m_has_camera = false;
 
     m_post = {};
@@ -304,6 +565,10 @@ void handle_all()
 
     handle_objects();
 
+    build_draw_items();
+
+    handle_shadow_light();
+
     handle_buffers();
 }
 
@@ -317,36 +582,18 @@ void draw_all()
 
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
-    const uint32_t objects_count = static_cast<uint32_t>(m_objects.size());
-
     const shader* bound_shader = nullptr;
 
     VkDescriptorSet bound_extra_set = VK_NULL_HANDLE;
 
-    uint32_t first = 0;
+    const mesh* bound_mesh = nullptr;
 
-    while (first < objects_count) {
-        const gpu_model_part& target = m_objects[first];
+    for (const draw_item& item : m_draw_items) {
+        const gpu_model_part& target = m_objects[item.first_object];
 
         const shader* target_shader = target.target_material->target_shader;
 
         const VkDescriptorSet target_extra_set = target.target_material->extra_set;
-
-        uint32_t count = 1;
-
-        while (first + count < objects_count) {
-            const gpu_model_part& next = m_objects[first + count];
-
-            if (
-                next.target_mesh != target.target_mesh
-                || next.target_material->target_shader != target_shader
-                || next.target_material->extra_set != target_extra_set
-            ) {
-                break;
-            }
-
-            count++;
-        }
 
         if (target_shader != bound_shader) {
             bound_shader = target_shader;
@@ -368,11 +615,13 @@ void draw_all()
             bind_extra_set(bound_shader, bound_extra_set);
         }
 
-        disp.cmdBindIndexBuffer(cmd, target.target_mesh->index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
+        if (target.target_mesh != bound_mesh) {
+            bound_mesh = target.target_mesh;
 
-        disp.cmdDrawIndexed(cmd, target.target_mesh->index_count, count, 0, 0, first);
+            disp.cmdBindIndexBuffer(cmd, bound_mesh->index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
+        }
 
-        first += count;
+        disp.cmdDrawIndexed(cmd, item.index_count, item.instance_count, item.first_index, 0, item.first_object);
     }
 }
 
@@ -386,40 +635,18 @@ void draw_prepass()
 
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
-    const uint32_t objects_count = static_cast<uint32_t>(m_objects.size());
-
     const shader* bound_shader = nullptr;
 
-    uint32_t first = 0;
+    const mesh* bound_mesh = nullptr;
 
-    while (first < objects_count) {
-        const gpu_model_part& target = m_objects[first];
+    for (const draw_item& item : m_draw_items) {
+        const gpu_model_part& target = m_objects[item.first_object];
 
         if (target.target_material->target_shader->queue != render_queue::opaque) {
-            first++;
-
             continue;
         }
 
-        const bool double_sided = target.target_material->double_sided;
-
-        uint32_t count = 1;
-
-        while (first + count < objects_count) {
-            const gpu_model_part& next = m_objects[first + count];
-
-            if (
-                next.target_mesh != target.target_mesh
-                || next.target_material->target_shader->queue != render_queue::opaque
-                || next.target_material->double_sided != double_sided
-            ) {
-                break;
-            }
-
-            count++;
-        }
-
-        const shader* target_shader = double_sided ? std_prepass_double_sided_shader() : std_prepass_shader();
+        const shader* target_shader = target.target_material->double_sided ? std_prepass_double_sided_shader() : std_prepass_shader();
 
         if (target_shader != bound_shader) {
             bound_shader = target_shader;
@@ -427,13 +654,21 @@ void draw_prepass()
             bind_shader(bound_shader);
         }
 
-        disp.cmdBindIndexBuffer(cmd, target.target_mesh->index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
+        if (target.target_mesh != bound_mesh) {
+            bound_mesh = target.target_mesh;
 
-        disp.cmdDrawIndexed(cmd, target.target_mesh->index_count, count, 0, 0, first);
+            disp.cmdBindIndexBuffer(cmd, bound_mesh->index_buffer.handle, 0, VK_INDEX_TYPE_UINT32);
+        }
 
-        first += count;
+        disp.cmdDrawIndexed(cmd, item.index_count, item.instance_count, item.first_index, 0, item.first_object);
     }
 }
+
+const std::vector<gpu_model_part>& get_objects() { return m_objects; }
+
+bool has_shadow_light() { return m_shadow_light >= 0; }
+
+const gpu_light& get_shadow_light() { return m_lights[m_shadow_light]; }
 
 VkDeviceAddress get_objects_address()
 {

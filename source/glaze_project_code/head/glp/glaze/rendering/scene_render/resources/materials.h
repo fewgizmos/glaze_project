@@ -52,6 +52,7 @@ struct material_create_info
     material_alpha_mode alpha_mode = material_alpha_mode::opaque;
 
     bool double_sided = false;
+    bool cast_shadows = true;
 
     float ior               = 1.5f;
     float specular_factor   = 1.0f;
@@ -87,6 +88,7 @@ struct material_create_info
 
     material_texture height_texture;
     float height_scale = 0.0f;
+    float height_world = 0.0f;
 };
 
 struct material_data
@@ -167,7 +169,8 @@ struct material_data
 
     float clearcoat_normal_scale;
     float height_scale;
-    float padding1[2];
+    float height_world;
+    float padding1;
 };
 
 struct material
@@ -176,6 +179,8 @@ struct material
     VkDescriptorSet extra_set = VK_NULL_HANDLE;
     uint32_t index = 0;
     bool double_sided = false;
+    bool cast_shadows = true;
+    material_alpha_mode alpha_mode = material_alpha_mode::opaque;
 };
 
 }

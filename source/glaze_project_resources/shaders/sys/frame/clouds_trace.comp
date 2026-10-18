@@ -19,26 +19,19 @@ layout(set = 0, binding = 8, r32f) uniform writeonly image2D depth_target;
 layout(push_constant) uniform constants
 {
     atmosphere_buffer atmosphere;
+    float quality;
+    uint full;
 } pc;
 
-const float CLOUD_EXTINCTION = 40.0;
-
-const float SHAPE_FREQUENCY   = 0.2;
-const float DETAIL_FREQUENCY  = 2.0;
-const float WEATHER_FREQUENCY = 0.025;
-
-const float TYPE_VARIATION = 0.4;
-const float DETAIL_EROSION     = 0.35;
-const float DETAIL_HEIGHT_FLIP = 10.0;
-const float EDGE_EROSION_SCALE = 3.0;
-
-const float BASE_HEIGHT_VARIATION = 0.15;
-const float EDGE_HEIGHT_NOISE     = 0.4;
+#include "head/clouds.glsl"
+#include "head/clouds_checkerboard.glsl"
 
 const float MAX_CLOUD_DISTANCE = 60.0;
 
 const float MIN_STEPS = 64.0;
 const float MAX_STEPS = 128.0;
+
+const float MIN_STEP_SCALE = 0.5;
 
 const uint LIGHT_STEPS        = 6u;
 const uint LIGHT_DETAIL_STEPS = 2u;
@@ -60,22 +53,15 @@ const float AMBIENT_BOTTOM = 0.4;
 const float AMBIENT_ELEVATION = 0.5;
 
 const float TRANSMITTANCE_CUTOFF = 0.01;
-const float MIN_DENSITY          = 0.0001;
 
 const uint AERIAL_SAMPLES = 8u;
 
 const uint LIGHT_COUNT = 2u;
 
-const uint CHECKERBOARD_SLOTS = 4u;
-
 const float EMPTY_STEP_SCALE = 2.0;
 
 const float MIN_LIGHT_CONTRIBUTION = 0.00001;
 const float MIN_LIGHT_HEIGHT       = -0.3;
-
-const vec4 STRATUS_GRADIENT       = vec4(0.0, 0.3, 0.3, 0.7);
-const vec4 STRATOCUMULUS_GRADIENT = vec4(0.0, 0.45, 0.5, 1.0);
-const vec4 CUMULUS_GRADIENT       = vec4(0.0, 0.5, 0.5, 1.0);
 
 float henyey_greenstein(float g, float cos_theta)
 {
@@ -87,83 +73,6 @@ float henyey_greenstein(float g, float cos_theta)
 float cloud_phase(float cos_theta, float scale)
 {
     return mix(henyey_greenstein(BACKWARD_G * scale, cos_theta), henyey_greenstein(FORWARD_G * scale, cos_theta), FORWARD_WEIGHT);
-}
-
-float height_gradient(float height_fraction, float type)
-{
-    vec4 gradient = type < 0.5
-        ? mix(STRATUS_GRADIENT, STRATOCUMULUS_GRADIENT, type * 2.0)
-        : mix(STRATOCUMULUS_GRADIENT, CUMULUS_GRADIENT, type * 2.0 - 1.0);
-
-    return smoothstep(gradient.x, gradient.y, height_fraction) - smoothstep(gradient.z, gradient.w, height_fraction);
-}
-
-float cloud_base(atmosphere_params params, vec3 position, float height_fraction, out vec3 sample_position, out float shaped_height)
-{
-    sample_position = vec3(0.0);
-    shaped_height   = 0.0;
-
-    if (height_fraction < 0.0 || height_fraction > 1.0) {
-        return 0.0;
-    }
-
-    vec3 weather = textureLod(weather_map, position.xz * WEATHER_FREQUENCY, 0.0).rgb;
-
-    float coverage = clamp(remap(weather.r, 1.0 - params.cloud_coverage, 1.0, 0.0, 1.0), 0.0, 1.0);
-    float type     = clamp(params.cloud_type + (weather.g - 0.5) * TYPE_VARIATION, 0.0, 1.0);
-
-    if (coverage <= MIN_DENSITY) {
-        return 0.0;
-    }
-
-    sample_position = vec3(position.x, length(position) - params.bottom_radius, position.z);
-
-    vec4 shape = textureLod(shape_noise, sample_position * SHAPE_FREQUENCY, 0.0);
-
-    float low_frequency = dot(shape.gba, vec3(0.625, 0.25, 0.125));
-
-    float bottom_offset = weather.b * BASE_HEIGHT_VARIATION + low_frequency * EDGE_HEIGHT_NOISE;
-    float top_offset    = (1.0 - low_frequency) * EDGE_HEIGHT_NOISE;
-
-    shaped_height = (height_fraction - bottom_offset) / (1.0 - bottom_offset - top_offset);
-
-    if (shaped_height <= 0.0 || shaped_height >= 1.0) {
-        return 0.0;
-    }
-
-    float base = remap(shape.r, low_frequency - 1.0, 1.0, 0.0, 1.0);
-
-    base *= height_gradient(shaped_height, type);
-
-    return clamp(remap(base, 1.0 - coverage, 1.0, 0.0, 1.0), 0.0, 1.0) * coverage;
-}
-
-float cloud_erode(atmosphere_params params, float base, vec3 sample_position, float shaped_height, float height_fraction)
-{
-    vec3 detail = textureLod(detail_noise, sample_position * DETAIL_FREQUENCY, 0.0).rgb;
-
-    float high_frequency = dot(detail, vec3(0.625, 0.25, 0.125));
-
-    high_frequency = mix(high_frequency, 1.0 - high_frequency, clamp(height_fraction * DETAIL_HEIGHT_FLIP, 0.0, 1.0));
-
-    float edge    = 1.0 - clamp(4.0 * shaped_height * (1.0 - shaped_height), 0.0, 1.0);
-    float erosion = DETAIL_EROSION * mix(1.0, EDGE_EROSION_SCALE, edge);
-
-    return clamp(remap(base, high_frequency * erosion, 1.0, 0.0, 1.0), 0.0, 1.0) * params.cloud_density;
-}
-
-float cloud_density(atmosphere_params params, vec3 position, float height_fraction, bool detailed)
-{
-    vec3 sample_position;
-    float shaped_height;
-
-    float base = cloud_base(params, position, height_fraction, sample_position, shaped_height);
-
-    if (base <= 0.0) {
-        return 0.0;
-    }
-
-    return detailed ? cloud_erode(params, base, sample_position, shaped_height, height_fraction) : base * params.cloud_density;
 }
 
 float light_optical_depth(atmosphere_params params, vec3 position, vec3 sun_direction)
@@ -241,19 +150,15 @@ float interleaved_gradient_noise(vec2 pixel, uint frame)
 void main()
 {
     ivec2 size = imageSize(trace_target);
-    ivec2 id   = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 id   = pc.full != 0u
+        ? ivec2(gl_GlobalInvocationID.xy)
+        : ivec2(gl_GlobalInvocationID.xy) * CHECKERBOARD_SIZE + checkerboard_offset(pc.atmosphere.params.frame_index);
 
     if (id.x >= size.x || id.y >= size.y) {
         return;
     }
 
     atmosphere_params params = pc.atmosphere.params;
-
-    uint slot = params.frame_index % CHECKERBOARD_SLOTS;
-
-    if ((id.x & 1) != int(slot & 1u) || (id.y & 1) != int(slot >> 1u)) {
-        return;
-    }
 
     vec2 ndc = (vec2(id) + 0.5) / vec2(size) * 2.0 - 1.0;
 
@@ -274,7 +179,7 @@ void main()
 
     float layer_thickness = params.cloud_top - params.cloud_bottom;
 
-    float step_count = floor(mix(MIN_STEPS, MAX_STEPS, clamp((t1 - t0) / layer_thickness - 1.0, 0.0, 1.0)));
+    float step_count = max(floor(mix(MIN_STEPS, MAX_STEPS, clamp((t1 - t0) / layer_thickness - 1.0, 0.0, 1.0)) * pc.quality), MIN_STEPS * MIN_STEP_SCALE);
     float dt         = (t1 - t0) / step_count;
 
     float offset = interleaved_gradient_noise(vec2(id), params.frame_index);

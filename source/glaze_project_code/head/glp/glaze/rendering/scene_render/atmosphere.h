@@ -17,6 +17,8 @@ VkDeviceAddress get_params_address();
 
 bool is_active();
 
+float get_fog_density();
+
 const image& get_transmittance_image();
 const image& get_multi_scattering_image();
 const image& get_sky_view_image();

@@ -30,6 +30,6 @@ struct gpu_model
 namespace glaze::rendering::scene_render::res::gpu_models
 {
 
-gpu_model build(const model* target, const glm::mat4& local);
+void build(const model* target, const glm::mat4& local, gpu_model& out);
 
 }

@@ -14,6 +14,7 @@
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
 
+#include <cstdint>
 #include <memory>
 #include <unordered_map>
 
@@ -23,8 +24,17 @@ namespace glaze::scene::render_proxy
 namespace
 {
 
-std::unordered_map<const vol::scene_volume*, glm::mat4> m_previous_worlds;
-std::unordered_map<const vol::scene_volume*, glm::mat4> m_current_worlds;
+struct world_record
+{
+    glm::mat4 world;
+    uint32_t frame;
+};
+
+std::unordered_map<const vol::scene_volume*, world_record> m_worlds;
+
+rendering::scene_render::gpu_model m_model;
+
+uint32_t m_frame = 0;
 
 void proxy_camera()
 {
@@ -58,22 +68,24 @@ void proxy_volume_models(const vol::scene_volume& volume)
 {
     const glm::mat4 world = vol::compose_transform(volume.w_pos, volume.w_rot, volume.w_scale);
 
-    const auto previous = m_previous_worlds.find(&volume);
+    const auto [record, inserted] = m_worlds.try_emplace(&volume, world_record{ world, m_frame });
 
-    const glm::mat4 previous_world = previous != m_previous_worlds.end() ? previous->second : world;
+    const glm::mat4 previous_world = inserted ? world : record->second.world;
 
-    m_current_worlds[&volume] = world;
+    record->second = { world, m_frame };
 
     for (const std::unique_ptr<vol::volume_component>& comp : volume.components) {
         if (!comp->has_flag(vol::component_flags::modeled)) {
             continue;
         }
 
-        rendering::scene_render::gpu_model model = comp->get_model();
+        m_model.parts.clear();
 
-        util::apply_model_world(model, world, previous_world);
+        comp->get_model(m_model);
 
-        rendering::scene_render::frame_pipe::submit_model(model);
+        util::apply_model_world(m_model, world, previous_world);
+
+        rendering::scene_render::frame_pipe::submit_model(m_model);
     }
 }
 
@@ -175,8 +187,9 @@ void proxy_visibles()
         }
     }
 
-    m_previous_worlds.swap(m_current_worlds);
-    m_current_worlds.clear();
+    std::erase_if(m_worlds, [](const auto& entry) { return entry.second.frame != m_frame; });
+
+    m_frame++;
 }
 
 namespace util

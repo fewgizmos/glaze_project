@@ -27,7 +27,11 @@ struct graphics_pipeline_create_info
     VkFrontFace front_face    = VK_FRONT_FACE_CLOCKWISE;
 
     bool depth_write = true;
+    bool depth_clamp = false;
     bool alpha_blend = false;
+
+    float depth_bias_constant = 0.0f;
+    float depth_bias_slope    = 0.0f;
 
     std::vector<VkDescriptorSetLayout> set_layouts;
 
@@ -36,6 +40,8 @@ struct graphics_pipeline_create_info
 
     std::vector<VkVertexInputBindingDescription> vertex_bindings;
     std::vector<VkVertexInputAttributeDescription> vertex_attributes;
+
+    std::vector<std::string> defines;
 };
 
 struct compute_pipeline_create_info
@@ -56,7 +62,7 @@ struct pipeline
 namespace glaze::rendering::vk::shaders
 {
 
-std::vector<uint32_t> compile_glsl(const std::string& source, shader_stage stage, const std::string& name);
+std::vector<uint32_t> compile_glsl(const std::string& source, shader_stage stage, const std::string& name, const std::vector<std::string>& defines = {});
 
 VkShaderModule create_module(const std::vector<uint32_t>& spirv);
 void destroy_module(VkShaderModule module);

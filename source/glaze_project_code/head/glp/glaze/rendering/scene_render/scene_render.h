@@ -26,4 +26,6 @@ VkDeviceAddress get_frame_data_address();
 VkDescriptorSetLayout get_scene_set_layout();
 VkDescriptorSet get_scene_set();
 
+float get_quality();
+
 }

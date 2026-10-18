@@ -1,0 +1,75 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "head/atmosphere.glsl"
+#include "head/noise.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 3) uniform sampler3D shape_noise;
+layout(set = 0, binding = 4) uniform sampler3D detail_noise;
+layout(set = 0, binding = 5) uniform sampler2D weather_map;
+
+layout(set = 0, binding = 7, r16f) uniform writeonly image2DArray shadow_target;
+
+layout(push_constant) uniform constants
+{
+    atmosphere_buffer atmosphere;
+} pc;
+
+#include "head/clouds.glsl"
+#include "head/cloud_shadow.glsl"
+
+const uint  SHADOW_STEPS        = 24u;
+const float METERS_TO_KILOMETERS = 0.001;
+const float MIN_LIGHT_HEIGHT    = 0.01;
+
+void main()
+{
+    ivec3 id   = ivec3(gl_GlobalInvocationID.xy, gl_WorkGroupID.z);
+    ivec2 size = imageSize(shadow_target).xy;
+
+    if (id.x >= size.x || id.y >= size.y) {
+        return;
+    }
+
+    atmosphere_params params = pc.atmosphere.params;
+
+    vec3 direction = id.z == int(CLOUD_SHADOW_SUN) ? params.sun_direction : params.moon_direction;
+
+    if (params.clouds_enabled == 0u || direction.y < MIN_LIGHT_HEIGHT) {
+        imageStore(shadow_target, id, vec4(1.0));
+        return;
+    }
+
+    vec2 uv = (vec2(id.xy) + 0.5) / vec2(size);
+
+    vec2 world_xz = cloud_shadow_center(params.camera_world_position) + (uv - 0.5) * CLOUD_SHADOW_EXTENT;
+
+    vec3 world_pos = vec3(world_xz.x, 0.0, world_xz.y);
+    vec3 position  = params.camera_position + (world_pos - params.camera_world_position) * METERS_TO_KILOMETERS;
+
+    float t0 = ray_sphere_nearest(position, direction, params.cloud_bottom);
+    float t1 = ray_sphere_nearest(position, direction, params.cloud_top);
+
+    if (t0 < 0.0 || t1 <= t0) {
+        imageStore(shadow_target, id, vec4(1.0));
+        return;
+    }
+
+    float layer_thickness = params.cloud_top - params.cloud_bottom;
+
+    float dt = (t1 - t0) / float(SHADOW_STEPS);
+
+    float optical_depth = 0.0;
+
+    for (uint i = 0u; i < SHADOW_STEPS; i++) {
+        vec3 sample_position = position + direction * (t0 + (float(i) + 0.5) * dt);
+
+        float height_fraction = (length(sample_position) - params.cloud_bottom) / layer_thickness;
+
+        optical_depth += cloud_density(params, sample_position, height_fraction, true) * dt;
+    }
+
+    imageStore(shadow_target, id, vec4(exp(-optical_depth * CLOUD_EXTINCTION)));
+}

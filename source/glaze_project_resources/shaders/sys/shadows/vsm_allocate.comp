@@ -1,0 +1,84 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "head/vsm_types.glsl"
+
+layout(local_size_x = 64) in;
+
+layout(push_constant) uniform constants
+{
+    vsm_params_buffer params;
+} pc;
+
+const uint MAX_AGE = 120u;
+
+void release_page(uint physical)
+{
+    if (physical == VSM_NO_PAGE) {
+        return;
+    }
+
+    uint index = atomicAdd(pc.params.counters.free_count, 1u);
+
+    pc.params.free_stack.data[index] = physical;
+}
+
+void main()
+{
+    uint id = gl_GlobalInvocationID.x;
+
+    if (id >= VSM_LEVELS * VSM_LEVEL_SLOTS) {
+        return;
+    }
+
+    uint level = id / VSM_LEVEL_SLOTS;
+    uint slot  = id % VSM_LEVEL_SLOTS;
+
+    ivec2 origin = pc.params.levels[level].origin;
+    ivec2 cell   = ivec2(slot % VSM_LEVEL_PAGES, slot / VSM_LEVEL_PAGES);
+    ivec2 tag    = origin + ((cell - origin) & ivec2(VSM_LEVEL_PAGES - 1u));
+
+    vsm_entry entry = pc.params.entries.data[id];
+
+    uint flags    = entry.state & VSM_STATE_FLAGS;
+    uint age      = entry.state >> VSM_STATE_AGE_SHIFT;
+    uint physical = entry.physical;
+
+    if (entry.tag_x != tag.x || entry.tag_y != tag.y) {
+        release_page(physical);
+
+        physical = VSM_NO_PAGE;
+        age      = 0u;
+    }
+
+    if ((flags & VSM_STATE_INVALID) != 0u) {
+        release_page(physical);
+
+        physical = VSM_NO_PAGE;
+    }
+
+    if ((flags & VSM_STATE_REQUESTED) != 0u) {
+        age = 0u;
+
+        atomicAdd(pc.params.counters.requested_count, 1u);
+
+        if (physical == VSM_NO_PAGE) {
+            uint request = atomicAdd(pc.params.level_requests.data[level], 1u);
+
+            if (request < VSM_LEVEL_REQUESTS) {
+                pc.params.requests.data[level * VSM_LEVEL_REQUESTS + request] = id;
+            }
+        }
+    } else if (physical != VSM_NO_PAGE) {
+        age++;
+
+        if (age > MAX_AGE) {
+            release_page(physical);
+
+            physical = VSM_NO_PAGE;
+            age      = 0u;
+        }
+    }
+
+    pc.params.entries.data[id] = vsm_entry(tag.x, tag.y, physical, age << VSM_STATE_AGE_SHIFT);
+}

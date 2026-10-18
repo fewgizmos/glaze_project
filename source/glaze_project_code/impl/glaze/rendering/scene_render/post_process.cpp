@@ -33,6 +33,8 @@ struct tonemap_push
     float bloom_normalization;
     float inverse_exposure;
     float night_vision;
+    float contrast;
+    float saturation;
 };
 
 VkDescriptorSetLayout m_set_layout = VK_NULL_HANDLE;
@@ -152,6 +154,8 @@ void draw_all()
     push.bloom_normalization = 1.0f / static_cast<float>(bloom::get_mip_count());
     push.inverse_exposure    = 1.0f / exposure::get_exposure();
     push.night_vision        = post.night_vision_intensity;
+    push.contrast            = post.tonemap_contrast;
+    push.saturation          = post.tonemap_saturation;
 
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_tonemap_shader->graphics.handle);
 

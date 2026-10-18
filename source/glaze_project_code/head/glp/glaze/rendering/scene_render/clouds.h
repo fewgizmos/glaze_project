@@ -12,5 +12,6 @@ void handle_all();
 void dispatch();
 
 const image& get_output_image();
+const image& get_shadow_image();
 
 }

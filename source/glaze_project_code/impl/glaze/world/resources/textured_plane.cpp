@@ -35,6 +35,7 @@ constexpr int ALPHA_CHANNEL = 3;
 constexpr uint8_t MAX_CHANNEL = 255;
 
 constexpr float DEFAULT_TILE_SIZE = 1.0f;
+constexpr float PLAIN_TILE_SIZE   = 8.0f;
 constexpr float DEFAULT_ROUGHNESS = 0.8f;
 
 constexpr uint32_t FULL_MIP_CHAIN = 0;
@@ -206,9 +207,9 @@ cmp_textured_plane::cmp_textured_plane(const textured_plane_create_info& create_
 {
     set_flag(scene::vol::component_flags::modeled);
 
-    const pack_files files = find_pack_files(create_info.pack_path);
+    const pack_files files = create_info.pack_path.empty() ? pack_files{} : find_pack_files(create_info.pack_path);
 
-    glm::vec2 tile_size  = glm::vec2(DEFAULT_TILE_SIZE);
+    glm::vec2 tile_size  = glm::vec2(create_info.pack_path.empty() ? PLAIN_TILE_SIZE : DEFAULT_TILE_SIZE);
     float relief_height  = 0.0f;
 
     read_metadata(files.metadata, tile_size, relief_height);
@@ -274,7 +275,8 @@ cmp_textured_plane::cmp_textured_plane(const textured_plane_create_info& create_
     }
 
     if (!files.displacement.empty() && relief_height > 0.0f) {
-        material_info.height_scale = relief_height / (0.5f * (tile_size.x + tile_size.y));
+        material_info.height_scale = relief_height * create_info.parallax_strength / (0.5f * (tile_size.x + tile_size.y));
+        material_info.height_world = relief_height * create_info.parallax_strength;
 
         bind(material_info.height_texture, load_image(files.displacement), false);
     }
@@ -314,13 +316,9 @@ cmp_textured_plane::~cmp_textured_plane()
     }
 }
 
-rendering::scene_render::gpu_model cmp_textured_plane::get_model()
+void cmp_textured_plane::get_model(rendering::scene_render::gpu_model& out)
 {
-    rendering::scene_render::gpu_model result;
-
-    result.parts.push_back({ m_mesh, m_material, glm::mat4(1.0f), glm::mat4(1.0f) });
-
-    return result;
+    out.parts.push_back({ m_mesh, m_material, glm::mat4(1.0f), glm::mat4(1.0f) });
 }
 
 textured_plane::textured_plane(const textured_plane_create_info& create_info)

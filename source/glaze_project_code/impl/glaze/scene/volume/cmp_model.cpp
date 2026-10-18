@@ -8,11 +8,12 @@ model::model(const std::string& gltf_path, const rendering::scene_render::shader
     set_flag(component_flags::modeled);
 }
 
-rendering::scene_render::gpu_model model::get_model()
+void model::get_model(rendering::scene_render::gpu_model& out)
 {
-    return rendering::scene_render::res::gpu_models::build(
+    rendering::scene_render::res::gpu_models::build(
         m_model.get_handle(),
-        compose_transform(get_pos(), get_rot(), get_scale())
+        compose_transform(get_pos(), get_rot(), get_scale()),
+        out
     );
 }
 

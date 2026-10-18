@@ -9,6 +9,8 @@
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 #include "glp/glaze/rendering/scene_render/gtao.h"
 #include "glp/glaze/rendering/scene_render/post_process.h"
+#include "glp/glaze/rendering/scene_render/shadows.h"
+#include "glp/glaze/rendering/scene_render/volumetric_fog.h"
 #include "glp/glaze/rendering/scene_render/taa.h"
 
 #include "glp/glaze/rendering/scene_render/resources/gpu_environment.h"
@@ -23,6 +25,8 @@
 #include "glp/glaze/rendering/vk/frame.h"
 #include "glp/glaze/rendering/vk/samplers.h"
 
+#include "glp/glaze/rendering/vk/profiler.h"
+
 #include "glp/glaze/rendering/defines.h"
 #include "glp/glaze/rendering/queue_deletor.h"
 
@@ -33,6 +37,7 @@
 #include <glm/matrix.hpp>
 #include <glm/vec3.hpp>
 
+#include <algorithm>
 #include <cstdint>
 
 namespace glaze::rendering::scene_render::it
@@ -54,7 +59,7 @@ struct frame_scene_data
     uint32_t light_count;
     uint32_t has_environment;
     float environment_intensity;
-    uint32_t padding0;
+    float quality;
 
     VkDeviceAddress objects;
     VkDeviceAddress materials;
@@ -70,12 +75,32 @@ struct frame_scene_data
     VkDeviceAddress atmosphere;
 
     uint32_t has_atmosphere;
-    uint32_t padding1;
+    uint32_t has_shadows;
+
+    VkDeviceAddress shadows;
+    VkDeviceAddress fog;
+
+    uint32_t has_fog;
+    uint32_t padding2;
 };
 
-constexpr uint32_t GTAO_BINDING = 2;
+constexpr uint32_t GTAO_BINDING         = 2;
+constexpr uint32_t SHADOW_BINDING       = 3;
+constexpr uint32_t CLOUD_SHADOW_BINDING = 4;
+constexpr uint32_t CONTACT_BINDING      = 5;
+constexpr uint32_t FOG_BINDING          = 6;
+
+constexpr uint32_t COMBINED_BINDINGS = 5;
 
 constexpr uint32_t JITTER_SEQUENCE_LENGTH = 8;
+
+constexpr float MIN_QUALITY             = 0.5f;
+constexpr float MAX_QUALITY             = 1.0f;
+constexpr float QUALITY_STEP_DOWN       = 0.02f;
+constexpr float QUALITY_STEP_UP         = 0.005f;
+constexpr float QUALITY_RAISE_THRESHOLD = 0.85f;
+
+float m_quality = MAX_QUALITY;
 
 image m_depth_image;
 image m_hdr_image;
@@ -94,6 +119,12 @@ VkDescriptorSet m_scene_set = VK_NULL_HANDLE;
 uint32_t m_bound_samplers = 0;
 
 VkImageView m_written_gtao_view = VK_NULL_HANDLE;
+VkImageView m_written_shadow_view = VK_NULL_HANDLE;
+VkImageView m_written_cloud_shadow_view = VK_NULL_HANDLE;
+VkImageView m_written_contact_view = VK_NULL_HANDLE;
+VkImageView m_written_fog_view = VK_NULL_HANDLE;
+
+VkSampler m_linear_sampler = VK_NULL_HANDLE;
 VkSampler m_gtao_sampler = VK_NULL_HANDLE;
 
 uint32_t m_frame_index = 0;
@@ -177,11 +208,15 @@ void create_scene_set()
 
     m_scene_set_layout = vk::descriptors::create_set_layout(
         {
-            { 0,            VK_DESCRIPTOR_TYPE_SAMPLER,                MAX_SAMPLERS, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-            { 1,            VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,          MAX_TEXTURES, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-            { GTAO_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,            VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
+            { 0,                    VK_DESCRIPTOR_TYPE_SAMPLER,                MAX_SAMPLERS, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+            { 1,                    VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,          MAX_TEXTURES, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+            { GTAO_BINDING,         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,            VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+            { SHADOW_BINDING,       VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,            VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+            { CLOUD_SHADOW_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,            VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+            { CONTACT_BINDING,      VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,            VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+            { FOG_BINDING,          VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,            VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
         },
-        { flags, flags, flags }
+        { flags, flags, flags, flags, flags, flags, flags }
     );
 
     m_scene_pool = vk::descriptors::create_pool(
@@ -189,7 +224,7 @@ void create_scene_set()
         {
             { VK_DESCRIPTOR_TYPE_SAMPLER,                MAX_SAMPLERS },
             { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,          MAX_TEXTURES },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 }
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, COMBINED_BINDINGS }
         },
         VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT
     );
@@ -206,6 +241,15 @@ void create_scene_set()
     gtao_sampler_info.anisotropy = false;
 
     m_gtao_sampler = vk::samplers::get(vk::samplers::make(gtao_sampler_info));
+
+    sampler_create_info linear_sampler_info;
+    linear_sampler_info.mip_mode   = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    linear_sampler_info.wrap_u     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    linear_sampler_info.wrap_v     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    linear_sampler_info.wrap_w     = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    linear_sampler_info.anisotropy = false;
+
+    m_linear_sampler = vk::samplers::get(vk::samplers::make(linear_sampler_info));
 }
 
 void destroy_scene_set()
@@ -219,8 +263,14 @@ void destroy_scene_set()
 
     m_bound_samplers = 0;
 
-    m_written_gtao_view = VK_NULL_HANDLE;
-    m_gtao_sampler      = VK_NULL_HANDLE;
+    m_written_gtao_view         = VK_NULL_HANDLE;
+    m_written_shadow_view       = VK_NULL_HANDLE;
+    m_written_cloud_shadow_view = VK_NULL_HANDLE;
+    m_written_contact_view      = VK_NULL_HANDLE;
+    m_written_fog_view          = VK_NULL_HANDLE;
+
+    m_gtao_sampler   = VK_NULL_HANDLE;
+    m_linear_sampler = VK_NULL_HANDLE;
 }
 
 void handle_scene_set()
@@ -261,6 +311,80 @@ void handle_scene_set()
 
         m_written_gtao_view = m_gtao_image.view;
     }
+
+    const image& shadow_pool = shadows::get_pool_image();
+
+    if (shadow_pool.view != m_written_shadow_view) {
+        vk::descriptors::write_image(
+            m_scene_set,
+            SHADOW_BINDING,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            shadow_pool.view,
+            VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+            m_gtao_sampler
+        );
+
+        m_written_shadow_view = shadow_pool.view;
+    }
+
+    const image& cloud_shadow = clouds::get_shadow_image();
+
+    if (cloud_shadow.view != m_written_cloud_shadow_view) {
+        vk::descriptors::write_image(
+            m_scene_set,
+            CLOUD_SHADOW_BINDING,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            cloud_shadow.view,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            m_linear_sampler
+        );
+
+        m_written_cloud_shadow_view = cloud_shadow.view;
+    }
+
+    const image& contact = shadows::get_contact_image();
+
+    if (contact.view != m_written_contact_view) {
+        vk::descriptors::write_image(
+            m_scene_set,
+            CONTACT_BINDING,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            contact.view,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            m_gtao_sampler
+        );
+
+        m_written_contact_view = contact.view;
+    }
+
+    const image& fog_volume = volumetric_fog::get_volume_image();
+
+    if (fog_volume.view != m_written_fog_view) {
+        vk::descriptors::write_image(
+            m_scene_set,
+            FOG_BINDING,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            fog_volume.view,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            m_linear_sampler
+        );
+
+        m_written_fog_view = fog_volume.view;
+    }
+}
+
+void update_quality()
+{
+    const float budget = frame_pipe::get_post().gpu_budget_fraction * utilities::core::timer::target_frame_ms();
+    const float gpu_ms = vk::profiler::get_timings().total_milliseconds;
+
+    if (gpu_ms > budget) {
+        m_quality -= QUALITY_STEP_DOWN;
+    } else if (gpu_ms < budget * QUALITY_RAISE_THRESHOLD) {
+        m_quality += QUALITY_STEP_UP;
+    }
+
+    m_quality = std::clamp(m_quality, MIN_QUALITY, MAX_QUALITY);
 }
 
 float halton(uint32_t index, uint32_t base)
@@ -313,7 +437,7 @@ void handle_frame_data()
     data.has_environment       = frame_pipe::has_environment() ? 1 : 0;
     data.environment_intensity = frame_pipe::get_environment().intensity;
 
-    data.padding0 = 0;
+    data.quality = m_quality;
 
     data.objects   = frame_pipe::get_objects_address();
     data.materials = frame_pipe::get_materials_address();
@@ -326,7 +450,11 @@ void handle_frame_data()
     data.atmosphere     = atmosphere::get_params_address();
 
     data.has_atmosphere = frame_pipe::has_atmosphere() ? 1 : 0;
-    data.padding1       = 0;
+    data.has_shadows    = shadows::is_active() ? 1 : 0;
+    data.shadows        = shadows::get_params_address();
+    data.fog            = volumetric_fog::get_params_address();
+    data.has_fog        = volumetric_fog::is_active() ? 1 : 0;
+    data.padding2       = 0;
 
     data.unjittered_view_proj = camera.view_proj;
     data.previous_view_proj   = m_has_previous_view_proj ? m_previous_view_proj : camera.view_proj;
@@ -362,6 +490,8 @@ void init()
     clouds::init_all();
 
     gtao::init_all();
+    shadows::init_all();
+    volumetric_fog::init_all();
     taa::init_all();
 
     light_shafts::init_all();
@@ -380,6 +510,8 @@ void cleanup()
     light_shafts::clean_all();
 
     taa::clean_all();
+    volumetric_fog::clean_all();
+    shadows::clean_all();
     gtao::clean_all();
 
     clouds::clean_all();
@@ -398,6 +530,8 @@ void cleanup()
 
 void handle_all()
 {
+    update_quality();
+
     res::models::erase_unused();
 
     res::meshes::destroy_erased();
@@ -406,12 +540,17 @@ void handle_all()
 
     ensure_render_targets();
 
+    shadows::handle_targets();
+
     handle_scene_set();
 
     clouds::handle_all();
     atmosphere::handle_all();
 
     frame_pipe::handle_all();
+
+    shadows::handle_all();
+    volumetric_fog::handle_all();
 
     gtao::handle_all();
     taa::handle_all();
@@ -454,5 +593,7 @@ VkDeviceAddress get_frame_data_address()
 
 VkDescriptorSetLayout get_scene_set_layout() { return m_scene_set_layout; }
 VkDescriptorSet get_scene_set()              { return m_scene_set; }
+
+float get_quality() { return m_quality; }
 
 }

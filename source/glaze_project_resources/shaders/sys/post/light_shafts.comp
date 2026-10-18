@@ -19,7 +19,16 @@ layout(push_constant) uniform constants
     vec2 sun_uv;
     float intensity;
     float aspect;
+    float glare;
+    float padding0;
 } pc;
+
+const uint  GLARE_VISIBILITY_SAMPLES = 8u;
+const float GLARE_VISIBILITY_RADIUS  = 0.004;
+const float GLARE_CORE_RADIUS        = 0.03;
+const float GLARE_WIDE_RADIUS        = 0.2;
+const float GLARE_WIDE_WEIGHT        = 0.15;
+const float GOLDEN_ANGLE             = 2.39996323;
 
 const uint SAMPLE_COUNT = 32u;
 
@@ -38,6 +47,31 @@ float occlusion(vec2 uv)
     float falloff = clamp(1.0 - length(offset) / SUN_RADIUS, 0.0, 1.0);
 
     return textureLod(clouds, uv, 0.0).a * falloff * falloff;
+}
+
+float sun_visibility()
+{
+    float visible = 0.0;
+
+    for (uint i = 0u; i < GLARE_VISIBILITY_SAMPLES; i++) {
+        float radius = sqrt((float(i) + 0.5) / float(GLARE_VISIBILITY_SAMPLES)) * GLARE_VISIBILITY_RADIUS;
+        float angle  = float(i) * GOLDEN_ANGLE;
+
+        vec2 uv = pc.sun_uv + vec2(cos(angle) / pc.aspect, sin(angle)) * radius;
+
+        if (all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0))) && textureLod(scene_depth, uv, 0.0).r <= 0.0) {
+            visible += textureLod(clouds, uv, 0.0).a;
+        }
+    }
+
+    return visible / float(GLARE_VISIBILITY_SAMPLES);
+}
+
+float glare_kernel(vec2 uv)
+{
+    float distance = length((uv - pc.sun_uv) * vec2(pc.aspect, 1.0));
+
+    return exp(-distance / GLARE_CORE_RADIUS) + GLARE_WIDE_WEIGHT * exp(-distance / GLARE_WIDE_RADIUS);
 }
 
 float interleaved_gradient_noise(vec2 pixel, uint frame)
@@ -81,5 +115,9 @@ void main()
 
     vec3 sun_color = pc.light_color.rgb * sample_transmittance(params, transmittance_lut, radius, dot(pc.light_direction.xyz, params.camera_position / radius));
 
-    imageStore(target, id, vec4(sun_color * sum / float(SAMPLE_COUNT) * pc.intensity, 1.0));
+    vec3 shafts = sun_color * sum / float(SAMPLE_COUNT) * pc.intensity;
+
+    vec3 glare = pc.glare > 0.0 ? sun_color * sun_visibility() * glare_kernel(uv) * pc.glare : vec3(0.0);
+
+    imageStore(target, id, vec4(shafts + glare, 1.0));
 }

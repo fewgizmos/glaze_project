@@ -10,7 +10,8 @@ namespace glaze::scene::vol::component
 enum class tonemap_operator : uint32_t
 {
     pbr_neutral = 0,
-    aces        = 1
+    aces        = 1,
+    agx         = 2
 };
 
 struct post_create_info
@@ -26,14 +27,23 @@ struct post_create_info
     float exposure_speed_down   = 1.0f;
 
     float exposure_night_darkening = 0.6f;
+    float exposure_center_weight   = 8.0f;
 
-    tonemap_operator tonemapper = tonemap_operator::pbr_neutral;
+    bool exposure_incident_metering = true;
+
+    float gpu_budget_fraction = 0.75f;
+
+    tonemap_operator tonemapper = tonemap_operator::agx;
+
+    float tonemap_contrast   = 1.2f;
+    float tonemap_saturation = 1.2f;
 
     float sharpen = 0.5f;
 
     float bloom_intensity = 0.04f;
 
     float light_shafts_intensity = 1.0f;
+    float sun_glare_intensity    = 1.0f;
 
     float night_vision_intensity = 1.0f;
 
@@ -46,6 +56,18 @@ struct post_create_info
     bool taa_enabled = true;
 
     float taa_history_weight = 0.9f;
+
+    bool shadows_enabled = true;
+
+    float shadow_lod_bias    = 0.0f;
+    float shadow_softness    = 1.0f;
+    float shadow_normal_bias = 1.5f;
+
+    float contact_shadow_length = 0.25f;
+
+    bool volumetric_fog_enabled = true;
+
+    float volumetric_fog_distance = 100.0f;
 };
 
 class post : public volume_component

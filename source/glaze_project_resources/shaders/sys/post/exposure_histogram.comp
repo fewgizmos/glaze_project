@@ -1,9 +1,13 @@
 #version 450
 #extension GL_EXT_buffer_reference : require
 
+#include "head/scene_types.glsl"
+#include "head/cloud_shadow.glsl"
+
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 layout(set = 0, binding = 0) uniform sampler2D hdr_image;
+layout(set = 0, binding = 1) uniform sampler2DArray cloud_shadow_map;
 
 layout(buffer_reference, std430) buffer histogram_buffer
 {
@@ -13,19 +17,73 @@ layout(buffer_reference, std430) buffer histogram_buffer
 layout(push_constant) uniform constants
 {
     histogram_buffer histogram;
+    frame_buffer frame;
     float inverse_exposure;
     float min_log_luminance;
     float log_luminance_range;
-    uint padding;
+    float center_weight;
 } pc;
 
-const uint BIN_COUNT = 256u;
+const uint BIN_COUNT        = 256u;
+const uint ILLUMINANCE_SLOT = BIN_COUNT;
 
 const float MIN_LUMINANCE = 0.000001;
 
 const int SAMPLE_STRIDE = 2;
 
+const float CENTER_SIGMA = 0.25;
+
+const float PI = 3.14159265359;
+
+const vec3 LUMINANCE_WEIGHTS = vec3(0.2126, 0.7152, 0.0722);
+
 shared uint local_bins[BIN_COUNT];
+
+float cloud_visibility(vec3 to_light)
+{
+    if (pc.frame.has_atmosphere == 0u) {
+        return 1.0;
+    }
+
+    atmosphere_params atmosphere = pc.frame.atmosphere.params;
+
+    if (atmosphere.clouds_enabled == 0u) {
+        return 1.0;
+    }
+
+    vec2 uv = cloud_shadow_uv(atmosphere.camera_world_position, pc.frame.camera_pos);
+
+    uint layer = dot(to_light, atmosphere.sun_direction) >= dot(to_light, atmosphere.moon_direction) ? CLOUD_SHADOW_SUN : CLOUD_SHADOW_MOON;
+
+    return textureLod(cloud_shadow_map, vec3(uv, float(layer)), 0.0).r;
+}
+
+float incident_illuminance()
+{
+    float illuminance = 0.0;
+
+    if (pc.frame.has_environment != 0u) {
+        environment_sh_buffer sh = pc.frame.environment_sh;
+
+        vec3 sky = sh.coefficients[0].rgb * 0.282095 + sh.coefficients[1].rgb * 0.488603;
+
+        illuminance += PI * dot(max(sky, vec3(0.0)), LUMINANCE_WEIGHTS) * pc.frame.environment_intensity;
+    }
+
+    for (uint i = 0u; i < pc.frame.light_count; i++) {
+        light_data light = pc.frame.lights.data[i];
+
+        if (light.type != LIGHT_TYPE_DIRECTIONAL) {
+            continue;
+        }
+
+        vec3 to_light = -light.direction;
+
+        illuminance += dot(light.color, LUMINANCE_WEIGHTS) * max(to_light.y, 0.0) * cloud_visibility(to_light);
+    }
+
+    return illuminance;
+}
 
 void main()
 {
@@ -41,7 +99,7 @@ void main()
     if (id.x < size.x && id.y < size.y) {
         vec3 color = texelFetch(hdr_image, id, 0).rgb * pc.inverse_exposure;
 
-        float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
+        float luminance = dot(color, LUMINANCE_WEIGHTS);
 
         uint bin = 0u;
 
@@ -51,10 +109,18 @@ void main()
             bin = uint(position * float(BIN_COUNT - 2u)) + 1u;
         }
 
-        atomicAdd(local_bins[bin], 1u);
+        vec2 offset = ((vec2(id) + 0.5) / vec2(size) - 0.5) * vec2(float(size.x) / float(size.y), 1.0);
+
+        float center = exp(-dot(offset, offset) / (2.0 * CENTER_SIGMA * CENTER_SIGMA));
+
+        atomicAdd(local_bins[bin], 1u + uint(max(pc.center_weight - 1.0, 0.0) * center + 0.5));
     }
 
     barrier();
 
     atomicAdd(pc.histogram.bins[index], local_bins[index]);
+
+    if (all(equal(gl_GlobalInvocationID.xy, uvec2(0u)))) {
+        pc.histogram.bins[ILLUMINANCE_SLOT] = floatBitsToUint(incident_illuminance());
+    }
 }

@@ -1,0 +1,71 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D depth_texture;
+layout(set = 0, binding = 2, r32f) uniform image2D target;
+
+layout(push_constant) uniform constants
+{
+    mat4 inv_proj;
+
+    vec2 screen_size;
+    float proj_scale;
+    float radius;
+
+    float intensity;
+    uint directions;
+    uint steps;
+    uint frame_index;
+} pc;
+
+const float DEPTH_SIMILARITY = 0.05;
+const float MIN_WEIGHT       = 0.0001;
+
+const ivec2 NEIGHBOURS[4] = ivec2[](ivec2(-1, 0), ivec2(1, 0), ivec2(0, -1), ivec2(0, 1));
+
+float linear_depth(ivec2 id)
+{
+    vec2 uv = (vec2(id) + 0.5) / pc.screen_size;
+
+    vec4 position = pc.inv_proj * vec4(uv * 2.0 - 1.0, texelFetch(depth_texture, id, 0).r, 1.0);
+
+    return -position.z / position.w;
+}
+
+void main()
+{
+    ivec2 cell = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 id   = ivec2(cell.x * 2 + ((cell.y + int(pc.frame_index) + 1) & 1), cell.y);
+
+    ivec2 size = ivec2(pc.screen_size);
+
+    if (id.x >= size.x || id.y >= size.y) {
+        return;
+    }
+
+    if (texelFetch(depth_texture, id, 0).r <= 0.0) {
+        imageStore(target, id, vec4(1.0));
+        return;
+    }
+
+    float center = linear_depth(id);
+
+    float sum        = 0.0;
+    float weight_sum = 0.0;
+
+    for (int i = 0; i < 4; i++) {
+        ivec2 neighbour = clamp(id + NEIGHBOURS[i], ivec2(0), size - 1);
+
+        if (neighbour == id) {
+            continue;
+        }
+
+        float weight = exp(-abs(linear_depth(neighbour) - center) / (center * DEPTH_SIMILARITY));
+
+        sum        += imageLoad(target, neighbour).r * weight;
+        weight_sum += weight;
+    }
+
+    imageStore(target, id, vec4(weight_sum > MIN_WEIGHT ? sum / weight_sum : 1.0));
+}

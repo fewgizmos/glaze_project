@@ -12,6 +12,8 @@
 #include "glp/glaze/rendering/scene_render/gtao.h"
 #include "glp/glaze/rendering/scene_render/post_process.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
+#include "glp/glaze/rendering/scene_render/shadows.h"
+#include "glp/glaze/rendering/scene_render/volumetric_fog.h"
 #include "glp/glaze/rendering/scene_render/taa.h"
 
 #include "glp/glaze/rendering/vk/commands.h"
@@ -295,6 +297,14 @@ void record_command_buffer()
     scene_render::gtao::dispatch();
 
     vk::profiler::mark(cmd, "gtao");
+
+    scene_render::shadows::dispatch();
+
+    vk::profiler::mark(cmd, "shadows");
+
+    scene_render::volumetric_fog::dispatch();
+
+    vk::profiler::mark(cmd, "fog");
 
     begin_scene_rendering();
 

@@ -54,6 +54,8 @@ const material* build(const material_create_info& create_info)
     created->target_shader = create_info.target_shader;
     created->extra_set     = create_info.extra_set;
     created->double_sided  = create_info.double_sided;
+    created->cast_shadows  = create_info.cast_shadows;
+    created->alpha_mode    = create_info.alpha_mode;
     created->index         = take_index();
 
     material_data& data = m_data[created->index];
@@ -154,8 +156,8 @@ const material* build(const material_create_info& create_info)
     data.clearcoat_normal_scale = create_info.clearcoat_normal_scale;
 
     data.height_scale = create_info.height_scale;
-    data.padding1[0]  = 0.0f;
-    data.padding1[1]  = 0.0f;
+    data.height_world = create_info.height_world;
+    data.padding1     = 0.0f;
 
     const material* result = created.get();
 

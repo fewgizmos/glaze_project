@@ -1,0 +1,26 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "head/vsm_types.glsl"
+
+layout(local_size_x = 1) in;
+
+layout(push_constant) uniform constants
+{
+    vsm_params_buffer params;
+} pc;
+
+void main()
+{
+    uint offset = 0u;
+
+    for (int level = int(VSM_LEVELS) - 1; level >= 0; level--) {
+        uint count = min(pc.params.level_requests.data[level], VSM_LEVEL_REQUESTS);
+
+        pc.params.level_requests.data[VSM_LEVELS + uint(level)] = offset;
+
+        offset += count;
+    }
+
+    pc.params.counters.request_count = offset;
+}

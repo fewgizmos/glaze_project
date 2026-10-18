@@ -20,6 +20,7 @@ struct atmosphere_create_info
     float sun_illuminance    = 100000.0f;
     float sun_angular_radius = 0.27f;
     float sun_light_scale    = 1.0f;
+    float sun_temperature    = 5500.0f;
 
     float horizon_light_fade         = 0.0f;
     float horizon_light_twilight     = 0.0f;
@@ -42,7 +43,7 @@ struct atmosphere_create_info
     glm::vec3 moon_flare_tint = glm::vec3(1.0f);
 
     float night_ambient_scale   = 1.0f;
-    float day_ambient_scale     = 1.0f;
+    float day_sky_scale         = 1.0f;
     float twilight_desaturation = 0.0f;
 
     float fog_day_density    = 0.0f;

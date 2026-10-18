@@ -1,0 +1,23 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "head/vsm_types.glsl"
+
+layout(local_size_x = 1) in;
+
+layout(push_constant) uniform constants
+{
+    vsm_params_buffer params;
+} pc;
+
+const uint CLEAR_VERTEX_COUNT = 6u;
+
+void main()
+{
+    uint free_count = pc.params.counters.free_count;
+    uint assigned   = min(pc.params.counters.request_count, min(free_count, VSM_PAGE_BUDGET));
+
+    pc.params.counters.free_count = free_count - assigned;
+
+    pc.params.clear_args.data[0] = vsm_draw_command(CLEAR_VERTEX_COUNT, pc.params.counters.render_count, 0u, 0u);
+}

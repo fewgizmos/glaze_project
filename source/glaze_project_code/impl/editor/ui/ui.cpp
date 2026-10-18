@@ -2,11 +2,14 @@
 
 #include "glp/editor/ui/ui.h"
 
+#include "glp/glaze/rendering/scene_render/shadows.h"
 #include "glp/glaze/rendering/scene_render/resources/shaders.h"
 #include "glp/glaze/rendering/vk/profiler.h"
 #include "glp/glaze/rendering/vk/resources.h"
 
 #include "glp/glaze/utilities/core/timer.h"
+
+#include "glp/glaze/scene/scene.h"
 
 #include <imgui.h>
 
@@ -31,6 +34,7 @@ constexpr float GRAPH_HEADROOM = 1.25f;
 constexpr double BYTES_TO_MEGABYTES = 1.0 / (1024.0 * 1024.0);
 
 const ImVec2 METRICS_WINDOW_SIZE = ImVec2(396.0f, 306.0f);
+const ImVec2 SHADOWS_WINDOW_SIZE = ImVec2(320.0f, 300.0f);
 
 std::array<float, HISTORY_SIZE> m_cpu_history = {};
 std::array<float, HISTORY_SIZE> m_gpu_history = {};
@@ -38,6 +42,7 @@ std::array<float, HISTORY_SIZE> m_gpu_history = {};
 int m_history_offset = 0;
 
 bool m_metrics_open = true;
+bool m_shadows_open = false;
 
 void record_history()
 {
@@ -143,6 +148,89 @@ void draw_metrics()
     ImGui::End();
 }
 
+void draw_stat_row(const char* name, uint32_t value)
+{
+    ImGui::TableNextRow();
+
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextUnformatted(name);
+
+    ImGui::TableSetColumnIndex(1);
+    ImGui::Text("%u", value);
+}
+
+void draw_shadows()
+{
+    namespace shadows = glaze::rendering::scene_render::shadows;
+
+    ImGui::SetNextWindowSize(SHADOWS_WINDOW_SIZE, ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowBgAlpha(1.0f);
+
+    if (!ImGui::Begin("Shadows", &m_shadows_open)) {
+        ImGui::End();
+        return;
+    }
+
+    if (!shadows::is_active()) {
+        ImGui::TextUnformatted("no shadowed light");
+    }
+
+    const shadows::shadow_stats& stats = shadows::get_stats();
+
+    char overlay[64];
+    std::snprintf(overlay, sizeof(overlay), "%u / %u pages", stats.pool_pages - stats.free_pages, stats.pool_pages);
+
+    ImGui::ProgressBar(stats.pool_pages > 0 ? static_cast<float>(stats.pool_pages - stats.free_pages) / static_cast<float>(stats.pool_pages) : 0.0f, ImVec2(-1.0f, 0.0f), overlay);
+
+    if (ImGui::BeginTable("shadow_stats", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) {
+        draw_stat_row("requested", stats.requested_pages);
+        draw_stat_row("rendered", stats.rendered_pages);
+        draw_stat_row("failed", stats.failed_pages);
+        draw_stat_row("opaque draws", stats.opaque_draws);
+        draw_stat_row("masked draws", stats.masked_draws);
+        draw_stat_row("casters", stats.casters);
+        draw_stat_row("invalidations", stats.invalidations);
+
+        ImGui::EndTable();
+    }
+
+    ImGui::SeparatorText("visualize");
+
+    int mode = static_cast<int>(shadows::get_debug_mode());
+
+    ImGui::RadioButton("none", &mode, static_cast<int>(shadows::debug_mode::none));
+    ImGui::SameLine();
+    ImGui::RadioButton("levels", &mode, static_cast<int>(shadows::debug_mode::levels));
+    ImGui::SameLine();
+    ImGui::RadioButton("pages", &mode, static_cast<int>(shadows::debug_mode::pages));
+
+    shadows::set_debug_mode(static_cast<shadows::debug_mode>(mode));
+
+    if (ImGui::Button("Reset cache")) {
+        shadows::request_reset();
+    }
+
+    ImGui::End();
+}
+
+
+void print_camera()
+{
+    glaze::scene::scene_entity* player = glaze::scene::it::get_player_entity();
+
+    if (player == nullptr) {
+        std::printf("camera: no player entity\n");
+        return;
+    }
+
+    const glm::vec3 pos = player->scene_volume().w_pos;
+    const glm::vec3 rot = player->scene_volume().w_rot;
+
+    std::printf("camera pos: glm::vec3(%.3ff, %.3ff, %.3ff)\n", pos.x, pos.y, pos.z);
+    std::printf("camera rot: glm::vec3(%.3ff, %.3ff, %.3ff)\n", rot.x, rot.y, rot.z);
+    std::fflush(stdout);
+}
+
 }
 
 void draw()
@@ -153,19 +241,20 @@ void draw()
         if (ImGui::BeginMenu("View")) {
             if (ImGui::BeginMenu("Editor")) {
                 ImGui::MenuItem("Metrics", nullptr, &m_metrics_open);
+                ImGui::MenuItem("Shadows", nullptr, &m_shadows_open);
                 ImGui::EndMenu();
             }
 
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Actions")) {
-            if (ImGui::BeginMenu("Editor")) {
-                if (ImGui::MenuItem("Reload Shaders")) {
-                    glaze::rendering::scene_render::res::shaders::reload_all();
-                }
+        if (ImGui::BeginMenu("Debug")) {
+            if (ImGui::MenuItem("Reload Shaders")) {
+                glaze::rendering::scene_render::res::shaders::reload_all();
+            }
 
-                ImGui::EndMenu();
+            if (ImGui::MenuItem("Print Camera Pos/Rot")) {
+                print_camera();
             }
 
             ImGui::EndMenu();
@@ -176,6 +265,10 @@ void draw()
 
     if (m_metrics_open) {
         draw_metrics();
+    }
+
+    if (m_shadows_open) {
+        draw_shadows();
     }
 }
 

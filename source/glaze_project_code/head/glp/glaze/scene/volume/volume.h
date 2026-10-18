@@ -39,7 +39,7 @@ public:
 
     virtual void update() {}
 
-    virtual rendering::scene_render::gpu_model get_model() { return {}; }
+    virtual void get_model(rendering::scene_render::gpu_model& out) {}
     virtual rendering::scene_render::gpu_camera get_camera() { return {}; }
     virtual rendering::scene_render::gpu_light get_light() { return {}; }
     virtual rendering::scene_render::gpu_post get_post() { return {}; }

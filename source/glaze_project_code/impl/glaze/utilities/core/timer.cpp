@@ -45,4 +45,9 @@ void next_frame()
     timestamp += delta;
 }
 
+float target_frame_ms()
+{
+    return MIN_FRAME_MS;
+}
+
 }

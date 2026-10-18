@@ -21,14 +21,18 @@ jobs:
       - name: Prepare environment
         run: bash scripts/prepare_env_lin.sh
 
-      - name: Build
+      - name: Build debug
         run: bash scripts/builder_lin.sh -d
+
+      - name: Build release
+        run: bash scripts/builder_lin.sh
 
       - name: Package
         run: |
           stage="$RUNNER_TEMP/public_test_lin"
           mkdir -p "$stage/source" "$stage/docs/readme"
           cp "build/$glaze_build_id/linux/debug/$glaze_bin_name" "$stage/"
+          cp "build/$glaze_build_id/linux/release/$glaze_bin_name" "$stage/${glaze_bin_name}_release"
           cp -r source/glaze_project_resources "$stage/source/"
           cp README.md "$stage/"
           cp -r docs/readme/assets "$stage/docs/readme/"
@@ -49,9 +53,13 @@ jobs:
         shell: pwsh
         run: ./scripts/prepare_env_win.ps1
 
-      - name: Build
+      - name: Build debug
         shell: pwsh
         run: ./scripts/builder_win.ps1 -d
+
+      - name: Build release
+        shell: pwsh
+        run: ./scripts/builder_win.ps1
 
       - name: Package
         shell: pwsh
@@ -59,6 +67,8 @@ jobs:
           $stage = "$env:RUNNER_TEMP/public_test_win"
           New-Item -ItemType Directory -Force -Path "$stage/source", "$stage/docs/readme" | Out-Null
           Copy-Item "build/$env:glaze_build_id/windows/debug/*" $stage -Recurse
+          Copy-Item "build/$env:glaze_build_id/windows/release/*.dll" $stage -Force
+          Copy-Item "build/$env:glaze_build_id/windows/release/$env:glaze_bin_name.exe" "$stage/$($env:glaze_bin_name)_release.exe"
           Copy-Item source/glaze_project_resources "$stage/source/" -Recurse
           Copy-Item README.md $stage
           Copy-Item docs/readme/assets "$stage/docs/readme/" -Recurse
@@ -91,5 +101,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "$RELEASE_TITLE" \
-            --notes "Debug build of ${GITHUB_SHA::7}" \
+            --notes "Debug and release builds of ${GITHUB_SHA::7}" \
             --prerelease

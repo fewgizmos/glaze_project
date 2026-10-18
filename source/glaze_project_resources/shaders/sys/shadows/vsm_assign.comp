@@ -1,0 +1,39 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "head/vsm_types.glsl"
+
+layout(local_size_x = 64) in;
+
+layout(push_constant) uniform constants
+{
+    vsm_params_buffer params;
+} pc;
+
+void main()
+{
+    uint index = gl_GlobalInvocationID.x;
+    uint level = gl_WorkGroupID.y;
+
+    if (index >= min(pc.params.level_requests.data[level], VSM_LEVEL_REQUESTS)) {
+        return;
+    }
+
+    uint rank       = pc.params.level_requests.data[VSM_LEVELS + level] + index;
+    uint free_count = pc.params.counters.free_count;
+
+    if (rank >= min(free_count, VSM_PAGE_BUDGET)) {
+        atomicAdd(pc.params.counters.failed_count, 1u);
+        return;
+    }
+
+    uint id       = pc.params.requests.data[level * VSM_LEVEL_REQUESTS + index];
+    uint physical = pc.params.free_stack.data[free_count - 1u - rank];
+
+    pc.params.entries.data[id].physical = physical;
+    pc.params.entries.data[id].state   |= VSM_STATE_RENDER;
+
+    uint target = atomicAdd(pc.params.counters.render_count, 1u);
+
+    pc.params.render_pages.data[target] = id;
+}

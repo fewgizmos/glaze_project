@@ -23,7 +23,8 @@ struct gpu_light
 
     float cos_angular_radius = 1.0f;
     float sin_angular_radius = 0.0f;
-    float padding[2]         = { 0.0f, 0.0f };
+    uint32_t shadowed        = 0;
+    float padding            = 0.0f;
 };
 
 }

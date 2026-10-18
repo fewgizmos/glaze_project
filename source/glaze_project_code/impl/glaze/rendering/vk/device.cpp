@@ -51,10 +51,15 @@ void create_device(const vkb::Instance& instance)
     features12.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;
     features12.descriptorBindingPartiallyBound = VK_TRUE;
     features12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
+    features12.drawIndirectCount = VK_TRUE;
 
     VkPhysicalDeviceFeatures features = {};
     features.samplerAnisotropy = VK_TRUE;
     features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
+    features.depthClamp = VK_TRUE;
+    features.shaderClipDistance = VK_TRUE;
+    features.multiDrawIndirect = VK_TRUE;
+    features.drawIndirectFirstInstance = VK_TRUE;
 
     vkb::PhysicalDeviceSelector phys_device_selector(instance);
 

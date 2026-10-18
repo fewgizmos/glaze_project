@@ -1,0 +1,30 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "head/vsm_types.glsl"
+
+layout(local_size_x = 64) in;
+
+layout(push_constant) uniform constants
+{
+    vsm_params_buffer params;
+} pc;
+
+const int NO_TAG = int(0x80000000u);
+
+void main()
+{
+    uint id = gl_GlobalInvocationID.x;
+
+    if (id < VSM_LEVELS * VSM_LEVEL_SLOTS) {
+        pc.params.entries.data[id] = vsm_entry(NO_TAG, NO_TAG, VSM_NO_PAGE, 0u);
+    }
+
+    if (id < VSM_POOL_PAGES * VSM_POOL_PAGES) {
+        pc.params.free_stack.data[id] = id;
+    }
+
+    if (id == 0u) {
+        pc.params.counters.free_count = VSM_POOL_PAGES * VSM_POOL_PAGES;
+    }
+}

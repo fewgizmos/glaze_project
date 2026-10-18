@@ -57,7 +57,7 @@ struct atmosphere_params
     float night_sky_luminance;
     float star_intensity;
     float star_twinkle;
-    float night_ambient_scale;
+    float sky_luminance_scale;
 
     float cloud_multi_scattering;
     float cloud_powder;

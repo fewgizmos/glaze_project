@@ -21,7 +21,7 @@ public:
     cmp_debug_grid(const cmp_debug_grid&) = delete;
     cmp_debug_grid& operator=(const cmp_debug_grid&) = delete;
 
-    glaze::rendering::scene_render::gpu_model get_model() override;
+    void get_model(glaze::rendering::scene_render::gpu_model& out) override;
 
 private:
     const glaze::rendering::scene_render::mesh* m_mesh = nullptr;

@@ -98,7 +98,7 @@ struct params_data
     float night_sky_luminance;
     float star_intensity;
     float star_twinkle;
-    float night_ambient_scale;
+    float sky_luminance_scale;
 
     float cloud_multi_scattering;
     float cloud_powder;
@@ -215,6 +215,10 @@ const material* m_sky_material = nullptr;
 gpu_atmosphere m_lut_atmosphere;
 gpu_atmosphere m_ibl_atmosphere;
 
+float m_fog_density = 0.0f;
+
+gpu_model m_sky_model;
+
 bool m_luts_dirty = true;
 bool m_ibl_dirty  = true;
 
@@ -272,9 +276,9 @@ float night_ambient_scale(const gpu_atmosphere& atmosphere)
     return glm::mix(1.0f, atmosphere.night_ambient_scale, night_factor(atmosphere));
 }
 
-float ambient_light_scale(const gpu_atmosphere& atmosphere)
+float sky_luminance_scale(const gpu_atmosphere& atmosphere)
 {
-    return glm::mix(atmosphere.day_ambient_scale, atmosphere.night_ambient_scale, night_factor(atmosphere));
+    return glm::mix(atmosphere.day_sky_scale, atmosphere.night_ambient_scale, night_factor(atmosphere));
 }
 
 float twilight_desaturation(const gpu_atmosphere& atmosphere)
@@ -581,7 +585,7 @@ params_data build_params(const gpu_atmosphere& atmosphere)
     data.night_sky_luminance = atmosphere.night_sky_luminance;
     data.star_intensity      = atmosphere.star_intensity;
     data.star_twinkle        = atmosphere.star_twinkle;
-    data.night_ambient_scale = night_ambient_scale(atmosphere);
+    data.sky_luminance_scale = sky_luminance_scale(atmosphere);
 
     data.cloud_multi_scattering = atmosphere.cloud_multi_scattering;
     data.cloud_powder           = atmosphere.cloud_powder;
@@ -596,6 +600,8 @@ params_data build_params(const gpu_atmosphere& atmosphere)
 
     data.fog_sun_illuminance = atmosphere.sun_light;
     data.fog_density         = glm::mix(atmosphere.fog_day_density, atmosphere.fog_night_density, night_factor(atmosphere));
+
+    m_fog_density = data.fog_density;
 
     data.fog_moon_illuminance = atmosphere.moon_light;
     data.fog_height_falloff   = atmosphere.fog_height_falloff;
@@ -727,6 +733,8 @@ void clean_all()
     m_sky_material = nullptr;
     m_sky_mesh     = nullptr;
 
+    m_sky_model.parts.clear();
+
     m_luts_dirty = true;
     m_ibl_dirty  = true;
     m_active     = false;
@@ -784,16 +792,16 @@ void handle_all()
 
     gpu_environment environment_data;
     environment_data.set           = m_environment_set;
-    environment_data.intensity     = ambient_light_scale(atmosphere);
+    environment_data.intensity     = night_ambient_scale(atmosphere);
     environment_data.irradiance_sh = m_sh_buffer.address;
 
     frame_pipe::set_environment(environment_data);
 
-    gpu_model sky;
+    if (m_sky_model.parts.empty()) {
+        m_sky_model.parts.push_back({ m_sky_mesh, m_sky_material, glm::mat4(1.0f), glm::mat4(1.0f) });
+    }
 
-    sky.parts.push_back({ m_sky_mesh, m_sky_material, glm::mat4(1.0f), glm::mat4(1.0f) });
-
-    frame_pipe::submit_model(sky);
+    frame_pipe::submit_model(m_sky_model);
 }
 
 void dispatch()
@@ -847,6 +855,8 @@ VkDeviceAddress get_params_address()
 }
 
 bool is_active() { return m_active; }
+
+float get_fog_density() { return m_fog_density; }
 
 const image& get_transmittance_image()    { return m_transmittance; }
 const image& get_multi_scattering_image() { return m_multi_scattering; }

@@ -29,7 +29,7 @@ public:
     cmp_cubemap(const cmp_cubemap&) = delete;
     cmp_cubemap& operator=(const cmp_cubemap&) = delete;
 
-    rendering::scene_render::gpu_model get_model() override;
+    void get_model(rendering::scene_render::gpu_model& out) override;
     rendering::scene_render::gpu_environment get_environment() override;
 
     bool has_sun() const { return m_has_sun; }

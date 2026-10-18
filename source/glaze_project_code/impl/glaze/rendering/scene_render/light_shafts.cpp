@@ -42,6 +42,8 @@ struct shafts_push
     glm::vec2 sun_uv;
     float intensity;
     float aspect;
+    float glare;
+    float padding0;
 };
 
 constexpr uint32_t DEPTH_BINDING         = 0;
@@ -55,6 +57,7 @@ constexpr uint32_t GROUP_SIZE         = 8;
 constexpr uint32_t RESOLUTION_DIVIDER = 2;
 
 constexpr float SHAFTS_SCALE = 0.05f;
+constexpr float GLARE_SCALE  = 0.05f;
 
 constexpr float EDGE_FADE = 0.2f;
 
@@ -229,8 +232,9 @@ void handle_all()
 void dispatch()
 {
     const float intensity = frame_pipe::get_post().light_shafts_intensity;
+    const float glare     = frame_pipe::get_post().sun_glare_intensity;
 
-    if (!atmosphere::is_active() || intensity <= 0.0f) {
+    if (!atmosphere::is_active() || (intensity <= 0.0f && glare <= 0.0f)) {
         return;
     }
 
@@ -282,6 +286,8 @@ void dispatch()
     push.aspect          = static_cast<float>(hdr.extent.width) / static_cast<float>(hdr.extent.height);
     push.light_direction = glm::vec4(glm::normalize(light_direction), 0.0f);
     push.light_color     = glm::vec4(light_illuminance, 0.0f);
+    push.glare           = exposure::get_exposure() * GLARE_SCALE * glare * fade;
+    push.padding0        = 0.0f;
 
     disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_shafts_shader->compute.layout, 0, 1, &m_shafts_set, 0, nullptr);
 

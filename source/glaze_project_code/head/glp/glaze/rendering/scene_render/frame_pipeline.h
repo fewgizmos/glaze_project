@@ -10,6 +10,7 @@
 #include <vulkan/vulkan_core.h>
 
 #include <cstdint>
+#include <vector>
 
 namespace glaze::rendering::scene_render::frame_pipe
 {
@@ -39,6 +40,11 @@ const gpu_atmosphere& get_atmosphere();
 void handle_all();
 void draw_prepass();
 void draw_all();
+
+const std::vector<gpu_model_part>& get_objects();
+
+bool has_shadow_light();
+const gpu_light& get_shadow_light();
 
 VkDeviceAddress get_objects_address();
 VkDeviceAddress get_materials_address();

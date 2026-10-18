@@ -587,13 +587,9 @@ cmp_cubemap::~cmp_cubemap()
     rendering::vk::resources::destroy_image(m_image);
 }
 
-rendering::scene_render::gpu_model cmp_cubemap::get_model()
+void cmp_cubemap::get_model(rendering::scene_render::gpu_model& out)
 {
-    rendering::scene_render::gpu_model result;
-
-    result.parts.push_back({ m_mesh, m_material, glm::mat4(1.0f) });
-
-    return result;
+    out.parts.push_back({ m_mesh, m_material, glm::mat4(1.0f) });
 }
 
 rendering::scene_render::gpu_environment cmp_cubemap::get_environment()

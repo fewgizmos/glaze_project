@@ -1,5 +1,6 @@
 #include "glp/glaze/rendering/scene_render/exposure.h"
 
+#include "glp/glaze/rendering/scene_render/clouds.h"
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
@@ -24,6 +25,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 
 namespace glaze::rendering::scene_render::exposure
 {
@@ -34,13 +36,15 @@ namespace
 struct histogram_push
 {
     VkDeviceAddress histogram;
+    VkDeviceAddress frame;
     float inverse_exposure;
     float min_log_luminance;
     float log_luminance_range;
-    uint32_t padding;
+    float center_weight;
 };
 
 constexpr uint32_t BIN_COUNT     = 256;
+constexpr uint32_t BUFFER_SLOTS  = BIN_COUNT + 1;
 constexpr uint32_t GROUP_SIZE    = 16;
 constexpr uint32_t SAMPLE_STRIDE = 2;
 
@@ -56,6 +60,11 @@ constexpr float CALIBRATION_OFFSET  = 3.0f;
 constexpr float KEY_OFFSET              = 1.03f;
 constexpr float KEY_SCALE               = 2.0f;
 constexpr float KEY_REFERENCE_LUMINANCE = 1000.0f;
+
+constexpr float MIDDLE_GREY = 0.18f;
+constexpr float PI          = 3.14159265359f;
+
+constexpr float MIN_ILLUMINANCE = 0.000001f;
 
 VkDescriptorSetLayout m_set_layout = VK_NULL_HANDLE;
 VkDescriptorPool m_pool = VK_NULL_HANDLE;
@@ -93,7 +102,28 @@ float night_darkening_ev(float log_luminance, float strength)
     return std::max(std::log2(adaptation_key(KEY_REFERENCE_LUMINANCE) / adaptation_key(luminance)), 0.0f) * strength;
 }
 
-bool histogram_ev100(const std::array<uint32_t, BIN_COUNT>& bins, float night_darkening, float& ev100)
+float luminance_ev100(float log_luminance, float night_darkening)
+{
+    return log_luminance + CALIBRATION_OFFSET + night_darkening_ev(log_luminance, night_darkening);
+}
+
+bool incident_ev100(float illuminance, float night_darkening, float& ev100)
+{
+    if (!(illuminance > MIN_ILLUMINANCE)) {
+        return false;
+    }
+
+    ev100 = luminance_ev100(std::log2(illuminance * MIDDLE_GREY / PI), night_darkening);
+
+    return true;
+}
+
+float combine_metering(float incident, float histogram)
+{
+    return std::max(incident, histogram);
+}
+
+bool histogram_ev100(const std::array<uint32_t, BUFFER_SLOTS>& bins, float night_darkening, float& ev100)
 {
     uint64_t total = 0;
 
@@ -134,9 +164,7 @@ bool histogram_ev100(const std::array<uint32_t, BIN_COUNT>& bins, float night_da
         return false;
     }
 
-    const float average_log = log_sum / weight_sum;
-
-    ev100 = average_log + CALIBRATION_OFFSET + night_darkening_ev(average_log, night_darkening);
+    ev100 = luminance_ev100(log_sum / weight_sum, night_darkening);
 
     return true;
 }
@@ -146,10 +174,11 @@ bool histogram_ev100(const std::array<uint32_t, BIN_COUNT>& bins, float night_da
 void init_all()
 {
     m_set_layout = vk::descriptors::create_set_layout({
-        { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr }
+        { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
+        { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr }
     });
 
-    m_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 } });
+    m_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 } });
     m_set  = vk::descriptors::allocate_set(m_pool, m_set_layout);
 
     sampler_create_info sampler_info;
@@ -163,9 +192,11 @@ void init_all()
 
     m_sampler = vk::samplers::get(vk::samplers::make(sampler_info));
 
+    vk::descriptors::write_image(m_set, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, clouds::get_shadow_image().view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_sampler);
+
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         m_histograms[i] = vk::resources::create_buffer(
-            sizeof(uint32_t) * BIN_COUNT,
+            sizeof(uint32_t) * BUFFER_SLOTS,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
             VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT
         );
@@ -231,13 +262,22 @@ void handle_all()
     const uint32_t frame = vk::frame::get_current_frame_index();
 
     if (m_histogram_ready[frame]) {
-        std::array<uint32_t, BIN_COUNT> bins = {};
+        std::array<uint32_t, BUFFER_SLOTS> bins = {};
 
-        vk::resources::download_buffer(m_histograms[frame], bins.data(), sizeof(uint32_t) * BIN_COUNT);
+        vk::resources::download_buffer(m_histograms[frame], bins.data(), sizeof(uint32_t) * BUFFER_SLOTS);
 
-        float target = 0.0f;
+        float illuminance = 0.0f;
+        std::memcpy(&illuminance, &bins[BIN_COUNT], sizeof(illuminance));
 
-        if (histogram_ev100(bins, post.exposure_night_darkening, target)) {
+        float histogram = 0.0f;
+        float incident  = 0.0f;
+
+        const bool has_histogram = histogram_ev100(bins, post.exposure_night_darkening, histogram);
+        const bool has_incident  = post.exposure_incident_metering && incident_ev100(illuminance, post.exposure_night_darkening, incident);
+
+        float target = has_incident ? (has_histogram ? combine_metering(incident, histogram) : incident) : histogram;
+
+        if (has_incident || has_histogram) {
             const float speed = target > m_ev100 ? post.exposure_speed_up : post.exposure_speed_down;
 
             m_ev100 += (target - m_ev100) * (1.0f - std::exp(-utilities::core::timer::delta * speed));
@@ -277,10 +317,11 @@ void dispatch()
 
     histogram_push push;
     push.histogram           = histogram.address;
+    push.frame               = it::get_frame_data_address();
     push.inverse_exposure    = 1.0f / m_exposure;
     push.min_log_luminance   = MIN_LOG_LUMINANCE;
     push.log_luminance_range = LOG_LUMINANCE_RANGE;
-    push.padding             = 0;
+    push.center_weight       = frame_pipe::get_post().exposure_center_weight;
 
     disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_shader->compute.layout, 0, 1, &m_set, 0, nullptr);
 

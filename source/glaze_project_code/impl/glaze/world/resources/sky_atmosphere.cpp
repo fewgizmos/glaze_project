@@ -41,6 +41,41 @@ constexpr float MOON_LIGHT_ANGULAR_RADIUS = 0.26f;
 
 const glm::vec3 LUMINANCE_WEIGHTS = glm::vec3(0.2126f, 0.7152f, 0.0722f);
 
+constexpr float MIN_TEMPERATURE  = 1667.0f;
+constexpr float MAX_TEMPERATURE  = 25000.0f;
+constexpr float WARM_TEMPERATURE      = 4000.0f;
+constexpr float DEEP_WARM_TEMPERATURE = 2222.0f;
+
+const glm::mat3 XYZ_TO_LINEAR_SRGB = glm::mat3(
+     3.2404542f, -0.9692660f,  0.0556434f,
+    -1.5371385f,  1.8760108f, -0.2040259f,
+    -0.4985314f,  0.0415560f,  1.0572252f
+);
+
+glm::vec3 temperature_color(float kelvin)
+{
+    const float t  = std::clamp(kelvin, MIN_TEMPERATURE, MAX_TEMPERATURE);
+    const float t2 = t * t;
+    const float t3 = t2 * t;
+
+    const float x = t >= WARM_TEMPERATURE
+        ? -3.0258469e9f / t3 + 2.1070379e6f / t2 + 0.2226347e3f / t + 0.240390f
+        : -0.2661239e9f / t3 - 0.2343589e6f / t2 + 0.8776956e3f / t + 0.179910f;
+
+    const float x2 = x * x;
+    const float x3 = x2 * x;
+
+    const float y = t >= WARM_TEMPERATURE
+        ? 3.0817580f * x3 - 5.87338670f * x2 + 3.75112997f * x - 0.37001483f
+        : (t >= DEEP_WARM_TEMPERATURE
+            ? -0.9549476f * x3 - 1.37418593f * x2 + 2.09137015f * x - 0.16748867f
+            : -1.1063814f * x3 - 1.34811020f * x2 + 2.18555832f * x - 0.20219683f);
+
+    const glm::vec3 rgb = glm::max(XYZ_TO_LINEAR_SRGB * glm::vec3(x / y, 1.0f, (1.0f - x - y) / y), glm::vec3(0.0f));
+
+    return rgb / glm::dot(rgb, LUMINANCE_WEIGHTS);
+}
+
 float ray_sphere_nearest(glm::vec3 origin, glm::vec3 direction, float radius)
 {
     const float b = glm::dot(origin, direction);
@@ -242,7 +277,9 @@ void cmp_atmosphere::update()
         const float horizon     = horizon_factor(m_sun_direction, m_create_info.horizon_light_fade, m_create_info.horizon_light_twilight);
         const glm::vec3 lighted = lift_to_horizon(m_sun_direction);
 
-        const glm::vec3 color = evening_tint(m_create_info.time_of_day, m_create_info.evening_sun_pink, m_sun_direction) * light_transmittance(with_evening_aerosol(m_create_info), lighted);
+        const glm::vec3 color = evening_tint(m_create_info.time_of_day, m_create_info.evening_sun_pink, m_sun_direction)
+                              * temperature_color(m_create_info.sun_temperature)
+                              * light_transmittance(with_evening_aerosol(m_create_info), lighted);
 
         const glm::vec3 light_color = horizon_desaturate(color, m_create_info.horizon_light_desaturation, std::min(horizon, 1.0f));
         const float intensity       = m_create_info.sun_illuminance * m_create_info.sun_light_scale * horizon;
@@ -288,7 +325,7 @@ rendering::scene_render::gpu_atmosphere cmp_atmosphere::get_atmosphere()
     result.moon_flare_tint       = m_create_info.moon_flare_tint;
 
     result.night_ambient_scale   = m_create_info.night_ambient_scale;
-    result.day_ambient_scale     = m_create_info.day_ambient_scale;
+    result.day_sky_scale         = m_create_info.day_sky_scale;
     result.twilight_desaturation = m_create_info.twilight_desaturation;
 
     result.sun_light  = m_sun_light;

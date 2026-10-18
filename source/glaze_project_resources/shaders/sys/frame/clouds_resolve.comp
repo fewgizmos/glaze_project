@@ -18,11 +18,31 @@ layout(push_constant) uniform constants
     float history_weight;
 } pc;
 
+#include "head/clouds_checkerboard.glsl"
+
 const float KILOMETERS_TO_METERS = 1000.0;
 
-const uint CHECKERBOARD_SLOTS = 4u;
-
 const float CLAMP_EXPANSION = 0.25;
+
+const int EDGE_MARGIN_CELLS = 2;
+
+vec4 fresh_sample(ivec2 cell, ivec2 offset, ivec2 size)
+{
+    return imageLoad(trace_source, clamp(cell * CHECKERBOARD_SIZE + offset, ivec2(0), size - 1));
+}
+
+vec4 interpolate_fresh(ivec2 id, ivec2 offset, ivec2 size)
+{
+    vec2 grid = (vec2(id - offset)) / float(CHECKERBOARD_SIZE);
+
+    ivec2 cell = ivec2(floor(grid));
+    vec2  f    = grid - vec2(cell);
+
+    vec4 top    = mix(fresh_sample(cell, offset, size), fresh_sample(cell + ivec2(1, 0), offset, size), f.x);
+    vec4 bottom = mix(fresh_sample(cell + ivec2(0, 1), offset, size), fresh_sample(cell + ivec2(1, 1), offset, size), f.x);
+
+    return mix(top, bottom, f.y);
+}
 
 void main()
 {
@@ -35,25 +55,24 @@ void main()
 
     atmosphere_params params = pc.atmosphere.params;
 
-    uint slot     = params.frame_index % CHECKERBOARD_SLOTS;
-    ivec2 offset  = ivec2(int(slot & 1u), int(slot >> 1u));
-    ivec2 fresh_id = clamp((id / 2) * 2 + offset, ivec2(0), size - 1);
+    ivec2 offset   = checkerboard_offset(params.frame_index);
+    ivec2 fresh_id = clamp((id / CHECKERBOARD_SIZE) * CHECKERBOARD_SIZE + offset, ivec2(0), size - 1);
 
     bool fresh = fresh_id == id;
 
-    vec4 current = imageLoad(trace_source, fresh_id);
-
     if (pc.reset != 0u) {
-        imageStore(output_target, id, current);
+        imageStore(output_target, id, imageLoad(trace_source, id));
         return;
     }
+
+    vec4 current = imageLoad(trace_source, fresh_id);
 
     vec4 neighbourhood_min = current;
     vec4 neighbourhood_max = current;
 
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
-            ivec2 neighbour_id = clamp((id / 2 + ivec2(x, y)) * 2 + offset, ivec2(0), size - 1);
+            ivec2 neighbour_id = clamp((id / CHECKERBOARD_SIZE + ivec2(x, y)) * CHECKERBOARD_SIZE + offset, ivec2(0), size - 1);
 
             vec4 neighbour = imageLoad(trace_source, neighbour_id);
 
@@ -74,27 +93,27 @@ void main()
     vec4 previous_clip = params.previous_view_proj * vec4(params.camera_world_position + direction * depth, 1.0);
 
     if (previous_clip.w <= 0.0) {
-        imageStore(output_target, id, current);
+        imageStore(output_target, id, interpolate_fresh(id, offset, size));
         return;
     }
 
     vec2 previous_uv = previous_clip.xy / previous_clip.w * 0.5 + 0.5;
 
-    if (any(lessThan(previous_uv, vec2(0.0))) || any(greaterThan(previous_uv, vec2(1.0)))) {
-        imageStore(output_target, id, current);
-        return;
-    }
+    vec2 edge_margin = vec2(float(CHECKERBOARD_SIZE * EDGE_MARGIN_CELLS)) / vec2(size);
 
-    vec4 previous = textureLod(history, previous_uv, 0.0);
-
-    if (!fresh) {
-        imageStore(output_target, id, previous);
+    if (any(lessThan(previous_uv, edge_margin)) || any(greaterThan(previous_uv, 1.0 - edge_margin))) {
+        imageStore(output_target, id, interpolate_fresh(id, offset, size));
         return;
     }
 
     vec4 extent = (neighbourhood_max - neighbourhood_min) * CLAMP_EXPANSION;
 
-    previous = clamp(previous, neighbourhood_min - extent, neighbourhood_max + extent);
+    vec4 previous = clamp(textureLod(history, previous_uv, 0.0), neighbourhood_min - extent, neighbourhood_max + extent);
+
+    if (!fresh) {
+        imageStore(output_target, id, previous);
+        return;
+    }
 
     imageStore(output_target, id, mix(current, previous, pc.history_weight));
 }

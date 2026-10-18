@@ -488,6 +488,14 @@ std::unique_ptr<model> build_gltf(const std::string& gltf_path, const shader* ta
             ? material_alpha_mode::opaque
             : material_alpha_mode::mask;
 
+        if (create_info.alpha_mode == material_alpha_mode::mask && create_info.target_shader == std_base_model_shader()) {
+            create_info.target_shader = std_base_model_masked_shader();
+        }
+
+        if (create_info.alpha_mode == material_alpha_mode::mask && create_info.target_shader == std_base_model_double_sided_shader()) {
+            create_info.target_shader = std_base_model_masked_double_sided_shader();
+        }
+
         create_info.ior               = source.ior;
         create_info.emissive_strength = source.emissiveStrength;
 

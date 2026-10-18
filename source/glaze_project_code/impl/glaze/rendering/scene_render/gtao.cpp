@@ -18,6 +18,7 @@
 #include <glm/matrix.hpp>
 #include <glm/vec2.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 
@@ -42,6 +43,7 @@ struct gtao_push
 };
 
 constexpr uint32_t GROUP_SIZE = 8;
+constexpr uint32_t MIN_STEPS  = 2;
 
 VkDescriptorSetLayout m_set_layout = VK_NULL_HANDLE;
 VkDescriptorPool m_pool = VK_NULL_HANDLE;
@@ -52,6 +54,7 @@ VkSampler m_sampler = VK_NULL_HANDLE;
 VkImageView m_written_view = VK_NULL_HANDLE;
 
 const shader* m_shader = nullptr;
+const shader* m_fill_shader = nullptr;
 
 uint32_t m_frame_index = 0;
 
@@ -90,7 +93,8 @@ void init_all()
     info.set_layouts        = { m_set_layout };
     info.push_constant_size = sizeof(gtao_push);
 
-    m_shader = res::shaders::build("gtao", "", "", "sys/frame/gtao.comp", {}, info, render_queue::opaque);
+    m_shader      = res::shaders::build("gtao", "", "", "sys/frame/gtao.comp", {}, info, render_queue::opaque);
+    m_fill_shader = res::shaders::build("gtao_fill", "", "", "sys/frame/gtao_fill.comp", {}, info, render_queue::opaque);
 }
 
 void clean_all()
@@ -105,7 +109,8 @@ void clean_all()
     m_sampler      = VK_NULL_HANDLE;
     m_written_view = VK_NULL_HANDLE;
 
-    m_shader = nullptr;
+    m_shader      = nullptr;
+    m_fill_shader = nullptr;
 }
 
 void handle_all()
@@ -177,17 +182,37 @@ void dispatch()
     push.radius      = post.gtao_radius;
     push.intensity   = post.gtao_intensity;
     push.directions  = post.gtao_directions;
-    push.steps       = post.gtao_steps;
+    push.steps       = std::max(MIN_STEPS, static_cast<uint32_t>(std::lround(static_cast<float>(post.gtao_steps) * it::get_quality())));
     push.frame_index = m_frame_index++;
 
     disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_shader->compute.layout, 0, 1, &m_set, 0, nullptr);
+
+    const uint32_t half_width = (target.extent.width + 1) / 2;
 
     vk::commands::dispatch(
         cmd,
         m_shader->compute,
         &push,
         sizeof(push),
-        (target.extent.width + GROUP_SIZE - 1) / GROUP_SIZE,
+        (half_width + GROUP_SIZE - 1) / GROUP_SIZE,
+        (target.extent.height + GROUP_SIZE - 1) / GROUP_SIZE,
+        1
+    );
+
+    vk::commands::memory_barrier(
+        cmd,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
+    );
+
+    vk::commands::dispatch(
+        cmd,
+        m_fill_shader->compute,
+        &push,
+        sizeof(push),
+        (half_width + GROUP_SIZE - 1) / GROUP_SIZE,
         (target.extent.height + GROUP_SIZE - 1) / GROUP_SIZE,
         1
     );

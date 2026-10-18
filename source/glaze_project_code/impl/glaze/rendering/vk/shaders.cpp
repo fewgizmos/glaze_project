@@ -97,10 +97,14 @@ class shader_includer : public shaderc::CompileOptions::IncluderInterface
 
 }
 
-std::vector<uint32_t> compile_glsl(const std::string& source, shader_stage stage, const std::string& name)
+std::vector<uint32_t> compile_glsl(const std::string& source, shader_stage stage, const std::string& name, const std::vector<std::string>& defines)
 {
     shaderc::Compiler compiler;
     shaderc::CompileOptions options;
+
+    for (const std::string& define : defines) {
+        options.AddMacroDefinition(define);
+    }
 
     options.SetSourceLanguage(shaderc_source_language_glsl);
     options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
@@ -167,8 +171,8 @@ pipeline create_graphics_pipeline(
 
     const uint32_t color_count = static_cast<uint32_t>(create_info.color_formats.size());
 
-    const std::vector<uint32_t> vert_spirv = compile_glsl(utilities::file::read_raw(std::string(SHADERS_DIR) + vert_file), shader_stage::vertex, vert_file);
-    const std::vector<uint32_t> frag_spirv = frag_file.empty() ? std::vector<uint32_t>() : compile_glsl(utilities::file::read_raw(std::string(SHADERS_DIR) + frag_file), shader_stage::fragment, frag_file);
+    const std::vector<uint32_t> vert_spirv = compile_glsl(utilities::file::read_raw(std::string(SHADERS_DIR) + vert_file), shader_stage::vertex, vert_file, create_info.defines);
+    const std::vector<uint32_t> frag_spirv = frag_file.empty() ? std::vector<uint32_t>() : compile_glsl(utilities::file::read_raw(std::string(SHADERS_DIR) + frag_file), shader_stage::fragment, frag_file, create_info.defines);
 
     VkShaderModule vert_module = create_module(vert_spirv);
     VkShaderModule frag_module = frag_file.empty() ? VK_NULL_HANDLE : create_module(frag_spirv);
@@ -210,13 +214,15 @@ pipeline create_graphics_pipeline(
 
     VkPipelineRasterizationStateCreateInfo rasterizer = {};
     rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizer.depthClampEnable = VK_FALSE;
+    rasterizer.depthClampEnable = create_info.depth_clamp ? VK_TRUE : VK_FALSE;
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = create_info.cull_mode;
     rasterizer.frontFace = create_info.front_face;
-    rasterizer.depthBiasEnable = VK_FALSE;
+    rasterizer.depthBiasEnable = create_info.depth_bias_constant != 0.0f || create_info.depth_bias_slope != 0.0f ? VK_TRUE : VK_FALSE;
+    rasterizer.depthBiasConstantFactor = create_info.depth_bias_constant;
+    rasterizer.depthBiasSlopeFactor = create_info.depth_bias_slope;
 
     VkPipelineMultisampleStateCreateInfo multisampling = {};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;

@@ -62,13 +62,9 @@ cmp_debug_grid::~cmp_debug_grid()
     glaze::rendering::scene_render::res::meshes::erase(m_mesh);
 }
 
-glaze::rendering::scene_render::gpu_model cmp_debug_grid::get_model()
+void cmp_debug_grid::get_model(glaze::rendering::scene_render::gpu_model& out)
 {
-    glaze::rendering::scene_render::gpu_model result;
-
-    result.parts.push_back({ m_mesh, m_material, glm::mat4(1.0f) });
-
-    return result;
+    out.parts.push_back({ m_mesh, m_material, glm::mat4(1.0f) });
 }
 
 debug_grid_object::debug_grid_object()

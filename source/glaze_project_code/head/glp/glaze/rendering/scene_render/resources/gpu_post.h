@@ -18,14 +18,23 @@ struct gpu_post
     float exposure_speed_down   = 1.0f;
 
     float exposure_night_darkening = 0.6f;
+    float exposure_center_weight   = 8.0f;
 
-    uint32_t tonemapper = 0;
+    bool exposure_incident_metering = true;
+
+    float gpu_budget_fraction = 0.75f;
+
+    uint32_t tonemapper = 2;
+
+    float tonemap_contrast   = 1.2f;
+    float tonemap_saturation = 1.2f;
 
     float sharpen = 0.5f;
 
     float bloom_intensity = 0.04f;
 
     float light_shafts_intensity = 1.0f;
+    float sun_glare_intensity    = 1.0f;
 
     float night_vision_intensity = 1.0f;
 
@@ -38,6 +47,18 @@ struct gpu_post
     bool taa_enabled = true;
 
     float taa_history_weight = 0.9f;
+
+    bool shadows_enabled = true;
+
+    float shadow_lod_bias    = 0.0f;
+    float shadow_softness    = 1.0f;
+    float shadow_normal_bias = 1.5f;
+
+    float contact_shadow_length = 0.25f;
+
+    bool volumetric_fog_enabled = true;
+
+    float volumetric_fog_distance = 100.0f;
 };
 
 }

@@ -1,0 +1,63 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "head/vsm_types.glsl"
+#include "head/vsm.glsl"
+
+layout(local_size_x = 64) in;
+
+layout(push_constant) uniform constants
+{
+    vsm_params_buffer params;
+} pc;
+
+void main()
+{
+    uint row   = gl_WorkGroupID.z * gl_WorkGroupSize.x + gl_LocalInvocationID.x;
+    uint level = gl_WorkGroupID.y;
+    uint index = gl_WorkGroupID.x;
+
+    if (row >= VSM_LEVEL_PAGES || index >= pc.params.box_count) {
+        return;
+    }
+
+    vsm_box box = pc.params.boxes.data[index];
+
+    vec2 rect_min = vec2(1e30);
+    vec2 rect_max = vec2(-1e30);
+
+    for (uint corner = 0u; corner < 8u; corner++) {
+        vec3 point = vec3(
+            (corner & 1u) != 0u ? box.bounds_max.x : box.bounds_min.x,
+            (corner & 2u) != 0u ? box.bounds_max.y : box.bounds_min.y,
+            (corner & 4u) != 0u ? box.bounds_max.z : box.bounds_min.z
+        );
+
+        vec2 light_xy = vsm_light_space(pc.params, point).xy;
+
+        rect_min = min(rect_min, light_xy);
+        rect_max = max(rect_max, light_xy);
+    }
+
+    ivec2 page_min = max(ivec2(floor(vsm_window_coord(pc.params, level, rect_min))), ivec2(0));
+    ivec2 page_max = min(ivec2(floor(vsm_window_coord(pc.params, level, rect_max))), ivec2(VSM_LEVEL_PAGES - 1u));
+
+    int y = int(row);
+
+    if (y < page_min.y || y > page_max.y) {
+        return;
+    }
+
+    ivec2 origin = pc.params.levels[level].origin;
+
+    for (int x = page_min.x; x <= page_max.x; x++) {
+        ivec2 page = origin + ivec2(x, y);
+        uint  slot = vsm_slot(level, page);
+
+        vsm_entry entry = pc.params.entries.data[slot];
+
+        if (entry.tag_x == page.x && entry.tag_y == page.y) {
+            atomicOr(pc.params.entries.data[slot].state, VSM_STATE_INVALID);
+        }
+    }
+}

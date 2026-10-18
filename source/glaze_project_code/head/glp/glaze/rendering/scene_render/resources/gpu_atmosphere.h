@@ -42,7 +42,7 @@ struct gpu_atmosphere
     glm::vec3 moon_flare_tint = glm::vec3(1.0f);
 
     float night_ambient_scale = 1.0f;
-    float day_ambient_scale   = 1.0f;
+    float day_sky_scale       = 1.0f;
     float night_sky_luminance = 0.0002f;
     float star_intensity      = 1.0f;
     float star_twinkle        = 1.0f;
