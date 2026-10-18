@@ -1,0 +1,95 @@
+name: "[Action] Nightly"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  glaze_build_id: public_test
+  glaze_bin_name: glazeproject
+  RELEASE_TAG: action-nightly
+  RELEASE_TITLE: "[Action] Nightly"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare environment
+        run: bash scripts/prepare_env_lin.sh
+
+      - name: Build
+        run: bash scripts/builder_lin.sh -d
+
+      - name: Package
+        run: |
+          stage="$RUNNER_TEMP/public_test_lin"
+          mkdir -p "$stage/source" "$stage/docs/readme"
+          cp "build/$glaze_build_id/linux/debug/$glaze_bin_name" "$stage/"
+          cp -r source/glaze_project_resources "$stage/source/"
+          cp README.md "$stage/"
+          cp -r docs/readme/assets "$stage/docs/readme/"
+          (cd "$stage" && zip -r -q "$GITHUB_WORKSPACE/public_test_lin.zip" .)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public_test_lin
+          path: public_test_lin.zip
+          retention-days: 1
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare environment
+        shell: pwsh
+        run: ./scripts/prepare_env_win.ps1
+
+      - name: Build
+        shell: pwsh
+        run: ./scripts/builder_win.ps1 -d
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $stage = "$env:RUNNER_TEMP/public_test_win"
+          New-Item -ItemType Directory -Force -Path "$stage/source", "$stage/docs/readme" | Out-Null
+          Copy-Item "build/$env:glaze_build_id/windows/debug/*" $stage -Recurse
+          Copy-Item source/glaze_project_resources "$stage/source/" -Recurse
+          Copy-Item README.md $stage
+          Copy-Item docs/readme/assets "$stage/docs/readme/" -Recurse
+          Compress-Archive -Path "$stage/*" -DestinationPath public_test_win.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public_test_win
+          path: public_test_win.zip
+          retention-days: 1
+
+  release:
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Delete previous nightly
+        run: |
+          gh release delete "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$RELEASE_TAG" || true
+
+      - name: Publish nightly
+        run: |
+          gh release create "$RELEASE_TAG" public_test_lin.zip public_test_win.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_TITLE" \
+            --notes "Debug build of ${GITHUB_SHA::7}" \
+            --prerelease
