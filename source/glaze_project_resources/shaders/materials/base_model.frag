@@ -33,6 +33,11 @@ const float MIN_N_DOT_V   = 0.0001;
 
 const float MIN_TANGENT_LENGTH2 = 0.000001;
 
+const float PARALLAX_MIN_LAYERS = 8.0;
+const float PARALLAX_MAX_LAYERS = 32.0;
+const float PARALLAX_MIN_VIEW_Z = 0.1;
+const float PARALLAX_EPSILON    = 0.00001;
+
 const float PREFILTERED_MAX_LOD = 4.0;
 
 const float SPECULAR_AA_VARIANCE  = 0.25;
@@ -97,9 +102,84 @@ float max3(vec3 value)
     return max(value.r, max(value.g, value.b));
 }
 
+vec2 surface_uv;
+
 vec4 sample_material(material_data material, uint texture_index, uint sampler_index, uint slot)
 {
-    return sample_scene_texture(texture_index, sampler_index, material_uv(material, slot, frag_uv));
+    vec2 uv = material_uv(material, slot, surface_uv);
+
+    vec2 uv_dx = material_uv(material, slot, frag_uv + dFdx(frag_uv)) - material_uv(material, slot, frag_uv);
+    vec2 uv_dy = material_uv(material, slot, frag_uv + dFdy(frag_uv)) - material_uv(material, slot, frag_uv);
+
+    return textureGrad(
+        sampler2D(scene_textures[nonuniformEXT(texture_index)], scene_samplers[nonuniformEXT(sampler_index)]),
+        uv,
+        uv_dx,
+        uv_dy
+    );
+}
+
+float height_at(material_data material, vec2 uv, vec2 uv_dx, vec2 uv_dy)
+{
+    return textureGrad(
+        sampler2D(scene_textures[nonuniformEXT(material.height_texture)], scene_samplers[nonuniformEXT(material.height_sampler)]),
+        material_uv(material, TEXTURE_SLOT_BASE_COLOR, uv),
+        uv_dx,
+        uv_dy
+    ).r;
+}
+
+vec2 parallax_uv(material_data material)
+{
+    if (material.height_texture == NO_TEXTURE || material.height_scale <= 0.0) {
+        return frag_uv;
+    }
+
+    vec3 normal             = normalize(frag_normal);
+    vec3 orthogonal_tangent = frag_tangent.xyz - normal * dot(normal, frag_tangent.xyz);
+
+    if (frag_tangent.w == 0.0 || dot(orthogonal_tangent, orthogonal_tangent) <= MIN_TANGENT_LENGTH2) {
+        return frag_uv;
+    }
+
+    vec3 tangent   = normalize(orthogonal_tangent);
+    vec3 bitangent = cross(normal, tangent) * frag_tangent.w;
+
+    vec3 view = normalize(pc.frame.camera_pos - frag_world_pos);
+
+    vec3 view_tangent = vec3(dot(view, tangent), dot(view, bitangent), dot(view, normal));
+
+    if (view_tangent.z <= 0.0) {
+        return frag_uv;
+    }
+
+    vec2 uv_dx = material_uv(material, TEXTURE_SLOT_BASE_COLOR, frag_uv + dFdx(frag_uv)) - material_uv(material, TEXTURE_SLOT_BASE_COLOR, frag_uv);
+    vec2 uv_dy = material_uv(material, TEXTURE_SLOT_BASE_COLOR, frag_uv + dFdy(frag_uv)) - material_uv(material, TEXTURE_SLOT_BASE_COLOR, frag_uv);
+
+    float layer_count = mix(PARALLAX_MAX_LAYERS, PARALLAX_MIN_LAYERS, view_tangent.z);
+    float layer_depth = 1.0 / layer_count;
+
+    vec2 shift = view_tangent.xy / max(view_tangent.z, PARALLAX_MIN_VIEW_Z) * material.height_scale * layer_depth;
+
+    vec2 uv = frag_uv;
+
+    float current_depth = 0.0;
+    float sampled_depth = 1.0 - height_at(material, uv, uv_dx, uv_dy);
+
+    for (float layer = 0.0; layer < layer_count && current_depth < sampled_depth; layer += 1.0) {
+        uv            -= shift;
+        current_depth += layer_depth;
+        sampled_depth  = 1.0 - height_at(material, uv, uv_dx, uv_dy);
+    }
+
+    vec2 previous_uv = uv + shift;
+
+    float after  = sampled_depth - current_depth;
+    float before = 1.0 - height_at(material, previous_uv, uv_dx, uv_dy) - (current_depth - layer_depth);
+
+    float weight = abs(after - before) > PARALLAX_EPSILON ? after / (after - before) : 0.0;
+
+    return mix(uv, previous_uv, clamp(weight, 0.0, 1.0));
 }
 
 float distribution_ggx(float n_dot_h, float alpha)
@@ -435,6 +515,8 @@ vec3 light_contribution(light_data light, surface_data surface)
 void main()
 {
     material_data material = pc.frame.materials.data[frag_material_index];
+
+    surface_uv = parallax_uv(material);
 
     vec3 surface = vec3(checker_at(frag_uv));
     float alpha  = material.base_color.a;

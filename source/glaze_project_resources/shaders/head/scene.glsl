@@ -78,7 +78,9 @@ struct material_data
     uint sheen_roughness_texture;
     uint sheen_roughness_sampler;
 
-    uint padding0[3];
+    uint height_texture;
+    uint height_sampler;
+    uint padding0;
 
     vec4 uv_transforms[28];
 
@@ -97,7 +99,8 @@ struct material_data
     float sheen_roughness;
 
     float clearcoat_normal_scale;
-    float padding1[3];
+    float height_scale;
+    float padding1[2];
 };
 
 const uint TEXTURE_SLOT_BASE_COLOR                 = 0u;

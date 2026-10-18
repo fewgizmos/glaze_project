@@ -112,9 +112,9 @@ const material* build(const material_create_info& create_info)
     data.sheen_roughness_texture = get_texture_index(create_info.sheen_roughness_texture);
     data.sheen_roughness_sampler = create_info.sheen_roughness_texture.sampler_index;
 
-    data.padding0[0] = 0;
-    data.padding0[1] = 0;
-    data.padding0[2] = 0;
+    data.height_texture = get_texture_index(create_info.height_texture);
+    data.height_sampler = create_info.height_texture.sampler_index;
+    data.padding0       = 0;
 
     const material_texture* textures[MATERIAL_TEXTURES_COUNT] = {
         &create_info.base_color_texture,
@@ -153,9 +153,9 @@ const material* build(const material_create_info& create_info)
 
     data.clearcoat_normal_scale = create_info.clearcoat_normal_scale;
 
-    data.padding1[0] = 0.0f;
-    data.padding1[1] = 0.0f;
-    data.padding1[2] = 0.0f;
+    data.height_scale = create_info.height_scale;
+    data.padding1[0]  = 0.0f;
+    data.padding1[1]  = 0.0f;
 
     const material* result = created.get();
 

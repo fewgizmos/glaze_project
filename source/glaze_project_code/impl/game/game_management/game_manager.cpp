@@ -5,12 +5,12 @@
 #include "glp/glaze/io/input.h"
 
 #include "glp/glaze/scene/scene.h"
-#include "glp/glaze/scene/objects/light_object.h"
 #include "glp/glaze/scene/objects/post_object.h"
 #include "glp/glaze/scene/objects/static_camera_object.h"
 #include "glp/glaze/scene/objects/static_object.h"
 
 #include "glp/glaze/world/resources/sky_atmosphere.h"
+#include "glp/glaze/world/resources/textured_plane.h"
 
 #ifndef NDEBUG
 #include "glp/trainer/scene/debug_camera.h"
@@ -35,11 +35,12 @@ constexpr const char* SERVICE_PISTOL_MODEL_PATH = "source/glaze_project_resource
 
 const glm::vec3 FOX_SCALE = glm::vec3(0.02f);
 
-const glaze::scene::vol::component::light_create_info BLUE_LIGHT = {
-    .type      = glaze::scene::vol::component::light_type::point,
-    .color     = glm::vec3(0.0f, 0.0f, 1.0f),
-    .intensity = 375.0f,
-    .range     = 8.0f
+const glaze::world::res::textured_plane_create_info FOREST_FLOOR = {
+    .position  = glm::vec3(20.0f, 0.1f, 0.0f),
+    .rotation  = 0.0f,
+    .size_x    = 20.0f,
+    .size_z    = 20.0f,
+    .pack_path = "source/glaze_project_resources/texture_packs/Forest_Floor"
 };
 
 const glaze::world::res::atmosphere_create_info SUNSET_ATMOSPHERE = {
@@ -103,8 +104,8 @@ void init_session()
     if (!m_is_session_started) {
         m_is_session_started = true;
 
-        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(70.0f, 20.0f, 140.0f), FOX_SCALE, FOX_MODEL_PATH);
-        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0), FOX_SCALE, FOX_MODEL_PATH);
+        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(19.0f, 0.1f, 0.0f), glm::vec3(0.0f, 20.0f, 0.0f), FOX_SCALE, FOX_MODEL_PATH);
+        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(21.0f, 0.1f, 0.0f), glm::vec3(0.0f, -30.0f, 0.0f), FOX_SCALE, FOX_MODEL_PATH);
 
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(6.0f, 0.0f, 6.0f), glm::vec3(0), glm::vec3(1.5f), TREE_MODEL_PATH);
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(0.0f, 1.0f, 5.0f), glm::vec3(77.0f, 10.0f, 0.0f), glm::vec3(4.0f), GOLD_LOCK_MODEL_PATH);
@@ -114,9 +115,9 @@ void init_session()
 
         glaze::scene::it::create_entity<glaze::world::res::sky_atmosphere>(SUNSET_ATMOSPHERE);
 
-        glaze::scene::it::create_entity<glaze::scene::obj::post_object_prim>(POST_SETTINGS);
+        glaze::scene::it::create_entity<glaze::world::res::textured_plane>(FOREST_FLOOR);
 
-        glaze::scene::it::create_entity<glaze::scene::obj::light_object_prim>(glm::vec3(1.4f, 1.0f, 0.0f), glm::vec3(0.0f), BLUE_LIGHT);
+        glaze::scene::it::create_entity<glaze::scene::obj::post_object_prim>(POST_SETTINGS);
 
         if (glaze::scene::it::get_player_entity() == nullptr) {
 #ifndef NDEBUG

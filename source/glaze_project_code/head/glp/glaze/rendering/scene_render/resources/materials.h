@@ -84,6 +84,9 @@ struct material_create_info
     material_texture clearcoat_normal_texture;
     material_texture sheen_color_texture;
     material_texture sheen_roughness_texture;
+
+    material_texture height_texture;
+    float height_scale = 0.0f;
 };
 
 struct material_data
@@ -142,7 +145,9 @@ struct material_data
     uint32_t sheen_roughness_texture;
     uint32_t sheen_roughness_sampler;
 
-    uint32_t padding0[3];
+    uint32_t height_texture;
+    uint32_t height_sampler;
+    uint32_t padding0;
 
     glm::vec4 uv_transforms[MATERIAL_TEXTURES_COUNT * 2];
 
@@ -161,7 +166,8 @@ struct material_data
     float sheen_roughness;
 
     float clearcoat_normal_scale;
-    float padding1[3];
+    float height_scale;
+    float padding1[2];
 };
 
 struct material
