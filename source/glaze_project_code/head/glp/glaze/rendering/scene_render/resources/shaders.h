@@ -2,6 +2,7 @@
 
 #include "glp/glaze/rendering/vk/shaders.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,8 @@ const shader* build(
 const shader* get(const std::string& name);
 
 std::vector<std::string> get_all_names();
+
+uint32_t reload_all();
 
 void erase_all();
 

@@ -288,6 +288,7 @@ rendering::scene_render::gpu_atmosphere cmp_atmosphere::get_atmosphere()
     result.moon_flare_tint       = m_create_info.moon_flare_tint;
 
     result.night_ambient_scale   = m_create_info.night_ambient_scale;
+    result.day_ambient_scale     = m_create_info.day_ambient_scale;
     result.twilight_desaturation = m_create_info.twilight_desaturation;
 
     result.sun_light  = m_sun_light;

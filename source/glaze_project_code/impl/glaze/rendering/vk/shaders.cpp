@@ -167,8 +167,11 @@ pipeline create_graphics_pipeline(
 
     const uint32_t color_count = static_cast<uint32_t>(create_info.color_formats.size());
 
-    VkShaderModule vert_module = load_module(vert_file);
-    VkShaderModule frag_module = frag_file.empty() ? VK_NULL_HANDLE : load_module(frag_file);
+    const std::vector<uint32_t> vert_spirv = compile_glsl(utilities::file::read_raw(std::string(SHADERS_DIR) + vert_file), shader_stage::vertex, vert_file);
+    const std::vector<uint32_t> frag_spirv = frag_file.empty() ? std::vector<uint32_t>() : compile_glsl(utilities::file::read_raw(std::string(SHADERS_DIR) + frag_file), shader_stage::fragment, frag_file);
+
+    VkShaderModule vert_module = create_module(vert_spirv);
+    VkShaderModule frag_module = frag_file.empty() ? VK_NULL_HANDLE : create_module(frag_spirv);
 
     VkPipelineShaderStageCreateInfo vert_stage_create_info = {};
     vert_stage_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;

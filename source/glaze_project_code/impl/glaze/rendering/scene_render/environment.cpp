@@ -174,7 +174,7 @@ void bake_images()
     compute_pipeline_create_info compute_info;
     compute_info.set_layouts = { bake_layout };
 
-    const shader* lut_shader = res::shaders::build("ibl_brdf_lut", "", "", "sys/bake/ibl_brdf_lut.comp", {}, compute_info, render_queue::opaque);
+    const pipeline lut_pipeline = vk::shaders::create_compute_pipeline("sys/bake/ibl_brdf_lut.comp", compute_info);
 
     vk::commands::immediate_submit([&](VkCommandBuffer cmd) {
         const vkb::DispatchTable& disp = vk::device::get_disp();
@@ -190,11 +190,11 @@ void bake_images()
             VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
         );
 
-        disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, lut_shader->compute.layout, 0, 1, &bake_set, 0, nullptr);
+        disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, lut_pipeline.layout, 0, 1, &bake_set, 0, nullptr);
 
         const uint32_t groups = get_bake_groups(BRDF_LUT_SIZE);
 
-        vk::commands::dispatch(cmd, lut_shader->compute, nullptr, 0, groups, groups, 1);
+        vk::commands::dispatch(cmd, lut_pipeline, nullptr, 0, groups, groups, 1);
 
         vk::commands::transition_image(
             cmd,
@@ -211,6 +211,7 @@ void bake_images()
         clear_default_image(cmd, m_default_aerial, 1, { { 0.0f, 0.0f, 0.0f, 1.0f } });
     });
 
+    vk::shaders::destroy_pipeline(lut_pipeline);
     vk::descriptors::destroy_pool(bake_pool);
     vk::descriptors::destroy_set_layout(bake_layout);
 }

@@ -272,6 +272,11 @@ float night_ambient_scale(const gpu_atmosphere& atmosphere)
     return glm::mix(1.0f, atmosphere.night_ambient_scale, night_factor(atmosphere));
 }
 
+float ambient_light_scale(const gpu_atmosphere& atmosphere)
+{
+    return glm::mix(atmosphere.day_ambient_scale, atmosphere.night_ambient_scale, night_factor(atmosphere));
+}
+
 float twilight_desaturation(const gpu_atmosphere& atmosphere)
 {
     const float height = glm::normalize(atmosphere.sun_direction).y;
@@ -779,7 +784,7 @@ void handle_all()
 
     gpu_environment environment_data;
     environment_data.set           = m_environment_set;
-    environment_data.intensity     = night_ambient_scale(atmosphere);
+    environment_data.intensity     = ambient_light_scale(atmosphere);
     environment_data.irradiance_sh = m_sh_buffer.address;
 
     frame_pipe::set_environment(environment_data);

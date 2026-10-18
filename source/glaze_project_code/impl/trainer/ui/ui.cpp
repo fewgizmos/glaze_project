@@ -32,7 +32,7 @@ void draw_time_of_day()
     ImGui::SetNextWindowSize(TIME_WINDOW_SIZE, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowBgAlpha(1.0f);
 
-    if (!ImGui::Begin("Time of day", &m_time_open)) {
+    if (!ImGui::Begin("World Settings", &m_time_open)) {
         ImGui::End();
         return;
     }
@@ -60,6 +60,8 @@ void draw_time_of_day()
     char clock[16];
     std::snprintf(clock, sizeof(clock), "%d:%02d", hours, minutes);
 
+    ImGui::BulletText("Time:");
+
     if (ImGui::SliderFloat("##time_of_day", &time_of_day, MIN_TIME_OF_DAY, MAX_TIME_OF_DAY, clock)) {
         sky->set_time_of_day(time_of_day);
     }
@@ -70,6 +72,23 @@ void draw_time_of_day()
     ImGui::End();
 }
 
+void print_camera()
+{
+    glaze::scene::scene_entity* player = glaze::scene::it::get_player_entity();
+
+    if (player == nullptr) {
+        std::printf("camera: no player entity\n");
+        return;
+    }
+
+    const glm::vec3 pos = player->scene_volume().w_pos;
+    const glm::vec3 rot = player->scene_volume().w_rot;
+
+    std::printf("camera pos: glm::vec3(%.3ff, %.3ff, %.3ff)\n", pos.x, pos.y, pos.z);
+    std::printf("camera rot: glm::vec3(%.3ff, %.3ff, %.3ff)\n", rot.x, rot.y, rot.z);
+    std::fflush(stdout);
+}
+
 }
 
 void draw()
@@ -77,7 +96,19 @@ void draw()
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("View")) {
             if (ImGui::BeginMenu("Trainer")) {
-                ImGui::MenuItem("Time of day", nullptr, &m_time_open);
+                ImGui::MenuItem("World Settings", nullptr, &m_time_open);
+                ImGui::EndMenu();
+            }
+
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Actions")) {
+            if (ImGui::BeginMenu("Trainer")) {
+                if (ImGui::MenuItem("Print Camera Pos/Rot")) {
+                    print_camera();
+                }
+
                 ImGui::EndMenu();
             }
 

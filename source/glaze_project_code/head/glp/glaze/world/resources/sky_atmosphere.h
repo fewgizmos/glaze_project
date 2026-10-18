@@ -42,6 +42,7 @@ struct atmosphere_create_info
     glm::vec3 moon_flare_tint = glm::vec3(1.0f);
 
     float night_ambient_scale   = 1.0f;
+    float day_ambient_scale     = 1.0f;
     float twilight_desaturation = 0.0f;
 
     float fog_day_density    = 0.0f;

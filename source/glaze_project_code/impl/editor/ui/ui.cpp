@@ -2,6 +2,7 @@
 
 #include "glp/editor/ui/ui.h"
 
+#include "glp/glaze/rendering/scene_render/resources/shaders.h"
 #include "glp/glaze/rendering/vk/profiler.h"
 #include "glp/glaze/rendering/vk/resources.h"
 
@@ -152,6 +153,18 @@ void draw()
         if (ImGui::BeginMenu("View")) {
             if (ImGui::BeginMenu("Editor")) {
                 ImGui::MenuItem("Metrics", nullptr, &m_metrics_open);
+                ImGui::EndMenu();
+            }
+
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Actions")) {
+            if (ImGui::BeginMenu("Editor")) {
+                if (ImGui::MenuItem("Reload Shaders")) {
+                    glaze::rendering::scene_render::res::shaders::reload_all();
+                }
+
                 ImGui::EndMenu();
             }
 

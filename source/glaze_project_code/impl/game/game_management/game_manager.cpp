@@ -44,8 +44,8 @@ const glaze::world::res::textured_plane_create_info FOREST_FLOOR = {
 };
 
 const glaze::world::res::atmosphere_create_info SUNSET_ATMOSPHERE = {
-    .time_of_day                = 8.2f,
-    .sun_light_scale            = 1.275f,
+    .time_of_day                = 9.2f,
+    .sun_light_scale            = 1.81f,
     .horizon_light_fade         = 5.0f,
     .horizon_light_twilight     = 10.0f,
     .horizon_light_desaturation = 0.5f,
@@ -54,7 +54,8 @@ const glaze::world::res::atmosphere_create_info SUNSET_ATMOSPHERE = {
     .moon_light_scale           = 0.525f,
     .moon_overlap_hours         = 1.0f,
     .moon_flare_multiplier      = 0.0167f,
-    .night_ambient_scale        = 1.2f,
+    .night_ambient_scale        = 1.5f,
+    .day_ambient_scale          = 2.8f,
     .twilight_desaturation      = 0.75f,
     .fog_day_density            = 0.0002f,
     .fog_night_density          = 0.001f,
@@ -124,7 +125,7 @@ void init_session()
             glaze::scene::it::set_player_entity(glaze::scene::it::create_entity<trainer::scene::debug_camera_player_obj>());
 #else
             glaze::scene::it::set_player_entity(
-                glaze::scene::it::create_entity<glaze::scene::obj::static_camera_object_prim>(glm::vec3(2.5f, 3.0f, 2.5f), glm::vec3(-40.0f, 45.0f, 0.0f))
+                glaze::scene::it::create_entity<glaze::scene::obj::static_camera_object_prim>(glm::vec3(5.828f, 7.727f, 18.457f), glm::vec3(-14.000f, -35.000f, 0.000f))
             );
 #endif
         }

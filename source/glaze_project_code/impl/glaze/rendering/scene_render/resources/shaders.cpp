@@ -6,6 +6,8 @@
 
 #include "glp/glaze/utilities/core/assert.h"
 
+#include <exception>
+#include <iostream>
 #include <unordered_map>
 
 namespace glaze::rendering::scene_render::res::shaders
@@ -14,13 +16,31 @@ namespace glaze::rendering::scene_render::res::shaders
 namespace
 {
 
+struct shader_source
+{
+    std::string vert_file;
+    std::string frag_file;
+    std::string comp_file;
+
+    graphics_pipeline_create_info graphics_create_info;
+    compute_pipeline_create_info compute_create_info;
+
+    render_queue queue = render_queue::opaque;
+};
+
+struct shader_entry
+{
+    shader target;
+    shader_source source;
+};
+
 struct replaced_shader
 {
     shader target;
     int frames_left = 0;
 };
 
-std::unordered_map<std::string, shader> m_shaders;
+std::unordered_map<std::string, shader_entry> m_shaders;
 
 std::vector<replaced_shader> m_replaced;
 
@@ -28,6 +48,35 @@ void destroy_pipelines(const shader& target)
 {
     vk::shaders::destroy_pipeline(target.graphics);
     vk::shaders::destroy_pipeline(target.compute);
+}
+
+shader create_shader(const std::string& name, const shader_source& source)
+{
+    GLAZE_ASSERT(source.vert_file.empty() && source.comp_file.empty(), "shader has no vertex or compute shader: " + name);
+
+    shader result;
+
+    result.queue = source.queue;
+
+    if (!source.vert_file.empty()) {
+        result.graphics = vk::shaders::create_graphics_pipeline(source.vert_file, source.frag_file, source.graphics_create_info);
+
+        result.uses_environment = source.graphics_create_info.set_layouts.size() > 1
+                               && source.graphics_create_info.set_layouts[1] == environment::get_set_layout();
+    }
+
+    if (!source.comp_file.empty()) {
+        try {
+            result.compute = vk::shaders::create_compute_pipeline(source.comp_file, source.compute_create_info);
+        }
+
+        catch (...) {
+            vk::shaders::destroy_pipeline(result.graphics);
+            throw;
+        }
+    }
+
+    return result;
 }
 
 }
@@ -42,41 +91,28 @@ const shader* build(
     render_queue queue
 )
 {
-    GLAZE_ASSERT(vert_file.empty() && comp_file.empty(), "shader has no vertex or compute shader: " + name);
+    const shader_source source = { vert_file, frag_file, comp_file, graphics_create_info, compute_create_info, queue };
 
-    shader result;
-
-    result.queue = queue;
-
-    if (!vert_file.empty()) {
-        result.graphics = vk::shaders::create_graphics_pipeline(vert_file, frag_file, graphics_create_info);
-
-        result.uses_environment = graphics_create_info.set_layouts.size() > 1
-                               && graphics_create_info.set_layouts[1] == environment::get_set_layout();
-    }
-
-    if (!comp_file.empty()) {
-        result.compute = vk::shaders::create_compute_pipeline(comp_file, compute_create_info);
-    }
+    const shader result = create_shader(name, source);
 
     const auto found = m_shaders.find(name);
 
     if (found == m_shaders.end()) {
-        return &m_shaders.emplace(name, result).first->second;
+        return &m_shaders.emplace(name, shader_entry{ result, source }).first->second.target;
     }
 
-    m_replaced.push_back({ found->second, MAX_FRAMES_IN_FLIGHT });
+    m_replaced.push_back({ found->second.target, MAX_FRAMES_IN_FLIGHT });
 
-    found->second = result;
+    found->second = { result, source };
 
-    return &found->second;
+    return &found->second.target;
 }
 
 const shader* get(const std::string& name)
 {
     const auto found = m_shaders.find(name);
 
-    return found != m_shaders.end() ? &found->second : nullptr;
+    return found != m_shaders.end() ? &found->second.target : nullptr;
 }
 
 std::vector<std::string> get_all_names()
@@ -92,10 +128,33 @@ std::vector<std::string> get_all_names()
     return names;
 }
 
+uint32_t reload_all()
+{
+    uint32_t failed = 0;
+
+    for (auto& [name, entry] : m_shaders) {
+        try {
+            const shader result = create_shader(name, entry.source);
+
+            m_replaced.push_back({ entry.target, MAX_FRAMES_IN_FLIGHT });
+
+            entry.target = result;
+        }
+
+        catch (const std::exception& error) {
+            std::cerr << error.what() << "\n";
+
+            failed++;
+        }
+    }
+
+    return failed;
+}
+
 void erase_all()
 {
     for (const auto& entry : m_shaders) {
-        destroy_pipelines(entry.second);
+        destroy_pipelines(entry.second.target);
     }
 
     for (const replaced_shader& replaced : m_replaced) {
