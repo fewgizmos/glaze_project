@@ -27,7 +27,7 @@ rendering::scene_render::gpu_camera camera::get_camera()
         return rendering::scene_render::res::gpu_cameras::build_ortho(m_ortho_size, aspect, m_near_plane, m_far_plane, local);
     }
 
-    return rendering::scene_render::res::gpu_cameras::build_perspective(m_fov, aspect, m_near_plane, m_far_plane, local);
+    return rendering::scene_render::res::gpu_cameras::build_perspective(m_fov, aspect, m_near_plane, local);
 }
 
 }

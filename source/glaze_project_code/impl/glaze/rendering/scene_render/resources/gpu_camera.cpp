@@ -4,6 +4,8 @@
 #include <glm/matrix.hpp>
 #include <glm/trigonometric.hpp>
 
+#include <cmath>
+
 namespace glaze::rendering::scene_render::res::gpu_cameras
 {
 
@@ -24,14 +26,20 @@ void finish(gpu_camera& target)
 
 }
 
-gpu_camera build_perspective(float fov, float aspect, float near_plane, float far_plane, const glm::mat4& local)
+gpu_camera build_perspective(float fov, float aspect, float near_plane, const glm::mat4& local)
 {
     gpu_camera result;
 
     place(result, local);
 
-    result.proj = glm::perspectiveRH_ZO(glm::radians(fov), aspect, far_plane, near_plane);
-    result.proj[1][1] *= -1.0f;
+    const float focal = 1.0f / std::tan(glm::radians(fov) * 0.5f);
+
+    result.proj = glm::mat4(0.0f);
+
+    result.proj[0][0] = focal / aspect;
+    result.proj[1][1] = -focal;
+    result.proj[2][3] = -1.0f;
+    result.proj[3][2] = near_plane;
 
     finish(result);
 

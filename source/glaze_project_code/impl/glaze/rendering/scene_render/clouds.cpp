@@ -35,7 +35,7 @@ struct trace_push
 {
     VkDeviceAddress params;
     float quality;
-    uint32_t full;
+    uint32_t cell;
 };
 
 struct shadow_key
@@ -69,6 +69,8 @@ struct resolve_push
     VkDeviceAddress params;
     uint32_t reset;
     float history_weight;
+    uint32_t cell;
+    uint32_t padding0;
 };
 
 constexpr VkExtent3D SHAPE_NOISE_SIZE  = { 256, 256, 256 };
@@ -93,7 +95,8 @@ constexpr uint32_t GROUP_SIZE        = 8;
 constexpr uint32_t VOLUME_GROUP_SIZE = 4;
 
 constexpr uint32_t RESOLUTION_DIVIDER = 1;
-constexpr uint32_t CHECKERBOARD_SIZE  = 4;
+constexpr uint32_t CHECKERBOARD_CELL = 4;
+constexpr uint32_t FULL_CELL         = 1;
 
 constexpr float HISTORY_WEIGHT = 0.9f;
 
@@ -328,6 +331,11 @@ bool same_shadow_key(const shadow_key& left, const shadow_key& right)
         && left.coverage == right.coverage
         && left.density == right.density
         && left.type == right.type;
+}
+
+uint32_t choose_trace_cell()
+{
+    return m_history_valid ? CHECKERBOARD_CELL : FULL_CELL;
 }
 
 bool trace_is_static()
@@ -636,11 +644,9 @@ void dispatch()
         );
     }
 
-    const uint32_t full_trace = m_history_valid ? 0 : 1;
+    const uint32_t trace_cell = choose_trace_cell();
 
-    const trace_push trace = { atmosphere::get_params_address(), it::get_quality(), full_trace };
-
-    const uint32_t trace_cell = full_trace != 0 ? 1 : CHECKERBOARD_SIZE;
+    const trace_push trace = { atmosphere::get_params_address(), it::get_quality(), trace_cell };
 
     disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_trace_shader->compute.layout, 0, 1, &m_trace_set, 0, nullptr);
 
@@ -679,6 +685,8 @@ void dispatch()
     resolve.params         = atmosphere::get_params_address();
     resolve.reset          = m_history_valid ? 0 : 1;
     resolve.history_weight = HISTORY_WEIGHT;
+    resolve.cell           = trace_cell;
+    resolve.padding0       = 0;
 
     disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_resolve_shader->compute.layout, 0, 1, &m_resolve_set, 0, nullptr);
 
