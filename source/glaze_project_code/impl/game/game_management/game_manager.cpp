@@ -135,7 +135,7 @@ void cleanup_session()
 {
     m_is_session_started = false;
 
-    glaze::scene::it::erase_all_entities_typed<glaze::scene::obj::static_object_model_prim>();
+    glaze::scene::it::erase_all_entities_typed<glaze::scene::obj::static_object>();
 }
 
 }

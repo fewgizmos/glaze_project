@@ -1,6 +1,6 @@
 #pragma once
 
-#include "glp/glaze/scene/scene.h"
+#include "glp/glaze/scene/objects/static_object.h"
 #include "glp/glaze/scene/volume/volume.h"
 
 #include "glp/glaze/rendering/scene_render/resources/gpu_model.h"
@@ -49,7 +49,7 @@ private:
     std::vector<const rendering::scene_render::texture*> m_textures;
 };
 
-class textured_plane : public scene::scene_entity
+class textured_plane : public scene::obj::static_object
 {
 public:
     textured_plane(const textured_plane_create_info& create_info);
