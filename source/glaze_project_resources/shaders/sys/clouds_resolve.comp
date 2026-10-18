@@ -20,6 +20,10 @@ layout(push_constant) uniform constants
 
 const float KILOMETERS_TO_METERS = 1000.0;
 
+const uint CHECKERBOARD_SLOTS = 4u;
+
+const float CLAMP_EXPANSION = 0.25;
+
 void main()
 {
     ivec2 size = imageSize(output_target);
@@ -29,14 +33,34 @@ void main()
         return;
     }
 
-    vec4 current = imageLoad(trace_source, id);
+    atmosphere_params params = pc.atmosphere.params;
+
+    uint slot     = params.frame_index % CHECKERBOARD_SLOTS;
+    ivec2 offset  = ivec2(int(slot & 1u), int(slot >> 1u));
+    ivec2 fresh_id = clamp((id / 2) * 2 + offset, ivec2(0), size - 1);
+
+    bool fresh = fresh_id == id;
+
+    vec4 current = imageLoad(trace_source, fresh_id);
 
     if (pc.reset != 0u) {
         imageStore(output_target, id, current);
         return;
     }
 
-    atmosphere_params params = pc.atmosphere.params;
+    vec4 neighbourhood_min = current;
+    vec4 neighbourhood_max = current;
+
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            ivec2 neighbour_id = clamp((id / 2 + ivec2(x, y)) * 2 + offset, ivec2(0), size - 1);
+
+            vec4 neighbour = imageLoad(trace_source, neighbour_id);
+
+            neighbourhood_min = min(neighbourhood_min, neighbour);
+            neighbourhood_max = max(neighbourhood_max, neighbour);
+        }
+    }
 
     vec2 ndc = (vec2(id) + 0.5) / vec2(size) * 2.0 - 1.0;
 
@@ -45,7 +69,7 @@ void main()
 
     vec3 direction = normalize(far_point.xyz / far_point.w - near_point.xyz / near_point.w);
 
-    float depth = imageLoad(depth_source, id).r * KILOMETERS_TO_METERS;
+    float depth = imageLoad(depth_source, fresh_id).r * KILOMETERS_TO_METERS;
 
     vec4 previous_clip = params.previous_view_proj * vec4(params.camera_world_position + direction * depth, 1.0);
 
@@ -61,19 +85,16 @@ void main()
         return;
     }
 
-    vec4 neighbourhood_min = current;
-    vec4 neighbourhood_max = current;
+    vec4 previous = textureLod(history, previous_uv, 0.0);
 
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            vec4 neighbour = imageLoad(trace_source, clamp(id + ivec2(x, y), ivec2(0), size - 1));
-
-            neighbourhood_min = min(neighbourhood_min, neighbour);
-            neighbourhood_max = max(neighbourhood_max, neighbour);
-        }
+    if (!fresh) {
+        imageStore(output_target, id, previous);
+        return;
     }
 
-    vec4 previous = clamp(textureLod(history, previous_uv, 0.0), neighbourhood_min, neighbourhood_max);
+    vec4 extent = (neighbourhood_max - neighbourhood_min) * CLAMP_EXPANSION;
+
+    previous = clamp(previous, neighbourhood_min - extent, neighbourhood_max + extent);
 
     imageStore(output_target, id, mix(current, previous, pc.history_weight));
 }

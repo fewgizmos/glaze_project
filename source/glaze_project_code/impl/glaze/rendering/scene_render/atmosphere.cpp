@@ -153,6 +153,8 @@ constexpr float IBL_UPDATE_COS = 0.99999962f;
 
 constexpr float IBL_MEDIUM_TOLERANCE = 0.002f;
 
+constexpr float IBL_MIN_INTERVAL = 0.2f;
+
 constexpr float MIN_CLOUD_REFERENCE = 0.000001f;
 constexpr float NIGHT_SUN_HEIGHT    = -0.2f;
 constexpr float DAY_SUN_HEIGHT      = -0.1f;
@@ -215,6 +217,9 @@ gpu_atmosphere m_ibl_atmosphere;
 
 bool m_luts_dirty = true;
 bool m_ibl_dirty  = true;
+
+bool m_ibl_baked      = false;
+float m_ibl_bake_time = 0.0f;
 
 bool m_active = false;
 
@@ -721,6 +726,8 @@ void clean_all()
     m_ibl_dirty  = true;
     m_active     = false;
 
+    m_ibl_baked = false;
+
     m_has_previous_view_proj = false;
     m_frame_index            = 0;
 
@@ -815,14 +822,18 @@ void dispatch()
 
     environment::transition_bake_target(cmd, m_moon_aerial_perspective, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-    if (m_ibl_dirty) {
+    const float now = utilities::core::timer::timestamp;
+
+    if (m_ibl_dirty && (!m_ibl_baked || now - m_ibl_bake_time >= IBL_MIN_INTERVAL)) {
         dispatch_environment(cmd);
 
         m_ibl_atmosphere = frame_pipe::get_atmosphere();
+        m_ibl_bake_time  = now;
+        m_ibl_baked      = true;
+        m_ibl_dirty      = false;
     }
 
     m_luts_dirty = false;
-    m_ibl_dirty  = false;
 }
 
 VkDeviceAddress get_params_address()

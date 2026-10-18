@@ -23,6 +23,8 @@ const uint BIN_COUNT = 256u;
 
 const float MIN_LUMINANCE = 0.000001;
 
+const int SAMPLE_STRIDE = 2;
+
 shared uint local_bins[BIN_COUNT];
 
 void main()
@@ -34,7 +36,7 @@ void main()
     barrier();
 
     ivec2 size = textureSize(hdr_image, 0);
-    ivec2 id   = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 id   = ivec2(gl_GlobalInvocationID.xy) * SAMPLE_STRIDE;
 
     if (id.x < size.x && id.y < size.y) {
         vec3 color = texelFetch(hdr_image, id, 0).rgb * pc.inverse_exposure;

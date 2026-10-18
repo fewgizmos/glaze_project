@@ -15,6 +15,7 @@
 #include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/device.h"
 #include "glp/glaze/rendering/vk/frame.h"
+#include "glp/glaze/rendering/vk/profiler.h"
 #include "glp/glaze/rendering/vk/resources.h"
 
 #include "glp/glaze/io/viewport.h"
@@ -264,13 +265,22 @@ void record_command_buffer()
     vk::commands::reset(cmd);
     vk::commands::begin(cmd);
 
+    vk::profiler::begin_frame(cmd);
+
     vk::resources::destroy_used_staging();
     vk::resources::flush_uploads();
 
     scene_render::it::handle_all();
 
+    vk::profiler::mark(cmd, "uploads");
+
     scene_render::atmosphere::dispatch();
+
+    vk::profiler::mark(cmd, "atmosphere");
+
     scene_render::clouds::dispatch();
+
+    vk::profiler::mark(cmd, "clouds");
 
     begin_prepass_rendering();
 
@@ -278,7 +288,11 @@ void record_command_buffer()
 
     vk::device::get_disp().cmdEndRendering(cmd);
 
+    vk::profiler::mark(cmd, "prepass");
+
     scene_render::gtao::dispatch();
+
+    vk::profiler::mark(cmd, "gtao");
 
     begin_scene_rendering();
 
@@ -286,17 +300,31 @@ void record_command_buffer()
 
     vk::device::get_disp().cmdEndRendering(cmd);
 
+    vk::profiler::mark(cmd, "scene");
+
     scene_render::taa::dispatch();
 
+    vk::profiler::mark(cmd, "taa");
+
     scene_render::light_shafts::dispatch();
+
+    vk::profiler::mark(cmd, "shafts");
+
     scene_render::exposure::dispatch();
+
+    vk::profiler::mark(cmd, "exposure");
+
     scene_render::bloom::dispatch();
+
+    vk::profiler::mark(cmd, "bloom");
 
     begin_post_rendering();
 
     scene_render::post_process::draw_all();
 
     vk::device::get_disp().cmdEndRendering(cmd);
+
+    vk::profiler::mark(cmd, "post");
 
     vk::commands::transition_image(
         cmd,
@@ -385,6 +413,9 @@ void init()
     vk::resources::create_allocator(m_vk_instance);
 
     vk::frame::create_frame_data();
+
+    vk::profiler::create();
+    queue_deletor::push([]() { vk::profiler::destroy(); });
 
     scene_render::it::init();
 }

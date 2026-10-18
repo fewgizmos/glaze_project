@@ -40,8 +40,9 @@ struct histogram_push
     uint32_t padding;
 };
 
-constexpr uint32_t BIN_COUNT  = 256;
-constexpr uint32_t GROUP_SIZE = 16;
+constexpr uint32_t BIN_COUNT     = 256;
+constexpr uint32_t GROUP_SIZE    = 16;
+constexpr uint32_t SAMPLE_STRIDE = 2;
 
 constexpr float MIN_LOG_LUMINANCE   = -10.0f;
 constexpr float LOG_LUMINANCE_RANGE = 30.0f;
@@ -288,8 +289,8 @@ void dispatch()
         m_shader->compute,
         &push,
         sizeof(push),
-        (hdr.extent.width + GROUP_SIZE - 1) / GROUP_SIZE,
-        (hdr.extent.height + GROUP_SIZE - 1) / GROUP_SIZE,
+        (hdr.extent.width / SAMPLE_STRIDE + GROUP_SIZE - 1) / GROUP_SIZE,
+        (hdr.extent.height / SAMPLE_STRIDE + GROUP_SIZE - 1) / GROUP_SIZE,
         1
     );
 

@@ -66,6 +66,7 @@ void build_swapchain()
     auto swap_ret = swapchain_builder
         .set_old_swapchain(m_swapchain.handle)
         .set_desired_extent(static_cast<uint32_t>(extent.x), static_cast<uint32_t>(extent.y))
+        .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
         .build();
 
     GLAZE_ASSERT(!swap_ret, swap_ret.error().message());

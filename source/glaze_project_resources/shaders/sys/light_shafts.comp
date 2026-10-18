@@ -21,10 +21,10 @@ layout(push_constant) uniform constants
     float aspect;
 } pc;
 
-const uint SAMPLE_COUNT = 64u;
+const uint SAMPLE_COUNT = 32u;
 
 const float SAMPLE_LENGTH = 0.9;
-const float DECAY         = 0.97;
+const float DECAY         = 0.9409;
 const float SUN_RADIUS    = 0.35;
 
 float occlusion(vec2 uv)

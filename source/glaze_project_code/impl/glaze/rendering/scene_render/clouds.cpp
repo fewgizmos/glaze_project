@@ -95,6 +95,8 @@ const shader* m_resolve_shader = nullptr;
 
 bool m_history_valid = false;
 
+bool m_trace_initialized = false;
+
 uint32_t get_groups(uint32_t size, uint32_t group)
 {
     return (size + group - 1) / group;
@@ -239,7 +241,8 @@ void create_targets(VkExtent3D extent)
     write_storage(m_resolve_set, DEPTH_BINDING, m_depth);
     write_storage(m_resolve_set, TRACE_BINDING, m_trace);
 
-    m_history_valid = false;
+    m_history_valid     = false;
+    m_trace_initialized = false;
 }
 
 void transition_to_general(VkCommandBuffer cmd, const image& target)
@@ -342,7 +345,8 @@ void clean_all()
     m_noise_sampler = VK_NULL_HANDLE;
     m_clamp_sampler = VK_NULL_HANDLE;
 
-    m_history_valid = false;
+    m_history_valid     = false;
+    m_trace_initialized = false;
 }
 
 void handle_all()
@@ -378,8 +382,20 @@ void dispatch()
 
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
-    transition_to_general(cmd, m_trace);
-    transition_to_general(cmd, m_depth);
+    if (!m_trace_initialized) {
+        transition_to_general(cmd, m_trace);
+        transition_to_general(cmd, m_depth);
+
+        m_trace_initialized = true;
+    } else {
+        vk::commands::memory_barrier(
+            cmd,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            VK_ACCESS_2_SHADER_STORAGE_READ_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
+        );
+    }
 
     const trace_push trace = { atmosphere::get_params_address() };
 
