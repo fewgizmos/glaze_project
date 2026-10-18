@@ -90,7 +90,7 @@ void init_all()
     info.set_layouts        = { m_set_layout };
     info.push_constant_size = sizeof(gtao_push);
 
-    m_shader = res::shaders::build("gtao", "", "", "sys/gtao.comp", {}, info, render_queue::opaque);
+    m_shader = res::shaders::build("gtao", "", "", "sys/frame/gtao.comp", {}, info, render_queue::opaque);
 }
 
 void clean_all()

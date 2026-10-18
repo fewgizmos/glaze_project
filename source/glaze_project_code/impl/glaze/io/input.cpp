@@ -17,6 +17,9 @@ utilities::sm::state<keyboard_input_codes> m_current_keys;
 
 mouse m_mouse;
 
+bool m_mouse_captured    = false;
+bool m_keyboard_captured = false;
+
 bool map_key(SDL_Scancode scancode, keyboard_input_codes& code)
 {
     switch (scancode) {
@@ -136,11 +139,21 @@ void parse_frame_inputs()
     for (const SDL_Event& event : platform::app::get_events()) {
         switch (event.type) {
             case SDL_EVENT_KEY_DOWN:
+                if (!m_keyboard_captured) {
+                    parse_key(event);
+                }
+                break;
+
             case SDL_EVENT_KEY_UP:
                 parse_key(event);
                 break;
 
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
+                if (!m_mouse_captured) {
+                    parse_button(event);
+                }
+                break;
+
             case SDL_EVENT_MOUSE_BUTTON_UP:
                 parse_button(event);
                 break;
@@ -149,13 +162,17 @@ void parse_frame_inputs()
                 m_mouse.pos_x = event.motion.x;
                 m_mouse.pos_y = event.motion.y;
 
-                m_mouse.delta_x += event.motion.xrel;
-                m_mouse.delta_y += event.motion.yrel;
+                if (!m_mouse_captured) {
+                    m_mouse.delta_x += event.motion.xrel;
+                    m_mouse.delta_y += event.motion.yrel;
+                }
                 break;
 
             case SDL_EVENT_MOUSE_WHEEL:
-                m_mouse.scroll_x += event.wheel.x;
-                m_mouse.scroll_y += event.wheel.y;
+                if (!m_mouse_captured) {
+                    m_mouse.scroll_x += event.wheel.x;
+                    m_mouse.scroll_y += event.wheel.y;
+                }
                 break;
 
             case SDL_EVENT_WINDOW_FOCUS_LOST:
@@ -188,6 +205,12 @@ bool key_is_released(keyboard_input_codes code)
 bool key_is_up(keyboard_input_codes code)
 {
     return !m_previous_keys.is_state_set(code) && !m_current_keys.is_state_set(code);
+}
+
+void set_capture(bool mouse, bool keyboard)
+{
+    m_mouse_captured    = mouse;
+    m_keyboard_captured = keyboard;
 }
 
 const mouse& get_mouse() { return m_mouse; }

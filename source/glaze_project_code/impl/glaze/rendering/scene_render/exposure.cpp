@@ -177,7 +177,7 @@ void init_all()
     info.set_layouts        = { m_set_layout };
     info.push_constant_size = sizeof(histogram_push);
 
-    m_shader = res::shaders::build("exposure_histogram", "", "", "sys/exposure_histogram.comp", {}, info, render_queue::opaque);
+    m_shader = res::shaders::build("exposure_histogram", "", "", "sys/post/exposure_histogram.comp", {}, info, render_queue::opaque);
 }
 
 void clean_all()

@@ -87,7 +87,7 @@ void create_tonemap_shader()
     info.push_constant_size   = sizeof(tonemap_push);
     info.push_constant_stages = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    m_tonemap_shader = res::shaders::build("tonemap", "sys/tonemap.vert", "sys/tonemap.frag", "", info, {}, render_queue::opaque);
+    m_tonemap_shader = res::shaders::build("tonemap", "sys/post/tonemap.vert", "sys/post/tonemap.frag", "", info, {}, render_queue::opaque);
 }
 
 }

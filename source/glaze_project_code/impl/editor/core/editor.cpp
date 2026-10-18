@@ -3,6 +3,7 @@
 #include "glp/editor/core/editor.h"
 
 #include "glp/editor/scene/debug_grid.h"
+#include "glp/editor/ui/ui.h"
 
 #include "glp/glaze/scene/scene.h"
 
@@ -30,7 +31,7 @@ void cleanup()
 
 void frame_update()
 {
-
+    ui::it::draw();
 }
 
 }

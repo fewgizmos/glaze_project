@@ -477,11 +477,11 @@ void create_sampler()
 
 void create_shaders()
 {
-    m_transmittance_shader    = build_compute("atmosphere_transmittance", "sys/atmosphere_transmittance.comp");
-    m_multi_scattering_shader = build_compute("atmosphere_multi_scattering", "sys/atmosphere_multi_scattering.comp");
-    m_sky_view_shader         = build_compute("atmosphere_sky_view", "sys/atmosphere_sky_view.comp");
-    m_aerial_shader           = build_compute("atmosphere_aerial_perspective", "sys/atmosphere_aerial_perspective.comp");
-    m_sky_cube_shader         = build_compute("atmosphere_sky_cube", "sys/atmosphere_sky_cube.comp");
+    m_transmittance_shader    = build_compute("atmosphere_transmittance", "sys/bake/atmosphere_transmittance.comp");
+    m_multi_scattering_shader = build_compute("atmosphere_multi_scattering", "sys/bake/atmosphere_multi_scattering.comp");
+    m_sky_view_shader         = build_compute("atmosphere_sky_view", "sys/frame/atmosphere_sky_view.comp");
+    m_aerial_shader           = build_compute("atmosphere_aerial_perspective", "sys/frame/atmosphere_aerial_perspective.comp");
+    m_sky_cube_shader         = build_compute("atmosphere_sky_cube", "sys/bake/atmosphere_sky_cube.comp");
 
     graphics_pipeline_create_info info;
     info.color_formats        = { HDR_FORMAT };
@@ -492,7 +492,7 @@ void create_shaders()
     info.push_constant_size   = sizeof(VkDeviceAddress);
     info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-    m_sky_shader = res::shaders::build("atmosphere_sky", "sys/atmosphere_sky.vert", "sys/atmosphere_sky.frag", "", info, {}, render_queue::skybox);
+    m_sky_shader = res::shaders::build("atmosphere_sky", "sys/sky/atmosphere_sky.vert", "sys/sky/atmosphere_sky.frag", "", info, {}, render_queue::skybox);
 }
 
 void create_sky_model()

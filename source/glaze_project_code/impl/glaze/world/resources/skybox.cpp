@@ -89,7 +89,7 @@ const rendering::scene_render::shader* cubemap_shader()
         info.push_constant_size   = sizeof(VkDeviceAddress);
         info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        return rendering::scene_render::res::shaders::build("cubemap", "sys/cubemap.vert", "sys/cubemap.frag", "", info, {}, rendering::scene_render::render_queue::skybox);
+        return rendering::scene_render::res::shaders::build("cubemap", "sys/sky/cubemap.vert", "sys/sky/cubemap.frag", "", info, {}, rendering::scene_render::render_queue::skybox);
     }();
 
     return shd;
@@ -101,7 +101,7 @@ const rendering::scene_render::shader* panorama_shader()
         rendering::compute_pipeline_create_info info;
         info.set_layouts = { rendering::scene_render::environment::get_bake_set_layout() };
 
-        return rendering::scene_render::res::shaders::build("ibl_panorama", "", "", "sys/ibl_panorama.comp", {}, info, rendering::scene_render::render_queue::opaque);
+        return rendering::scene_render::res::shaders::build("ibl_panorama", "", "", "sys/bake/ibl_panorama.comp", {}, info, rendering::scene_render::render_queue::opaque);
     }();
 
     return shd;

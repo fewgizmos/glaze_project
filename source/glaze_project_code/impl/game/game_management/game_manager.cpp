@@ -12,15 +12,11 @@
 
 #include "glp/glaze/world/resources/sky_atmosphere.h"
 
-#include "glp/glaze/utilities/core/timer.h"
-
 #ifndef NDEBUG
 #include "glp/trainer/scene/debug_camera.h"
 #endif
 
 #include <glm/vec3.hpp>
-
-#include <cmath>
 
 namespace game::game_management::it
 {
@@ -29,11 +25,6 @@ namespace
 {
 
 bool m_is_session_started = false;
-
-glaze::world::res::sky_atmosphere* m_sky = nullptr;
-
-constexpr float DAY_CYCLE_HOURS_PER_SECOND = 0.01f;
-constexpr float DAY_HOURS                  = 24.0f;
 
 constexpr const char* FOX_MODEL_PATH = "source/glaze_project_resources/gltf/fox/Fox.gltf";
 constexpr const char* TREE_MODEL_PATH = "source/glaze_project_resources/gltf/tree/tree_small_02_2k.gltf";
@@ -52,7 +43,7 @@ const glaze::scene::vol::component::light_create_info BLUE_LIGHT = {
 };
 
 const glaze::world::res::atmosphere_create_info SUNSET_ATMOSPHERE = {
-    .time_of_day                = 17.7f,
+    .time_of_day                = 8.2f,
     .sun_light_scale            = 1.275f,
     .horizon_light_fade         = 5.0f,
     .horizon_light_twilight     = 10.0f,
@@ -105,12 +96,6 @@ void update_frame()
             cleanup_session();
         }
     }
-
-    if (m_sky != nullptr) {
-        const float time_of_day = m_sky->get_time_of_day() + DAY_CYCLE_HOURS_PER_SECOND * glaze::utilities::core::timer::delta;
-
-        m_sky->set_time_of_day(std::fmod(time_of_day, DAY_HOURS));
-    }
 }
 
 void init_session()
@@ -127,7 +112,7 @@ void init_session()
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-10.0f, 0.0f, -6.0f), glm::vec3(0), glm::vec3(3.4f), PCB_MODEL_PATH);
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-6.0f, 0.0f, 6.0f), glm::vec3(0), glm::vec3(3.4f), SERVICE_PISTOL_MODEL_PATH);
 
-        m_sky = glaze::scene::it::create_entity<glaze::world::res::sky_atmosphere>(SUNSET_ATMOSPHERE);
+        glaze::scene::it::create_entity<glaze::world::res::sky_atmosphere>(SUNSET_ATMOSPHERE);
 
         glaze::scene::it::create_entity<glaze::scene::obj::post_object_prim>(POST_SETTINGS);
 

@@ -2,6 +2,8 @@
 
 #include "glp/glaze/rendering/queue_deletor.h"
 
+#include "glp/glaze/rendering/imgui_render/imgui_render.h"
+
 #include "glp/glaze/rendering/scene_render/atmosphere.h"
 #include "glp/glaze/rendering/scene_render/bloom.h"
 #include "glp/glaze/rendering/scene_render/clouds.h"
@@ -322,9 +324,13 @@ void record_command_buffer()
 
     scene_render::post_process::draw_all();
 
+    vk::profiler::mark(cmd, "post");
+
+    imgui_render::draw_all();
+
     vk::device::get_disp().cmdEndRendering(cmd);
 
-    vk::profiler::mark(cmd, "post");
+    vk::profiler::mark(cmd, "imgui");
 
     vk::commands::transition_image(
         cmd,
@@ -418,6 +424,8 @@ void init()
     queue_deletor::push([]() { vk::profiler::destroy(); });
 
     scene_render::it::init();
+
+    imgui_render::init_all();
 }
 
 void init_vk()
@@ -435,6 +443,8 @@ void init_vk()
 void cleanup()
 {
     vk::device::get_disp().deviceWaitIdle();
+
+    imgui_render::clean_all();
 
     scene_render::it::cleanup();
 

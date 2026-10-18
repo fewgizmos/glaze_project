@@ -183,8 +183,8 @@ void init_all()
         m_linear_sampler
     );
 
-    m_shafts_shader    = build_compute("light_shafts", "sys/light_shafts.comp", sizeof(shafts_push));
-    m_composite_shader = build_compute("light_shafts_composite", "sys/light_shafts_composite.comp", 0);
+    m_shafts_shader    = build_compute("light_shafts", "sys/post/light_shafts.comp", sizeof(shafts_push));
+    m_composite_shader = build_compute("light_shafts_composite", "sys/post/light_shafts_composite.comp", 0);
 }
 
 void clean_all()

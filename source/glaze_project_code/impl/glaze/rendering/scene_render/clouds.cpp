@@ -183,11 +183,11 @@ void create_noise_images()
 
 void create_shaders()
 {
-    m_shape_shader   = build_compute("clouds_shape_noise", "sys/clouds_shape_noise.comp", 0);
-    m_detail_shader  = build_compute("clouds_detail_noise", "sys/clouds_detail_noise.comp", 0);
-    m_weather_shader = build_compute("clouds_weather", "sys/clouds_weather.comp", 0);
-    m_trace_shader   = build_compute("clouds_trace", "sys/clouds_trace.comp", sizeof(trace_push));
-    m_resolve_shader = build_compute("clouds_resolve", "sys/clouds_resolve.comp", sizeof(resolve_push));
+    m_shape_shader   = build_compute("clouds_shape_noise", "sys/bake/clouds_shape_noise.comp", 0);
+    m_detail_shader  = build_compute("clouds_detail_noise", "sys/bake/clouds_detail_noise.comp", 0);
+    m_weather_shader = build_compute("clouds_weather", "sys/bake/clouds_weather.comp", 0);
+    m_trace_shader   = build_compute("clouds_trace", "sys/frame/clouds_trace.comp", sizeof(trace_push));
+    m_resolve_shader = build_compute("clouds_resolve", "sys/frame/clouds_resolve.comp", sizeof(resolve_push));
 }
 
 void record_generation(VkCommandBuffer cmd, const shader* target_shader, VkDescriptorSet set, const image& target, uint32_t group)

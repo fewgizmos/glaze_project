@@ -30,6 +30,9 @@ constexpr float TWILIGHT_BASE           = 0.15f;
 constexpr float TWILIGHT_DECADE_DEGREES = 3.0f;
 constexpr float MIN_LIGHT_ELEVATION     = 1.0f;
 
+constexpr float PINK_FULL_ELEVATION = 8.0f;
+constexpr float PINK_NONE_ELEVATION = 14.0f;
+
 constexpr float PLANET_SURFACE_OFFSET = 0.001f;
 
 constexpr int TRANSMITTANCE_SAMPLES = 40;
@@ -162,9 +165,12 @@ float evening_factor(float time_of_day)
     return glm::smoothstep(NOON_HOUR, SUNSET_HOUR, hour);
 }
 
-glm::vec3 evening_tint(float time_of_day, float evening_pink)
+glm::vec3 evening_tint(float time_of_day, float evening_pink, glm::vec3 sun_direction)
 {
-    const float pink = glm::mix(1.0f, evening_pink, evening_factor(time_of_day));
+    const float elevation = glm::degrees(std::asin(std::clamp(sun_direction.y, -1.0f, 1.0f)));
+    const float low_sun   = 1.0f - glm::smoothstep(PINK_FULL_ELEVATION, PINK_NONE_ELEVATION, elevation);
+
+    const float pink = glm::mix(1.0f, evening_pink, evening_factor(time_of_day) * low_sun);
 
     const glm::vec3 tint(1.0f, 1.0f, pink);
 
@@ -236,7 +242,7 @@ void cmp_atmosphere::update()
         const float horizon     = horizon_factor(m_sun_direction, m_create_info.horizon_light_fade, m_create_info.horizon_light_twilight);
         const glm::vec3 lighted = lift_to_horizon(m_sun_direction);
 
-        const glm::vec3 color = evening_tint(m_create_info.time_of_day, m_create_info.evening_sun_pink) * light_transmittance(with_evening_aerosol(m_create_info), lighted);
+        const glm::vec3 color = evening_tint(m_create_info.time_of_day, m_create_info.evening_sun_pink, m_sun_direction) * light_transmittance(with_evening_aerosol(m_create_info), lighted);
 
         const glm::vec3 light_color = horizon_desaturate(color, m_create_info.horizon_light_desaturation, std::min(horizon, 1.0f));
         const float intensity       = m_create_info.sun_illuminance * m_create_info.sun_light_scale * horizon;
@@ -268,7 +274,7 @@ rendering::scene_render::gpu_atmosphere cmp_atmosphere::get_atmosphere()
     result.sun_direction      = m_sun_direction;
     result.sun_illuminance    = m_create_info.sun_illuminance;
     result.sun_angular_radius = m_create_info.sun_angular_radius;
-    result.sun_tint           = evening_tint(m_create_info.time_of_day, m_create_info.evening_halo_pink);
+    result.sun_tint           = evening_tint(m_create_info.time_of_day, m_create_info.evening_halo_pink, m_sun_direction);
 
     result.moon_direction = m_moon_direction;
     result.moon_color     = m_create_info.moon_color;

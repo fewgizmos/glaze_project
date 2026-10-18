@@ -95,7 +95,7 @@ void init_all()
     info.set_layouts        = { m_set_layout };
     info.push_constant_size = sizeof(taa_push);
 
-    m_shader = res::shaders::build("taa", "", "", "sys/taa.comp", {}, info, render_queue::opaque);
+    m_shader = res::shaders::build("taa", "", "", "sys/post/taa.comp", {}, info, render_queue::opaque);
 }
 
 void clean_all()

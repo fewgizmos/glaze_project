@@ -100,6 +100,8 @@ struct mouse
 
 void parse_frame_inputs();
 
+void set_capture(bool mouse, bool keyboard);
+
 bool key_is_pressed(keyboard_input_codes code);
 bool key_is_held(keyboard_input_codes code);
 bool key_is_released(keyboard_input_codes code);

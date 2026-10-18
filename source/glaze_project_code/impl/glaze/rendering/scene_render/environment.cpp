@@ -87,13 +87,13 @@ void create_shaders()
     prefilter_info.set_layouts        = { m_bake_set_layout };
     prefilter_info.push_constant_size = sizeof(prefilter_push);
 
-    m_prefilter_shader = res::shaders::build("ibl_prefilter", "", "", "sys/ibl_prefilter.comp", {}, prefilter_info, render_queue::opaque);
+    m_prefilter_shader = res::shaders::build("ibl_prefilter", "", "", "sys/bake/ibl_prefilter.comp", {}, prefilter_info, render_queue::opaque);
 
     compute_pipeline_create_info irradiance_sh_info;
     irradiance_sh_info.set_layouts        = { m_bake_set_layout };
     irradiance_sh_info.push_constant_size = sizeof(irradiance_sh_push);
 
-    m_irradiance_sh_shader = res::shaders::build("ibl_irradiance_sh", "", "", "sys/ibl_irradiance_sh.comp", {}, irradiance_sh_info, render_queue::opaque);
+    m_irradiance_sh_shader = res::shaders::build("ibl_irradiance_sh", "", "", "sys/bake/ibl_irradiance_sh.comp", {}, irradiance_sh_info, render_queue::opaque);
 }
 
 void create_images()
@@ -174,7 +174,7 @@ void bake_images()
     compute_pipeline_create_info compute_info;
     compute_info.set_layouts = { bake_layout };
 
-    const shader* lut_shader = res::shaders::build("ibl_brdf_lut", "", "", "sys/ibl_brdf_lut.comp", {}, compute_info, render_queue::opaque);
+    const shader* lut_shader = res::shaders::build("ibl_brdf_lut", "", "", "sys/bake/ibl_brdf_lut.comp", {}, compute_info, render_queue::opaque);
 
     vk::commands::immediate_submit([&](VkCommandBuffer cmd) {
         const vkb::DispatchTable& disp = vk::device::get_disp();

@@ -12,12 +12,14 @@
 
 #ifndef NDEBUG
 #include "glp/editor/core/editor.h"
+#include "glp/trainer/ui/ui.h"
 #endif
 
 #include "glp/glaze/scene/scene.h"
 #include "glp/glaze/scene/scene_render_proxy.h"
 
 #include "glp/glaze/rendering/renderer.h"
+#include "glp/glaze/rendering/imgui_render/imgui_render.h"
 
 #include <cstdlib>
 #include <exception>
@@ -89,17 +91,21 @@ void tick_frame()
     platform::app::pump_events();
     platform::wm::pump_events_to_windows();
 
+    rendering::imgui_render::begin_frame();
+
     io::input::parse_frame_inputs();
 
     game::game_management::it::update_frame();
 
 #ifndef NDEBUG
     editor::core::it::frame_update();
+    trainer::ui::it::draw();
 #endif
 
     scene::it::update_entities();
     scene::render_proxy::proxy_visibles();
 
+    rendering::imgui_render::end_frame();
     rendering::it::render_frame();
 
     scene::it::apply_pending_ops();

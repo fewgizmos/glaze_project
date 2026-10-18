@@ -165,8 +165,8 @@ void init_all()
     compute_pipeline_create_info info;
     info.set_layouts = { m_set_layout };
 
-    m_downsample_shader = res::shaders::build("bloom_downsample", "", "", "sys/bloom_downsample.comp", {}, info, render_queue::opaque);
-    m_upsample_shader   = res::shaders::build("bloom_upsample", "", "", "sys/bloom_upsample.comp", {}, info, render_queue::opaque);
+    m_downsample_shader = res::shaders::build("bloom_downsample", "", "", "sys/post/bloom_downsample.comp", {}, info, render_queue::opaque);
+    m_upsample_shader   = res::shaders::build("bloom_upsample", "", "", "sys/post/bloom_upsample.comp", {}, info, render_queue::opaque);
 }
 
 void clean_all()
