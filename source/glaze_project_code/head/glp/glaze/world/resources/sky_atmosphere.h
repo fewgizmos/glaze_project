@@ -43,6 +43,15 @@ struct atmosphere_create_info
 
     float night_ambient_scale   = 1.0f;
     float twilight_desaturation = 0.0f;
+
+    float fog_day_density    = 0.0f;
+    float fog_night_density  = 0.0f;
+    float fog_height_falloff = 0.01f;
+    float fog_base_height    = 0.0f;
+    float fog_anisotropy     = 0.6f;
+    float fog_max_distance   = 30000.0f;
+
+    glm::vec3 fog_color = glm::vec3(1.0f);
     float night_sky_luminance = 0.0002f;
     float star_intensity      = 1.0f;
     float star_twinkle        = 1.0f;
@@ -69,8 +78,8 @@ struct atmosphere_create_info
 
     bool clouds_enabled = true;
 
-    float cloud_bottom    = 6.75f;
-    float cloud_thickness = 10.0f;
+    float cloud_bottom    = 10.125f;
+    float cloud_thickness = 14.0f;
     float cloud_coverage  = 0.5f;
     float cloud_density   = 1.0f;
     float cloud_type      = 0.7f;
@@ -99,6 +108,9 @@ private:
 
     glm::vec3 m_sun_direction  = glm::vec3(0.0f, 1.0f, 0.0f);
     glm::vec3 m_moon_direction = glm::vec3(0.0f, -1.0f, 0.0f);
+
+    glm::vec3 m_sun_light  = glm::vec3(0.0f);
+    glm::vec3 m_moon_light = glm::vec3(0.0f);
 
     glm::mat4 m_celestial_rotation = glm::mat4(1.0f);
 };

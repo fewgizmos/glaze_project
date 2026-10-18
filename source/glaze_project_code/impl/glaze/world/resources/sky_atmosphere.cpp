@@ -238,12 +238,12 @@ void cmp_atmosphere::update()
 
         const glm::vec3 color = evening_tint(m_create_info.time_of_day, m_create_info.evening_sun_pink) * light_transmittance(with_evening_aerosol(m_create_info), lighted);
 
-        orient_light(
-            m_sun,
-            lighted,
-            horizon_desaturate(color, m_create_info.horizon_light_desaturation, std::min(horizon, 1.0f)),
-            m_create_info.sun_illuminance * m_create_info.sun_light_scale * horizon
-        );
+        const glm::vec3 light_color = horizon_desaturate(color, m_create_info.horizon_light_desaturation, std::min(horizon, 1.0f));
+        const float intensity       = m_create_info.sun_illuminance * m_create_info.sun_light_scale * horizon;
+
+        m_sun_light = light_color * intensity;
+
+        orient_light(m_sun, lighted, light_color, intensity);
     }
 
     if (m_moon != nullptr) {
@@ -252,12 +252,12 @@ void cmp_atmosphere::update()
 
         const glm::vec3 color = m_create_info.moon_color * light_transmittance(with_evening_aerosol(m_create_info), lighted);
 
-        orient_light(
-            m_moon,
-            lighted,
-            horizon_desaturate(color, m_create_info.horizon_light_desaturation, std::min(horizon, 1.0f)),
-            m_create_info.moon_illuminance * m_create_info.moon_light_scale * horizon
-        );
+        const glm::vec3 light_color = horizon_desaturate(color, m_create_info.horizon_light_desaturation, std::min(horizon, 1.0f));
+        const float intensity       = m_create_info.moon_illuminance * m_create_info.moon_light_scale * horizon;
+
+        m_moon_light = light_color * intensity;
+
+        orient_light(m_moon, lighted, light_color, intensity);
     }
 }
 
@@ -283,6 +283,17 @@ rendering::scene_render::gpu_atmosphere cmp_atmosphere::get_atmosphere()
 
     result.night_ambient_scale   = m_create_info.night_ambient_scale;
     result.twilight_desaturation = m_create_info.twilight_desaturation;
+
+    result.sun_light  = m_sun_light;
+    result.moon_light = m_moon_light;
+
+    result.fog_day_density    = m_create_info.fog_day_density;
+    result.fog_night_density  = m_create_info.fog_night_density;
+    result.fog_height_falloff = m_create_info.fog_height_falloff;
+    result.fog_base_height    = m_create_info.fog_base_height;
+    result.fog_anisotropy     = m_create_info.fog_anisotropy;
+    result.fog_max_distance   = m_create_info.fog_max_distance;
+    result.fog_color          = m_create_info.fog_color;
     result.night_sky_luminance = m_create_info.night_sky_luminance;
     result.star_intensity      = m_create_info.star_intensity;
     result.star_twinkle        = m_create_info.star_twinkle;

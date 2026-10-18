@@ -35,9 +35,9 @@ struct resolve_push
     float history_weight;
 };
 
-constexpr VkExtent3D SHAPE_NOISE_SIZE  = { 128, 128, 128 };
-constexpr VkExtent3D DETAIL_NOISE_SIZE = { 32, 32, 32 };
-constexpr VkExtent3D WEATHER_MAP_SIZE  = { 512, 512, 1 };
+constexpr VkExtent3D SHAPE_NOISE_SIZE  = { 256, 256, 256 };
+constexpr VkExtent3D DETAIL_NOISE_SIZE = { 64, 64, 64 };
+constexpr VkExtent3D WEATHER_MAP_SIZE  = { 1024, 1024, 1 };
 
 constexpr VkFormat NOISE_FORMAT = VK_FORMAT_R8G8B8A8_UNORM;
 constexpr VkFormat TRACE_FORMAT = VK_FORMAT_R32G32B32A32_SFLOAT;

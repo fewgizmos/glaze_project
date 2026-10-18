@@ -69,6 +69,20 @@ struct atmosphere_params
 
     vec3 sun_tint;
     float twilight_desaturation;
+
+    vec3 fog_sun_illuminance;
+    float fog_density;
+
+    vec3 fog_moon_illuminance;
+    float fog_height_falloff;
+
+    vec3 fog_color;
+    float fog_base_height;
+
+    float fog_anisotropy;
+    float fog_max_distance;
+    float padding1;
+    float padding2;
 };
 
 layout(buffer_reference, std430) readonly buffer atmosphere_buffer

@@ -52,20 +52,24 @@ const glaze::scene::vol::component::light_create_info BLUE_LIGHT = {
 };
 
 const glaze::world::res::atmosphere_create_info SUNSET_ATMOSPHERE = {
-    .time_of_day                = 18.3f,
+    .time_of_day                = 17.7f,
     .sun_light_scale            = 1.275f,
     .horizon_light_fade         = 5.0f,
     .horizon_light_twilight     = 10.0f,
     .horizon_light_desaturation = 0.5f,
     .evening_sun_pink           = 5.0f,
     .evening_halo_pink          = 12.0f,
-    .moon_light_scale           = 1.5f,
+    .moon_light_scale           = 0.525f,
     .moon_overlap_hours         = 1.0f,
+    .moon_flare_multiplier      = 0.0167f,
     .night_ambient_scale        = 1.2f,
     .twilight_desaturation      = 0.75f,
+    .fog_day_density            = 0.0002f,
+    .fog_night_density          = 0.001f,
+    .fog_height_falloff         = 0.005f,
     .evening_aerosol            = 3.0f,
     .ozone_absorption           = glm::vec3(0.000325f, 0.0009405f, 0.0000425f),
-    .cloud_density              = 0.3f
+    .cloud_density              = 0.234f
 };
 
 const glaze::scene::vol::component::post_create_info POST_SETTINGS = {

@@ -110,6 +110,20 @@ struct params_data
 
     glm::vec3 sun_tint;
     float twilight_desaturation;
+
+    glm::vec3 fog_sun_illuminance;
+    float fog_density;
+
+    glm::vec3 fog_moon_illuminance;
+    float fog_height_falloff;
+
+    glm::vec3 fog_color;
+    float fog_base_height;
+
+    float fog_anisotropy;
+    float fog_max_distance;
+    float padding1;
+    float padding2;
 };
 
 struct compute_push
@@ -243,11 +257,14 @@ bool same_medium(const gpu_atmosphere& left, const gpu_atmosphere& right)
         && left.ground_albedo == right.ground_albedo;
 }
 
+float night_factor(const gpu_atmosphere& atmosphere)
+{
+    return 1.0f - glm::smoothstep(NIGHT_AMBIENT_SUN_HEIGHT, DAY_AMBIENT_SUN_HEIGHT, glm::normalize(atmosphere.sun_direction).y);
+}
+
 float night_ambient_scale(const gpu_atmosphere& atmosphere)
 {
-    const float night = 1.0f - glm::smoothstep(NIGHT_AMBIENT_SUN_HEIGHT, DAY_AMBIENT_SUN_HEIGHT, glm::normalize(atmosphere.sun_direction).y);
-
-    return glm::mix(1.0f, atmosphere.night_ambient_scale, night);
+    return glm::mix(1.0f, atmosphere.night_ambient_scale, night_factor(atmosphere));
 }
 
 float twilight_desaturation(const gpu_atmosphere& atmosphere)
@@ -566,6 +583,20 @@ params_data build_params(const gpu_atmosphere& atmosphere)
 
     data.sun_tint              = atmosphere.sun_tint;
     data.twilight_desaturation = twilight_desaturation(atmosphere);
+
+    data.fog_sun_illuminance = atmosphere.sun_light;
+    data.fog_density         = glm::mix(atmosphere.fog_day_density, atmosphere.fog_night_density, night_factor(atmosphere));
+
+    data.fog_moon_illuminance = atmosphere.moon_light;
+    data.fog_height_falloff   = atmosphere.fog_height_falloff;
+
+    data.fog_color       = atmosphere.fog_color;
+    data.fog_base_height = atmosphere.fog_base_height;
+
+    data.fog_anisotropy   = atmosphere.fog_anisotropy;
+    data.fog_max_distance = atmosphere.fog_max_distance;
+    data.padding1         = 0.0f;
+    data.padding2         = 0.0f;
 
     return data;
 }

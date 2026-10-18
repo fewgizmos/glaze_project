@@ -3,6 +3,7 @@
 
 #include "sys/util/scene.glsl"
 #include "sys/util/night_sky.glsl"
+#include "sys/util/height_fog.glsl"
 
 layout(set = 1, binding = 0) uniform sampler2D transmittance_lut;
 layout(set = 1, binding = 2) uniform sampler2DArray sky_view_lut;
@@ -77,5 +78,14 @@ void main()
         luminance = luminance * cloud.a + cloud.rgb / params.cloud_luminance_scale;
     }
 
-    out_color = vec4(min(luminance * params.night_ambient_scale * pc.frame.exposure, vec3(MAX_HDR_VALUE)), 1.0);
+    luminance *= params.night_ambient_scale;
+
+    vec3 fog_direction = normalize(vec3(direction.x, max(direction.y, 0.0), direction.z));
+    vec3 fog_ambient   = pc.frame.environment_sh.coefficients[0].rgb * FOG_SH_BAND0 * pc.frame.environment_intensity;
+
+    vec4 fog = height_fog(params, params.camera_world_position, params.camera_world_position + fog_direction * params.fog_max_distance, fog_ambient);
+
+    luminance = luminance * fog.a + fog.rgb;
+
+    out_color = vec4(min(luminance * pc.frame.exposure, vec3(MAX_HDR_VALUE)), 1.0);
 }

@@ -25,6 +25,8 @@ const float CAS_PEAK_SOFT  = 8.0;
 const float CAS_PEAK_SHARP = 5.0;
 const float CAS_EPSILON    = 0.0001;
 
+const float DITHER_LEVELS = 255.0;
+
 const float NIGHT_EPSILON          = 0.000000001;
 const float SCOTOPIC_LOG_LUMINANCE = -4.0;
 const float MESOPIC_LOG_LUMINANCE  = -3.0;
@@ -134,7 +136,26 @@ vec3 contrast_adaptive_sharpen(ivec2 coord)
     return clamp((up * weight + left * weight + right * weight + down * weight + center) / (1.0 + 4.0 * weight), 0.0, 1.0);
 }
 
+vec3 linear_to_srgb(vec3 color)
+{
+    return mix(color * 12.92, 1.055 * pow(color, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), color));
+}
+
+vec3 srgb_to_linear(vec3 color)
+{
+    return mix(color / 12.92, pow((color + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), color));
+}
+
+float dither_noise(vec2 pixel)
+{
+    return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
+}
+
 void main()
 {
-    out_color = vec4(contrast_adaptive_sharpen(ivec2(gl_FragCoord.xy)), 1.0);
+    vec3 color = linear_to_srgb(contrast_adaptive_sharpen(ivec2(gl_FragCoord.xy)));
+
+    color += (dither_noise(gl_FragCoord.xy) - 0.5) / DITHER_LEVELS;
+
+    out_color = vec4(srgb_to_linear(clamp(color, 0.0, 1.0)), 1.0);
 }

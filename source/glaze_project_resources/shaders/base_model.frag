@@ -2,6 +2,7 @@
 #extension GL_EXT_buffer_reference : require
 
 #include "sys/util/scene.glsl"
+#include "sys/util/height_fog.glsl"
 
 layout(location = 0) in vec3 frag_color;
 layout(location = 1) in vec3 frag_normal;
@@ -585,6 +586,12 @@ void main()
         vec3 moon_aerial = texture(env_moon_aerial_perspective, coord).rgb;
 
         color = color * aerial.a + aerial.rgb * atmosphere.sun_illuminance + moon_aerial * atmosphere.moon_color * atmosphere.moon_illuminance;
+
+        vec3 fog_ambient = pc.frame.environment_sh.coefficients[0].rgb * FOG_SH_BAND0 * pc.frame.environment_intensity;
+
+        vec4 fog = height_fog(atmosphere, pc.frame.camera_pos, frag_world_pos, fog_ambient);
+
+        color = color * fog.a + fog.rgb;
     }
 
     out_color = vec4(min(color * pc.frame.exposure, vec3(MAX_HDR_VALUE)), 1.0);
