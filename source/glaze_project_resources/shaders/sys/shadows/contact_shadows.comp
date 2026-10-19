@@ -20,6 +20,8 @@ const uint MIN_CONTACT_STEPS = 4u;
 const float THICKNESS_BASE     = 0.03;
 const float THICKNESS_DISTANCE = 0.004;
 const float BIAS_DISTANCE      = 0.0005;
+const float SLOPE_BIAS_SCALE   = 1.5;
+const float MIN_SCREEN_TRAVEL  = 1.5;
 
 const vec3  NOISE_MAGIC        = vec3(0.06711056, 0.00583715, 52.9829189);
 const float NOISE_FRAME_OFFSET = 5.588238;
@@ -42,6 +44,33 @@ vec3 world_from_depth(vec2 uv, float depth)
 float view_distance(vec3 world_pos)
 {
     return -(pc.frame.view * vec4(world_pos, 1.0)).z;
+}
+
+
+float linear_depth_at(ivec2 pixel, ivec2 size)
+{
+    pixel = clamp(pixel, ivec2(0), size - 1);
+
+    float d = texelFetch(scene_depth, pixel, 0).r;
+
+    if (d <= 0.0) {
+        return -1.0;
+    }
+
+    return view_distance(world_from_depth((vec2(pixel) + 0.5) / vec2(size), d));
+}
+
+float depth_slope(ivec2 id, ivec2 size, float center)
+{
+    float l = linear_depth_at(id + ivec2(-1, 0), size);
+    float r = linear_depth_at(id + ivec2( 1, 0), size);
+    float d = linear_depth_at(id + ivec2( 0,-1), size);
+    float u = linear_depth_at(id + ivec2( 0, 1), size);
+
+    float dx = min(l < 0.0 ? 1e6 : abs(center - l), r < 0.0 ? 1e6 : abs(r - center));
+    float dy = min(d < 0.0 ? 1e6 : abs(center - d), u < 0.0 ? 1e6 : abs(u - center));
+
+    return min(max(dx, dy), 1e5) < 1e5 ? max(dx, dy) : 0.0;
 }
 
 void main()
@@ -73,7 +102,23 @@ void main()
     float origin_distance = view_distance(world_pos);
 
     float thickness = THICKNESS_BASE + origin_distance * THICKNESS_DISTANCE;
-    float bias      = origin_distance * BIAS_DISTANCE;
+    float slope     = depth_slope(id, size, origin_distance);
+    float bias      = origin_distance * BIAS_DISTANCE + slope * SLOPE_BIAS_SCALE;
+
+    thickness += slope * SLOPE_BIAS_SCALE;
+
+    {
+        vec4 end_clip = pc.frame.view_proj * vec4(world_pos + ray_step * float(steps), 1.0);
+
+        if (end_clip.w > 0.0) {
+            vec2 end_px = (end_clip.xy / end_clip.w * 0.5 + 0.5) * vec2(size);
+
+            if (length(end_px - (vec2(id) + 0.5)) < MIN_SCREEN_TRAVEL) {
+                imageStore(contact_target, id, vec4(1.0));
+                return;
+            }
+        }
+    }
 
     float occlusion = 0.0;
 
@@ -92,13 +137,21 @@ void main()
             break;
         }
 
-        float scene = textureLod(scene_depth, uv, 0.0).r;
+        ivec2 texel = min(ivec2(uv * vec2(size)), size - 1);
+
+        if (texel == id) {
+            continue;
+        }
+
+        float scene = texelFetch(scene_depth, texel, 0).r;
 
         if (scene <= 0.0) {
             continue;
         }
 
-        float delta = view_distance(position) - view_distance(world_from_depth(uv, scene));
+        vec2 texel_uv = (vec2(texel) + 0.5) / vec2(size);
+
+        float delta = view_distance(position) - view_distance(world_from_depth(texel_uv, scene));
 
         if (delta > bias && delta < thickness) {
             occlusion = 1.0 - float(i) / float(steps);

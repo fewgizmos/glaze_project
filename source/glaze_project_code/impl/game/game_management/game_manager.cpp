@@ -38,21 +38,21 @@ const glm::vec3 FOX_SCALE = glm::vec3(0.02f);
 const glaze::world::res::textured_plane_create_info FOREST_FLOOR = {
     .position  = glm::vec3(20.0f, 0.1f, 0.0f),
     .rotation  = 0.0f,
-    .size_x    = 20.0f,
-    .size_z    = 20.0f,
+    .size_x    = 200.0f,
+    .size_z    = 200.0f,
     .pack_path = "source/glaze_project_resources/texture_packs/Clover_Patches_on_Grass"
 };
 
 const glaze::world::res::textured_plane_create_info PLAIN_FLOOR = {
-    .position  = glm::vec3(-20.0f, 0.1f, 0.0f),
+    .position  = glm::vec3(-20.0f, 0.25f, 0.0f),
     .rotation  = 0.0f,
     .size_x    = 20.0f,
     .size_z    = 28.0f,
     .pack_path = ""
 };
 
-const glaze::world::res::atmosphere_create_info SUNSET_ATMOSPHERE = {
-    .time_of_day                = 9.7f,
+const glaze::world::res::atmosphere_create_info ATMOSPHERE = {
+    .time_of_day                = 12.3f,
     .sun_light_scale            = 1.81f,
     .horizon_light_fade         = 5.0f,
     .horizon_light_twilight     = 10.0f,
@@ -117,13 +117,13 @@ void init_session()
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(19.0f, 0.1f, 0.0f), glm::vec3(0.0f, 20.0f, 0.0f), FOX_SCALE, FOX_MODEL_PATH);
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(21.0f, 0.1f, 0.0f), glm::vec3(0.0f, -30.0f, 0.0f), FOX_SCALE, FOX_MODEL_PATH);
 
-        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(6.0f, 0.0f, 6.0f), glm::vec3(0), glm::vec3(1.5f), TREE_MODEL_PATH);
+        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(6.0f, 0.1f, 6.0f), glm::vec3(0), glm::vec3(1.5f), TREE_MODEL_PATH);
         glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(0.0f, 1.0f, 5.0f), glm::vec3(77.0f, 10.0f, 0.0f), glm::vec3(4.0f), GOLD_LOCK_MODEL_PATH);
-        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-8.0f, 0.0f, -6.0f), glm::vec3(0), glm::vec3(3.4f), WOODEN_CRATE_MODEL_PATH);
-        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-5.0f, 0.0f, -6.0f), glm::vec3(0), glm::vec3(3.4f), PCB_MODEL_PATH);
-        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-6.0f, 0.0f, 6.0f), glm::vec3(0), glm::vec3(3.4f), SERVICE_PISTOL_MODEL_PATH);
+        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-8.0f, 0.11f, -6.0f), glm::vec3(0), glm::vec3(3.4f), WOODEN_CRATE_MODEL_PATH);
+        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-5.0f, 0.2f, -6.0f), glm::vec3(0), glm::vec3(3.4f), PCB_MODEL_PATH);
+        glaze::scene::it::create_entity<glaze::scene::obj::static_object_model_prim>(glm::vec3(-6.0f, 0.3f, 6.0f), glm::vec3(0), glm::vec3(3.4f), SERVICE_PISTOL_MODEL_PATH);
 
-        glaze::scene::it::create_entity<glaze::world::res::sky_atmosphere>(SUNSET_ATMOSPHERE);
+        glaze::scene::it::create_entity<glaze::world::res::sky_atmosphere>(ATMOSPHERE);
 
         glaze::scene::it::create_entity<glaze::world::res::textured_plane>(FOREST_FLOOR);
         glaze::scene::it::create_entity<glaze::world::res::textured_plane>(PLAIN_FLOOR);

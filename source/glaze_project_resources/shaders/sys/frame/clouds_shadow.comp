@@ -20,7 +20,10 @@ layout(push_constant) uniform constants
 #include "head/clouds.glsl"
 #include "head/cloud_shadow.glsl"
 
-const uint  SHADOW_STEPS        = 24u;
+const uint  SHADOW_STEPS        = 64u;
+const float SHADOW_SOFTNESS     = 0.6;
+const float SHADOW_MAX_DARKNESS = 0.82;
+const float SHADOW_MIN_LIGHT    = 0.198;
 const float METERS_TO_KILOMETERS = 0.001;
 const float MIN_LIGHT_HEIGHT    = 0.01;
 
@@ -71,5 +74,11 @@ void main()
         optical_depth += cloud_density(params, sample_position, height_fraction, true) * dt;
     }
 
-    imageStore(shadow_target, id, vec4(exp(-optical_depth * CLOUD_EXTINCTION)));
+    float shadow = exp(-optical_depth * CLOUD_EXTINCTION);
+
+    shadow = mix(shadow, 1.0, SHADOW_SOFTNESS);
+
+    shadow = shadow * SHADOW_MAX_DARKNESS + SHADOW_MIN_LIGHT;
+
+    imageStore(shadow_target, id, vec4(shadow));
 }
