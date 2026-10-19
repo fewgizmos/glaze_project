@@ -29,7 +29,7 @@ const uint ILLUMINANCE_SLOT = BIN_COUNT;
 
 const float MIN_LUMINANCE = 0.000001;
 
-const int SAMPLE_STRIDE = 2;
+const int SAMPLE_STRIDE = 4;
 
 const float CENTER_SIGMA = 0.25;
 

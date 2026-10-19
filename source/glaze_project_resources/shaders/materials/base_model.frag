@@ -660,6 +660,10 @@ float directional_shadow(vec3 to_light, surface_data surface)
         return 1.0;
     }
 
+    if (blocker_count >= float(samples)) {
+        return 0.0;
+    }
+
     float penumbra = (receiver - blocker_sum / blocker_count) * params.tan_angular_radius * params.softness;
     float kernel   = clamp(penumbra, texel, radius);
 

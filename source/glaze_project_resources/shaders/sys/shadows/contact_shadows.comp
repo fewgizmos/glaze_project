@@ -16,6 +16,7 @@ layout(push_constant) uniform constants
 
 const uint CONTACT_STEPS     = 8u;
 const uint MIN_CONTACT_STEPS = 4u;
+const uint MIN_SCREEN_STEPS  = 2u;
 
 const float THICKNESS_BASE     = 0.03;
 const float THICKNESS_DISTANCE = 0.004;
@@ -45,7 +46,6 @@ float view_distance(vec3 world_pos)
 {
     return -(pc.frame.view * vec4(world_pos, 1.0)).z;
 }
-
 
 float linear_depth_at(ivec2 pixel, ivec2 size)
 {
@@ -93,9 +93,32 @@ void main()
 
     vec3 world_pos = world_from_depth((vec2(id) + 0.5) / vec2(size), depth);
 
-    uint steps = max(MIN_CONTACT_STEPS, uint(float(CONTACT_STEPS) * pc.frame.quality + 0.5));
+    uint max_steps = max(MIN_CONTACT_STEPS, uint(float(CONTACT_STEPS) * pc.frame.quality + 0.5));
 
-    vec3 ray_step = -params.light_z.xyz * params.contact_length / float(steps);
+    vec3 full_ray = -params.light_z.xyz * params.contact_length;
+
+    float travel_px = 0.0;
+
+    {
+        vec4 end_clip = pc.frame.view_proj * vec4(world_pos + full_ray, 1.0);
+
+        if (end_clip.w > 0.0) {
+            vec2 end_px = (end_clip.xy / end_clip.w * 0.5 + 0.5) * vec2(size);
+
+            travel_px = length(end_px - (vec2(id) + 0.5));
+        } else {
+            travel_px = float(max_steps);
+        }
+    }
+
+    if (travel_px < MIN_SCREEN_TRAVEL) {
+        imageStore(contact_target, id, vec4(1.0));
+        return;
+    }
+
+    uint steps = clamp(uint(ceil(travel_px)), MIN_SCREEN_STEPS, max_steps);
+
+    vec3 ray_step = full_ray / float(steps);
 
     vec3 position = world_pos + ray_step * interleaved_noise(vec2(id), pc.frame.frame_index);
 
@@ -106,19 +129,6 @@ void main()
     float bias      = origin_distance * BIAS_DISTANCE + slope * SLOPE_BIAS_SCALE;
 
     thickness += slope * SLOPE_BIAS_SCALE;
-
-    {
-        vec4 end_clip = pc.frame.view_proj * vec4(world_pos + ray_step * float(steps), 1.0);
-
-        if (end_clip.w > 0.0) {
-            vec2 end_px = (end_clip.xy / end_clip.w * 0.5 + 0.5) * vec2(size);
-
-            if (length(end_px - (vec2(id) + 0.5)) < MIN_SCREEN_TRAVEL) {
-                imageStore(contact_target, id, vec4(1.0));
-                return;
-            }
-        }
-    }
 
     float occlusion = 0.0;
 
