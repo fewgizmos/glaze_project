@@ -48,6 +48,7 @@ const uint  SHADOW_SAMPLES           = 12u;
 const uint  MIN_SHADOW_SAMPLES       = 6u;
 const uint  SHADOW_FALLBACK_LEVELS   = 3u;
 const float SHADOW_DEPTH_BIAS_TEXELS = 1.0;
+const float SHADOW_DEPTH_ULPS        = 4.0;
 
 const float GOLDEN_ANGLE       = 2.39996323;
 const vec3  NOISE_MAGIC        = vec3(0.06711056, 0.00583715, 52.9829189);
@@ -589,7 +590,14 @@ vec2 vogel_disk(uint index, uint count, float rotation)
     return radius * vec2(cos(angle), sin(angle));
 }
 
-bool shadow_depth(vsm_params_buffer params, uint level, vec2 light_xy, out float depth)
+float shadow_bias_texel(vsm_params_buffer params, uint level)
+{
+    float quantum = SHADOW_DEPTH_ULPS * exp2(-24.0) / params.levels[level].depth_scale;
+
+    return max(vsm_texel_size(params, level), quantum);
+}
+
+bool shadow_depth(vsm_params_buffer params, uint level, vec2 light_xy, float base_bias, out float depth)
 {
     for (uint i = 0u; i < SHADOW_FALLBACK_LEVELS && level + i < VSM_LEVELS; i++) {
         ivec2 texel;
@@ -597,6 +605,11 @@ bool shadow_depth(vsm_params_buffer params, uint level, vec2 light_xy, out float
 
         if (vsm_find_texel(params, level + i, light_xy, texel, state)) {
             depth = vsm_depth_to_light(params, level + i, texelFetch(scene_shadow_pool, texel, 0).r);
+
+            if (i > 0u) {
+                depth += max(0.0, shadow_bias_texel(params, level + i) * SHADOW_DEPTH_BIAS_TEXELS - base_bias);
+            }
+
             return true;
         }
     }
@@ -612,6 +625,7 @@ float directional_shadow(vec3 to_light, surface_data surface)
 
     uint  level = vsm_select_level(params, distance, vsm_light_space(params, frag_world_pos).xy);
     float texel = vsm_texel_size(params, level);
+    float bias_texel = shadow_bias_texel(params, level);
 
     vec3 offset_normal = dot(surface.geometric_normal, to_light) >= 0.0 ? surface.geometric_normal : -surface.geometric_normal;
 
@@ -621,9 +635,10 @@ float directional_shadow(vec3 to_light, surface_data surface)
         ? shading_pos + to_light * (dot(frag_world_pos - shading_pos, offset_normal) / light_along_normal)
         : frag_world_pos;
 
-    vec3 light_pos = vsm_light_space(params, receiver_pos + offset_normal * texel * params.normal_bias);
+    vec3 light_pos = vsm_light_space(params, receiver_pos + offset_normal * bias_texel * params.normal_bias);
 
-    float receiver = light_pos.z - texel * SHADOW_DEPTH_BIAS_TEXELS;
+    float base_bias = bias_texel * SHADOW_DEPTH_BIAS_TEXELS;
+    float receiver  = light_pos.z - base_bias;
     float radius   = vsm_search_radius(params, level);
     float rotation = interleaved_noise(gl_FragCoord.xy, pc.frame.frame_index) * 2.0 * PI;
 
@@ -635,7 +650,7 @@ float directional_shadow(vec3 to_light, surface_data surface)
     for (uint i = 0u; i < samples; i++) {
         float depth;
 
-        if (shadow_depth(params, level, light_pos.xy + vogel_disk(i, samples, rotation) * radius, depth) && depth < receiver) {
+        if (shadow_depth(params, level, light_pos.xy + vogel_disk(i, samples, rotation) * radius, base_bias, depth) && depth < receiver) {
             blocker_sum   += depth;
             blocker_count += 1.0;
         }
@@ -653,7 +668,7 @@ float directional_shadow(vec3 to_light, surface_data surface)
     for (uint i = 0u; i < samples; i++) {
         float depth;
 
-        if (!shadow_depth(params, level, light_pos.xy + vogel_disk(i, samples, rotation + PI) * kernel, depth) || depth >= receiver) {
+        if (!shadow_depth(params, level, light_pos.xy + vogel_disk(i, samples, rotation + PI) * kernel, base_bias, depth) || depth >= receiver) {
             lit += 1.0;
         }
     }
