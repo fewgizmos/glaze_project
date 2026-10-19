@@ -39,11 +39,13 @@ bool vsm_inside_window(vsm_params_buffer params, uint level, vec2 light_xy)
     return all(greaterThanEqual(relative, ivec2(VSM_WINDOW_MARGIN))) && all(lessThan(relative, ivec2(int(VSM_LEVEL_PAGES) - VSM_WINDOW_MARGIN)));
 }
 
+const float VSM_MIN_LEVEL = 4.0;
+
 uint vsm_select_level(vsm_params_buffer params, float distance, vec2 light_xy)
 {
     float footprint = max(distance * params.pixel_angle, 0.000001);
 
-    float level = floor(log2(footprint / params.texel0) + params.lod_bias);
+    float level = max(floor(log2(footprint / params.texel0) + params.lod_bias), VSM_MIN_LEVEL);
 
     uint result = uint(clamp(level, 0.0, float(VSM_LEVELS - 1u)));
 
