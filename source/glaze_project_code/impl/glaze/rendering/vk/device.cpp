@@ -24,6 +24,8 @@ vkb::DispatchTable m_disp;
 
 queue_set m_queues;
 
+bool m_has_memory_budget = false;
+
 }
 
 void create_surface(const vkb::Instance& instance)
@@ -83,6 +85,8 @@ void create_device(const vkb::Instance& instance)
 
     m_physical = phys_device_ret.value();
 
+    m_has_memory_budget = m_physical.enable_extension_if_present(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+
     vkb::DeviceBuilder device_builder(m_physical);
 
     auto device_ret = device_builder.build();
@@ -120,5 +124,7 @@ const vkb::DispatchTable& get_disp()      { return m_disp; }
 VkSurfaceKHR get_surface() { return m_surface; }
 
 const queue_set& get_queues() { return m_queues; }
+
+bool has_memory_budget() { return m_has_memory_budget; }
 
 }

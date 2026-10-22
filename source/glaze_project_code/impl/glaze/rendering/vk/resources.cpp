@@ -239,6 +239,10 @@ void create_allocator(const vkb::Instance& instance)
 
     VmaAllocatorCreateInfo create_info = {};
     create_info.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+
+    if (device::has_memory_budget()) {
+        create_info.flags |= VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
+    }
     create_info.vulkanApiVersion = VK_API_VERSION_1_3;
     create_info.instance = instance.instance;
     create_info.physicalDevice = device::get_physical().physical_device;

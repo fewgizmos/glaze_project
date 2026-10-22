@@ -41,6 +41,8 @@ namespace
 
 vkb::Instance m_vk_instance;
 
+uint32_t m_frame_counter = 0;
+
 void create_instance()
 {
     Uint32 sdl_ext_count = 0;
@@ -380,6 +382,8 @@ void draw_frame()
     GLAZE_ASSERT(result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR, "failed to acquire swapchain image");
 
     disp.resetFences(1, &frame.fence_inflight);
+
+    vmaSetCurrentFrameIndex(vk::resources::get_allocator(), m_frame_counter++);
 
     swapchain_image_data& image_data = vk::frame::get_current_image();
 

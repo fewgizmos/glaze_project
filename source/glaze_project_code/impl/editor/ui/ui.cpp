@@ -4,6 +4,7 @@
 
 #include "glp/glaze/rendering/scene_render/shadows.h"
 #include "glp/glaze/rendering/scene_render/resources/shaders.h"
+#include "glp/glaze/rendering/vk/device.h"
 #include "glp/glaze/rendering/vk/profiler.h"
 #include "glp/glaze/rendering/vk/resources.h"
 
@@ -83,6 +84,19 @@ void draw_passes()
     ImGui::EndTable();
 }
 
+void draw_memory_bar(const char* label, VkDeviceSize heap_size, VkDeviceSize usage, VkDeviceSize budget)
+{
+    ImGui::Text("%s  %.0f MB", label, static_cast<double>(heap_size) * BYTES_TO_MEGABYTES);
+
+    const double used      = static_cast<double>(usage) * BYTES_TO_MEGABYTES;
+    const double available = static_cast<double>(budget) * BYTES_TO_MEGABYTES;
+
+    char overlay[64];
+    std::snprintf(overlay, sizeof(overlay), "%.0f / %.0f MB", used, available);
+
+    ImGui::ProgressBar(available > 0.0 ? static_cast<float>(used / available) : 0.0f, ImVec2(-1.0f, 0.0f), overlay);
+}
+
 void draw_video_memory()
 {
     const VmaAllocator allocator = glaze::rendering::vk::resources::get_allocator();
@@ -95,30 +109,66 @@ void draw_video_memory()
 
     vmaGetHeapBudgets(allocator, budgets.data());
 
+    const bool is_integrated = glaze::rendering::vk::device::get_physical().properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+
+    uint32_t main_heap = VK_MAX_MEMORY_HEAPS;
+
     for (uint32_t heap = 0; heap < properties->memoryHeapCount; heap++) {
         if ((properties->memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) == 0) {
             continue;
         }
 
-        bool host_visible = false;
+        if (main_heap == VK_MAX_MEMORY_HEAPS || properties->memoryHeaps[heap].size > properties->memoryHeaps[main_heap].size) {
+            main_heap = heap;
+        }
+    }
 
-        for (uint32_t type = 0; type < properties->memoryTypeCount; type++) {
-            if (properties->memoryTypes[type].heapIndex == heap && (properties->memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0) {
-                host_visible = true;
-            }
+    if (main_heap == VK_MAX_MEMORY_HEAPS) {
+        return;
+    }
+
+    const VkMemoryPropertyFlags cpu_visible_flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+
+    bool main_heap_cpu_visible = false;
+
+    VkDeviceSize main_heap_cpu_visible_bytes = 0;
+
+    VmaTotalStatistics statistics = {};
+
+    vmaCalculateStatistics(allocator, &statistics);
+
+    for (uint32_t type = 0; type < properties->memoryTypeCount; type++) {
+        if (properties->memoryTypes[type].heapIndex != main_heap || (properties->memoryTypes[type].propertyFlags & cpu_visible_flags) != cpu_visible_flags) {
+            continue;
         }
 
-        const double heap_size = static_cast<double>(properties->memoryHeaps[heap].size) * BYTES_TO_MEGABYTES;
+        main_heap_cpu_visible = true;
 
-        ImGui::Text("%s  %.0f MB", host_visible ? "VRAM (CPU-visible)" : "VRAM", heap_size);
+        main_heap_cpu_visible_bytes += statistics.memoryType[type].statistics.blockBytes;
+    }
 
-        const double used      = static_cast<double>(budgets[heap].usage) * BYTES_TO_MEGABYTES;
-        const double available = static_cast<double>(budgets[heap].budget) * BYTES_TO_MEGABYTES;
+    draw_memory_bar(
+        is_integrated ? "VRAM (shared)" : "VRAM",
+        properties->memoryHeaps[main_heap].size,
+        budgets[main_heap].usage,
+        budgets[main_heap].budget
+    );
 
-        char overlay[64];
-        std::snprintf(overlay, sizeof(overlay), "%.0f / %.0f MB", used, available);
+    if (main_heap_cpu_visible) {
+        draw_memory_bar(
+            is_integrated ? "CPU-visible (shared)" : "CPU-visible (ReBAR)",
+            properties->memoryHeaps[main_heap].size,
+            main_heap_cpu_visible_bytes,
+            budgets[main_heap].budget
+        );
+    }
 
-        ImGui::ProgressBar(available > 0.0 ? static_cast<float>(used / available) : 0.0f, ImVec2(-1.0f, 0.0f), overlay);
+    for (uint32_t heap = 0; heap < properties->memoryHeapCount; heap++) {
+        if (heap == main_heap || (properties->memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) == 0) {
+            continue;
+        }
+
+        draw_memory_bar("CPU-visible", properties->memoryHeaps[heap].size, budgets[heap].usage, budgets[heap].budget);
     }
 }
 

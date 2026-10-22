@@ -35,4 +35,6 @@ VkSurfaceKHR get_surface();
 
 const queue_set& get_queues();
 
+bool has_memory_budget();
+
 }
