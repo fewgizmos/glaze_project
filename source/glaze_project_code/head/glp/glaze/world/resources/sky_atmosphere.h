@@ -7,6 +7,7 @@
 #include "glp/glaze/rendering/scene_render/resources/gpu_atmosphere.h"
 
 #include <glm/mat4x4.hpp>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 namespace glaze::world::res
@@ -115,6 +116,8 @@ private:
     glm::vec3 m_moon_light = glm::vec3(0.0f);
 
     glm::mat4 m_celestial_rotation = glm::mat4(1.0f);
+
+    glm::vec2 m_cloud_offset = glm::vec2(0.0f);
 };
 
 class sky_atmosphere : public scene::scene_entity

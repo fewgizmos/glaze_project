@@ -29,6 +29,7 @@
 #include <glm/geometric.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/trigonometric.hpp>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 #include <algorithm>
@@ -122,8 +123,7 @@ struct params_data
 
     float fog_anisotropy;
     float fog_max_distance;
-    float padding1;
-    float padding2;
+    glm::vec2 cloud_offset;
 };
 
 struct compute_push
@@ -611,8 +611,7 @@ params_data build_params(const gpu_atmosphere& atmosphere)
 
     data.fog_anisotropy   = atmosphere.fog_anisotropy;
     data.fog_max_distance = atmosphere.fog_max_distance;
-    data.padding1         = 0.0f;
-    data.padding2         = 0.0f;
+    data.cloud_offset     = atmosphere.cloud_offset;
 
     return data;
 }

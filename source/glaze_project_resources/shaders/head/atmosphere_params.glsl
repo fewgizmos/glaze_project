@@ -81,8 +81,7 @@ struct atmosphere_params
 
     float fog_anisotropy;
     float fog_max_distance;
-    float padding1;
-    float padding2;
+    vec2 cloud_offset;
 };
 
 layout(buffer_reference, std430) readonly buffer atmosphere_buffer

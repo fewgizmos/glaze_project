@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <random>
 
 namespace glaze::world::res
 {
@@ -38,6 +39,8 @@ constexpr float PLANET_SURFACE_OFFSET = 0.001f;
 constexpr int TRANSMITTANCE_SAMPLES = 40;
 
 constexpr float MOON_LIGHT_ANGULAR_RADIUS = 0.26f;
+
+constexpr float CLOUD_OFFSET_RANGE = 1000.0f;
 
 const glm::vec3 LUMINANCE_WEIGHTS = glm::vec3(0.2126f, 0.7152f, 0.0722f);
 
@@ -225,6 +228,18 @@ atmosphere_create_info with_evening_aerosol(const atmosphere_create_info& info)
     return result;
 }
 
+glm::vec2 random_cloud_offset()
+{
+    std::random_device device;
+    std::mt19937 generator(device());
+    std::uniform_real_distribution<float> distribution(0.0f, CLOUD_OFFSET_RANGE);
+
+    const float x = distribution(generator);
+    const float y = distribution(generator);
+
+    return glm::vec2(x, y);
+}
+
 glm::mat4 celestial_rotation(float time_of_day, float max_elevation)
 {
     const float latitude = glm::radians(90.0f - max_elevation);
@@ -257,7 +272,7 @@ void orient_light(scene::vol::component::light* light, glm::vec3 direction, glm:
 }
 
 cmp_atmosphere::cmp_atmosphere(const atmosphere_create_info& create_info, scene::vol::component::light* sun, scene::vol::component::light* moon)
-    : m_create_info(create_info), m_sun(sun), m_moon(moon)
+    : m_create_info(create_info), m_sun(sun), m_moon(moon), m_cloud_offset(random_cloud_offset())
 {
     set_flag(scene::vol::component_flags::atmosphere);
 
@@ -375,6 +390,8 @@ rendering::scene_render::gpu_atmosphere cmp_atmosphere::get_atmosphere()
 
     result.cloud_multi_scattering = m_create_info.cloud_multi_scattering;
     result.cloud_powder           = m_create_info.cloud_powder;
+
+    result.cloud_offset = m_cloud_offset;
 
     return result;
 }

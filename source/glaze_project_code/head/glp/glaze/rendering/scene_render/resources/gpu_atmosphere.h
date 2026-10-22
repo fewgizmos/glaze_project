@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/mat4x4.hpp>
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 namespace glaze::rendering::scene_render
@@ -78,6 +79,8 @@ struct gpu_atmosphere
 
     float cloud_multi_scattering = 0.7f;
     float cloud_powder           = 0.25f;
+
+    glm::vec2 cloud_offset = glm::vec2(0.0f);
 };
 
 }

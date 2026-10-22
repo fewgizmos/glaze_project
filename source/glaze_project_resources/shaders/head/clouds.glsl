@@ -36,7 +36,9 @@ float cloud_base(atmosphere_params params, vec3 position, float height_fraction,
         return 0.0;
     }
 
-    vec3 weather = textureLod(weather_map, position.xz * WEATHER_FREQUENCY, 0.0).rgb;
+    vec2 field_position = position.xz + params.cloud_offset;
+
+    vec3 weather = textureLod(weather_map, field_position * WEATHER_FREQUENCY, 0.0).rgb;
 
     float coverage = clamp(remap(weather.r, 1.0 - params.cloud_coverage, 1.0, 0.0, 1.0), 0.0, 1.0);
     float type     = clamp(params.cloud_type + (weather.g - 0.5) * TYPE_VARIATION, 0.0, 1.0);
@@ -45,7 +47,7 @@ float cloud_base(atmosphere_params params, vec3 position, float height_fraction,
         return 0.0;
     }
 
-    sample_position = vec3(position.x, length(position) - params.bottom_radius, position.z);
+    sample_position = vec3(field_position.x, length(position) - params.bottom_radius, field_position.y);
 
     vec4 shape = textureLod(shape_noise, sample_position * SHAPE_FREQUENCY, 0.0);
 
