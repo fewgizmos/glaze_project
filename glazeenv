@@ -1,2 +1,2 @@
 export glaze_build_id="dev"
-export glaze_bin_name="glazeproject"
+export glaze_bin_name="glazebin"

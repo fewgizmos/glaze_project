@@ -57,7 +57,7 @@ cmake --build .cmake_build/$build_type
 
 out_dir="build/$glaze_build_id/linux/$build_type"
 mkdir -p "$out_dir"
-cp .cmake_build/$build_type/bin/glaze_exec "$out_dir/$glaze_bin_name"
+cp .cmake_build/$build_type/bin/glaze_executable "$out_dir/$glaze_bin_name"
 
 echo "executable: $out_dir/$glaze_bin_name"
 

@@ -376,7 +376,7 @@ void handle_scene_set()
 void update_quality()
 {
     const float budget = frame_pipe::get_post().gpu_budget_fraction * utilities::core::timer::target_frame_ms();
-    const float gpu_ms = vk::profiler::get_timings().total_milliseconds;
+    const float gpu_ms = vk::profiler::get_timings().total_ms;
 
     if (gpu_ms > budget) {
         m_quality -= QUALITY_STEP_DOWN;

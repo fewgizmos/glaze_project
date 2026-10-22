@@ -9,7 +9,7 @@
 #include "glp/glaze/rendering/scene_render/resources/materials.h"
 #include "glp/glaze/rendering/scene_render/resources/meshes.h"
 
-namespace editor::scene
+namespace trainer::scene
 {
 
 class cmp_debug_grid : public glaze::scene::vol::volume_component

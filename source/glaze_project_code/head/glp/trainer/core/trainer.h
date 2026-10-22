@@ -2,7 +2,7 @@
 
 #ifndef NDEBUG
 
-namespace editor::core::it
+namespace trainer::core::it
 {
 
 void startup();

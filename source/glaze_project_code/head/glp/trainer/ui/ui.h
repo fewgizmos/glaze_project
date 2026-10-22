@@ -5,6 +5,8 @@
 namespace trainer::ui::it
 {
 
+void cleanup();
+
 void draw();
 
 }

@@ -18,7 +18,7 @@ namespace
 {
 
 constexpr float AVERAGE_INTERVAL   = 2.0f;
-constexpr double NANOSECONDS_TO_MS = 0.000001;
+constexpr double NS_TO_MS = 0.000001;
 
 VkQueryPool m_pools[MAX_FRAMES_IN_FLIGHT] = {};
 
@@ -62,11 +62,11 @@ void collect(uint32_t frame)
     const double period = device::get_physical().properties.limits.timestampPeriod;
 
     for (uint32_t i = 1; i < count; i++) {
-        m_totals[i]      += static_cast<double>(stamps[i] - stamps[i - 1]) * period * NANOSECONDS_TO_MS;
+        m_totals[i]      += static_cast<double>(stamps[i] - stamps[i - 1]) * period * NS_TO_MS;
         m_total_names[i]  = m_names[frame][i];
     }
 
-    m_totals[0] += static_cast<double>(stamps[count - 1] - stamps[0]) * period * NANOSECONDS_TO_MS;
+    m_totals[0] += static_cast<double>(stamps[count - 1] - stamps[0]) * period * NS_TO_MS;
 
     m_total_count = count;
     m_total_frames++;
@@ -82,11 +82,11 @@ void average()
 
     for (uint32_t i = 1; i < m_total_count; i++) {
         m_timings.names[m_timings.count]        = m_total_names[i];
-        m_timings.milliseconds[m_timings.count] = static_cast<float>(m_totals[i] / m_total_frames);
+        m_timings.ms[m_timings.count] = static_cast<float>(m_totals[i] / m_total_frames);
         m_timings.count++;
     }
 
-    m_timings.total_milliseconds = static_cast<float>(m_totals[0] / m_total_frames);
+    m_timings.total_ms = static_cast<float>(m_totals[0] / m_total_frames);
 
     m_totals       = {};
     m_total_frames = 0;

@@ -1,6 +1,6 @@
 #ifndef NDEBUG
 
-#include "glp/editor/scene/debug_grid.h"
+#include "glp/trainer/scene/debug_grid.h"
 
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
@@ -14,7 +14,7 @@
 #include <memory>
 #include <vector>
 
-namespace editor::scene
+namespace trainer::scene
 {
 
 namespace

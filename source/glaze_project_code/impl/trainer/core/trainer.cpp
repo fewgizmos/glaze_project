@@ -1,13 +1,13 @@
 #ifndef NDEBUG
 
-#include "glp/editor/core/editor.h"
+#include "glp/trainer/core/trainer.h"
 
-#include "glp/editor/scene/debug_grid.h"
-#include "glp/editor/ui/ui.h"
+#include "glp/trainer/scene/debug_grid.h"
+#include "glp/trainer/ui/ui.h"
 
 #include "glp/glaze/scene/scene.h"
 
-namespace editor::core::it
+namespace trainer::core::it
 {
 
 namespace
@@ -24,6 +24,8 @@ void startup()
 
 void cleanup()
 {
+    ui::it::cleanup();
+
     glaze::scene::it::erase_entity(m_debug_grid);
 
     m_debug_grid = nullptr;

@@ -1,12 +1,18 @@
 #ifndef NDEBUG
 
 #include "glp/trainer/ui/ui.h"
+#include "glp/trainer/ui/metrics.h"
+
+#include "glp/glaze/rendering/scene_render/resources/shaders.h"
+
+#include "glp/glaze/scene/scene.h"
 
 #include "glp/glaze/world/resources/sky_atmosphere.h"
 
 #include <imgui.h>
 
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 namespace trainer::ui::it
@@ -23,6 +29,23 @@ constexpr float MINUTES_PER_HOUR = 60.0f;
 const ImVec2 TIME_WINDOW_SIZE = ImVec2(360.0f, 90.0f);
 
 bool m_time_open = false;
+
+void print_camera()
+{
+    glaze::scene::scene_entity* player = glaze::scene::it::get_player_entity();
+
+    if (player == nullptr) {
+        std::printf("camera: no player entity\n");
+        return;
+    }
+
+    const glm::vec3 pos = player->scene_volume().w_pos;
+    const glm::vec3 rot = player->scene_volume().w_rot;
+
+    std::printf("camera pos: glm::vec3(%.3ff, %.3ff, %.3ff)\n", pos.x, pos.y, pos.z);
+    std::printf("camera rot: glm::vec3(%.3ff, %.3ff, %.3ff)\n", rot.x, rot.y, rot.z);
+    std::fflush(stdout);
+}
 
 void draw_time_of_day()
 {
@@ -71,13 +94,30 @@ void draw_time_of_day()
 
 }
 
+void cleanup()
+{
+    metrics::cleanup();
+}
+
 void draw()
 {
+    metrics::update();
+
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("View")) {
-            if (ImGui::BeginMenu("Trainer")) {
-                ImGui::MenuItem("World Settings", nullptr, &m_time_open);
-                ImGui::EndMenu();
+            metrics::draw_menu();
+            ImGui::MenuItem("World Settings", nullptr, &m_time_open);
+
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::BeginMenu("Debug")) {
+            if (ImGui::MenuItem("Reload Shaders")) {
+                glaze::rendering::scene_render::res::shaders::reload_all();
+            }
+
+            if (ImGui::MenuItem("Print Camera Pos/Rot")) {
+                print_camera();
             }
 
             ImGui::EndMenu();
@@ -85,6 +125,8 @@ void draw()
 
         ImGui::EndMainMenuBar();
     }
+
+    metrics::draw();
 
     if (m_time_open) {
         draw_time_of_day();

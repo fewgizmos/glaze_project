@@ -11,8 +11,7 @@
 #include "glp/game/game_management/game_manager.h"
 
 #ifndef NDEBUG
-#include "glp/editor/core/editor.h"
-#include "glp/trainer/ui/ui.h"
+#include "glp/trainer/core/trainer.h"
 #endif
 
 #include "glp/glaze/scene/scene.h"
@@ -60,14 +59,14 @@ void startup()
     game::game_management::it::init_session();
 
 #ifndef NDEBUG
-    editor::core::it::startup();
+    trainer::core::it::startup();
 #endif
 }
 
 void cleanup()
 {
 #ifndef NDEBUG
-    editor::core::it::cleanup();
+    trainer::core::it::cleanup();
 #endif
 
     game::game_management::it::cleanup_session();
@@ -98,8 +97,7 @@ void tick_frame()
     game::game_management::it::update_frame();
 
 #ifndef NDEBUG
-    editor::core::it::frame_update();
-    trainer::ui::it::draw();
+    trainer::core::it::frame_update();
 #endif
 
     scene::it::update_entities();

@@ -72,7 +72,7 @@ $out_dir = "build/$env:glaze_build_id/windows/$build_type"
 New-Item -ItemType Directory -Force -Path $out_dir | Out-Null
 
 $exe_path = "$out_dir/$env:glaze_bin_name.exe"
-Copy-Item ".cmake_build/$build_type/bin/glaze_exec.exe" $exe_path -Force
+Copy-Item ".cmake_build/$build_type/bin/glaze_executable.exe" $exe_path -Force
 
 $pending = [System.Collections.Generic.Queue[string]]::new()
 $copied  = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)

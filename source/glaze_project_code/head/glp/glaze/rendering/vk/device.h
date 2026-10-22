@@ -37,4 +37,6 @@ const queue_set& get_queues();
 
 bool has_memory_budget();
 
+const VkPhysicalDeviceIDProperties& get_id_properties();
+
 }

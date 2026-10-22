@@ -26,6 +26,8 @@ queue_set m_queues;
 
 bool m_has_memory_budget = false;
 
+VkPhysicalDeviceIDProperties m_id_properties = {};
+
 }
 
 void create_surface(const vkb::Instance& instance)
@@ -87,6 +89,16 @@ void create_device(const vkb::Instance& instance)
 
     m_has_memory_budget = m_physical.enable_extension_if_present(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
 
+    m_id_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+
+    VkPhysicalDeviceProperties2 properties2 = {};
+    properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties2.pNext = &m_id_properties;
+
+    vkGetPhysicalDeviceProperties2(m_physical.physical_device, &properties2);
+
+    m_id_properties.pNext = nullptr;
+
     vkb::DeviceBuilder device_builder(m_physical);
 
     auto device_ret = device_builder.build();
@@ -126,5 +138,7 @@ VkSurfaceKHR get_surface() { return m_surface; }
 const queue_set& get_queues() { return m_queues; }
 
 bool has_memory_budget() { return m_has_memory_budget; }
+
+const VkPhysicalDeviceIDProperties& get_id_properties() { return m_id_properties; }
 
 }
