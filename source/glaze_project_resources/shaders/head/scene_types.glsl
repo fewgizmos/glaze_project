@@ -222,5 +222,5 @@ layout(buffer_reference, std430) readonly buffer frame_buffer
     fog_params_buffer fog;
 
     uint has_fog;
-    uint padding1;
+    float texture_lod_bias;
 };

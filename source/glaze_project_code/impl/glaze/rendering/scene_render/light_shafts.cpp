@@ -212,7 +212,7 @@ void clean_all()
 
 void handle_all()
 {
-    const image& hdr = it::get_taa_output_image();
+    const image& hdr = it::get_output_image();
 
     if (hdr.view != m_written_hdr_view) {
         recreate_targets(hdr);
@@ -258,7 +258,7 @@ void dispatch()
 
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
-    const image& hdr = it::get_taa_output_image();
+    const image& hdr = it::get_output_image();
 
     vk::commands::memory_barrier(
         cmd,

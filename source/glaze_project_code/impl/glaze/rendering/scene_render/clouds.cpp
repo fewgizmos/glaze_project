@@ -592,7 +592,7 @@ void clean_all()
 
 void handle_all()
 {
-    const VkExtent2D extent = vk::frame::get_swapchain().extent;
+    const VkExtent2D extent = it::get_render_extent();
 
     const VkExtent3D target_extent = {
         std::max(1U, (extent.width + RESOLUTION_DIVIDER - 1) / RESOLUTION_DIVIDER),

@@ -45,8 +45,7 @@ rendering::scene_render::gpu_post post::get_post()
     result.gtao_directions = m_create_info.gtao_directions;
     result.gtao_steps      = m_create_info.gtao_steps;
 
-    result.taa_enabled        = m_create_info.taa_enabled;
-    result.taa_history_weight = m_create_info.taa_history_weight;
+    result.upscale_mode = static_cast<uint32_t>(m_create_info.upscale_mode);
 
     result.shadows_enabled    = m_create_info.shadows_enabled;
     result.shadow_lod_bias    = m_create_info.shadow_lod_bias;

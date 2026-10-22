@@ -49,6 +49,8 @@ struct compute_pipeline_create_info
     std::vector<VkDescriptorSetLayout> set_layouts;
 
     uint32_t push_constant_size = 0;
+
+    std::vector<std::string> defines;
 };
 
 struct pipeline

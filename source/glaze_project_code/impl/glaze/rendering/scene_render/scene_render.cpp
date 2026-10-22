@@ -7,11 +7,11 @@
 #include "glp/glaze/rendering/scene_render/light_shafts.h"
 #include "glp/glaze/rendering/scene_render/environment.h"
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
+#include "glp/glaze/rendering/scene_render/fsr.h"
 #include "glp/glaze/rendering/scene_render/gtao.h"
 #include "glp/glaze/rendering/scene_render/post_process.h"
 #include "glp/glaze/rendering/scene_render/shadows.h"
 #include "glp/glaze/rendering/scene_render/volumetric_fog.h"
-#include "glp/glaze/rendering/scene_render/taa.h"
 
 #include "glp/glaze/rendering/scene_render/resources/gpu_environment.h"
 #include "glp/glaze/rendering/scene_render/resources/materials.h"
@@ -81,7 +81,7 @@ struct frame_scene_data
     VkDeviceAddress fog;
 
     uint32_t has_fog;
-    uint32_t padding2;
+    float texture_lod_bias;
 };
 
 constexpr uint32_t GTAO_BINDING         = 2;
@@ -91,8 +91,6 @@ constexpr uint32_t SHADOW_MASK_BINDING  = 5;
 constexpr uint32_t FOG_BINDING          = 6;
 
 constexpr uint32_t COMBINED_BINDINGS = 5;
-
-constexpr uint32_t JITTER_SEQUENCE_LENGTH = 8;
 
 constexpr float MIN_QUALITY             = 0.5f;
 constexpr float MAX_QUALITY             = 1.0f;
@@ -107,8 +105,12 @@ image m_hdr_image;
 image m_normal_image;
 image m_velocity_image;
 image m_gtao_image;
-image m_taa_output_image;
-image m_taa_history_image;
+image m_output_image;
+
+VkExtent2D m_display_extent = {};
+uint32_t m_upscale_mode = 0;
+
+glm::vec2 m_jitter_offset = glm::vec2(0.0f);
 
 buffer m_frame_buffers[MAX_FRAMES_IN_FLIGHT];
 
@@ -139,7 +141,10 @@ image create_target(VkExtent2D extent, VkFormat format, VkImageUsageFlags usage)
 
 void create_render_targets()
 {
-    const VkExtent2D extent = vk::frame::get_swapchain().extent;
+    m_display_extent = vk::frame::get_swapchain().extent;
+    m_upscale_mode   = frame_pipe::get_post().upscale_mode;
+
+    const VkExtent2D extent = fsr::get_render_extent(m_display_extent, m_upscale_mode);
 
     m_depth_image = vk::resources::create_image(
         { extent.width, extent.height, 1 },
@@ -150,17 +155,15 @@ void create_render_targets()
 
     m_hdr_image      = create_target(extent, HDR_FORMAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
     m_normal_image   = create_target(extent, GBUFFER_NORMAL_FORMAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
-    m_velocity_image = create_target(extent, GBUFFER_VELOCITY_FORMAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+    m_velocity_image = create_target(extent, GBUFFER_VELOCITY_FORMAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
     m_gtao_image     = create_target(extent, GTAO_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 
-    m_taa_output_image  = create_target(extent, HDR_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-    m_taa_history_image = create_target(extent, HDR_FORMAT, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT);
+    m_output_image = create_target(m_display_extent, HDR_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 }
 
 void destroy_render_targets()
 {
-    vk::resources::destroy_image(m_taa_history_image);
-    vk::resources::destroy_image(m_taa_output_image);
+    vk::resources::destroy_image(m_output_image);
     vk::resources::destroy_image(m_gtao_image);
     vk::resources::destroy_image(m_velocity_image);
     vk::resources::destroy_image(m_normal_image);
@@ -172,7 +175,9 @@ void ensure_render_targets()
 {
     const VkExtent2D extent = vk::frame::get_swapchain().extent;
 
-    if (m_depth_image.extent.width == extent.width && m_depth_image.extent.height == extent.height) {
+    const bool same_display = m_display_extent.width == extent.width && m_display_extent.height == extent.height;
+
+    if (same_display && m_upscale_mode == frame_pipe::get_post().upscale_mode) {
         return;
     }
 
@@ -387,31 +392,14 @@ void update_quality()
     m_quality = std::clamp(m_quality, MIN_QUALITY, MAX_QUALITY);
 }
 
-float halton(uint32_t index, uint32_t base)
-{
-    float result   = 0.0f;
-    float fraction = 1.0f;
-
-    for (; index > 0; index /= base) {
-        fraction /= static_cast<float>(base);
-        result   += fraction * static_cast<float>(index % base);
-    }
-
-    return result;
-}
-
 glm::mat4 jitter_matrix()
 {
-    if (!frame_pipe::get_post().taa_enabled) {
-        return glm::mat4(1.0f);
-    }
+    const VkExtent3D extent = m_depth_image.extent;
 
-    const VkExtent2D extent = vk::frame::get_swapchain().extent;
+    m_jitter_offset = fsr::get_jitter_offset(m_frame_index, extent.width, m_display_extent.width);
 
-    const uint32_t sample = m_frame_index % JITTER_SEQUENCE_LENGTH + 1;
-
-    const float offset_x = (halton(sample, 2) - 0.5f) * 2.0f / static_cast<float>(extent.width);
-    const float offset_y = (halton(sample, 3) - 0.5f) * 2.0f / static_cast<float>(extent.height);
+    const float offset_x = m_jitter_offset.x * 2.0f / static_cast<float>(extent.width);
+    const float offset_y = m_jitter_offset.y * 2.0f / static_cast<float>(extent.height);
 
     return glm::translate(glm::mat4(1.0f), glm::vec3(offset_x, offset_y, 0.0f));
 }
@@ -454,7 +442,8 @@ void handle_frame_data()
     data.shadows        = shadows::get_params_address();
     data.fog            = volumetric_fog::get_params_address();
     data.has_fog        = volumetric_fog::is_active() ? 1 : 0;
-    data.padding2       = 0;
+
+    data.texture_lod_bias = fsr::get_texture_lod_bias(m_depth_image.extent.width, m_display_extent.width);
 
     data.unjittered_view_proj = camera.view_proj;
     data.previous_view_proj   = m_has_previous_view_proj ? m_previous_view_proj : camera.view_proj;
@@ -492,7 +481,7 @@ void init()
     gtao::init_all();
     shadows::init_all();
     volumetric_fog::init_all();
-    taa::init_all();
+    fsr::init_all();
 
     light_shafts::init_all();
     exposure::init_all();
@@ -509,7 +498,7 @@ void cleanup()
     exposure::clean_all();
     light_shafts::clean_all();
 
-    taa::clean_all();
+    fsr::clean_all();
     volumetric_fog::clean_all();
     shadows::clean_all();
     gtao::clean_all();
@@ -553,7 +542,7 @@ void handle_all()
     volumetric_fog::handle_all();
 
     gtao::handle_all();
-    taa::handle_all();
+    fsr::handle_all();
 
     light_shafts::handle_all();
     exposure::handle_all();
@@ -583,8 +572,11 @@ const image& get_hdr_image()         { return m_hdr_image; }
 const image& get_normal_image()      { return m_normal_image; }
 const image& get_velocity_image()    { return m_velocity_image; }
 const image& get_gtao_image()        { return m_gtao_image; }
-const image& get_taa_output_image()  { return m_taa_output_image; }
-const image& get_taa_history_image() { return m_taa_history_image; }
+const image& get_output_image()      { return m_output_image; }
+
+VkExtent2D get_render_extent() { return { m_depth_image.extent.width, m_depth_image.extent.height }; }
+
+glm::vec2 get_jitter_offset() { return m_jitter_offset; }
 
 VkDeviceAddress get_frame_data_address()
 {

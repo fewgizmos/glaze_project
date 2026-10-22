@@ -149,12 +149,15 @@ vec4 sample_material(material_data material, uint texture_index, uint sampler_in
     if (!parallax_active) {
         return texture(
             sampler2D(scene_textures[nonuniformEXT(texture_index)], scene_samplers[nonuniformEXT(sampler_index)]),
-            uv
+            uv,
+            pc.frame.texture_lod_bias
         );
     }
 
-    vec2 uv_dx = material_uv(material, slot, frag_uv + parallax_frag_uv_dx) - material_uv(material, slot, frag_uv);
-    vec2 uv_dy = material_uv(material, slot, frag_uv + parallax_frag_uv_dy) - material_uv(material, slot, frag_uv);
+    float lod_scale = exp2(pc.frame.texture_lod_bias);
+
+    vec2 uv_dx = (material_uv(material, slot, frag_uv + parallax_frag_uv_dx) - material_uv(material, slot, frag_uv)) * lod_scale;
+    vec2 uv_dy = (material_uv(material, slot, frag_uv + parallax_frag_uv_dy) - material_uv(material, slot, frag_uv)) * lod_scale;
 
     return textureGrad(
         sampler2D(scene_textures[nonuniformEXT(texture_index)], scene_samplers[nonuniformEXT(sampler_index)]),

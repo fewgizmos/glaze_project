@@ -2,6 +2,8 @@
 
 #include "glp/glaze/scene/volume/volume.h"
 
+#include "glp/glaze/rendering/scene_render/fsr.h"
+
 #include <cstdint>
 
 namespace glaze::scene::vol::component
@@ -53,9 +55,7 @@ struct post_create_info
     uint32_t gtao_directions = 4;
     uint32_t gtao_steps      = 6;
 
-    bool taa_enabled = true;
-
-    float taa_history_weight = 0.9f;
+    rendering::scene_render::fsr::upscale_mode upscale_mode = rendering::scene_render::fsr::upscale_mode::balanced;
 
     bool shadows_enabled = true;
 

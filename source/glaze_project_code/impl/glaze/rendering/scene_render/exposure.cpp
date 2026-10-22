@@ -236,7 +236,7 @@ void clean_all()
 
 void handle_all()
 {
-    const VkImageView hdr_view = it::get_taa_output_image().view;
+    const VkImageView hdr_view = it::get_output_image().view;
 
     if (hdr_view != m_written_view) {
         vk::descriptors::write_image(m_set, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, hdr_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_sampler);
@@ -313,7 +313,7 @@ void dispatch()
         VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
     );
 
-    const image& hdr = it::get_taa_output_image();
+    const image& hdr = it::get_output_image();
 
     histogram_push push;
     push.histogram           = histogram.address;

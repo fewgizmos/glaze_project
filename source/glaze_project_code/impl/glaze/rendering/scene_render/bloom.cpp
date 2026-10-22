@@ -188,7 +188,7 @@ void clean_all()
 
 void handle_all()
 {
-    const image& source = it::get_taa_output_image();
+    const image& source = it::get_output_image();
 
     if (source.view == m_written_view) {
         return;

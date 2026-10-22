@@ -44,9 +44,7 @@ struct gpu_post
     uint32_t gtao_directions = 4;
     uint32_t gtao_steps      = 6;
 
-    bool taa_enabled = true;
-
-    float taa_history_weight = 0.9f;
+    uint32_t upscale_mode = 2;
 
     bool shadows_enabled = true;
 

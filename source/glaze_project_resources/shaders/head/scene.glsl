@@ -17,8 +17,16 @@ layout(set = 0, binding = 6) uniform sampler3D scene_volumetric_fog;
 
 vec4 sample_scene_texture(uint texture_index, uint sampler_index, vec2 uv)
 {
+#ifdef GLAZE_FRAGMENT_STAGE
+    return texture(
+        sampler2D(scene_textures[nonuniformEXT(texture_index)], scene_samplers[nonuniformEXT(sampler_index)]),
+        uv,
+        pc.frame.texture_lod_bias
+    );
+#else
     return texture(
         sampler2D(scene_textures[nonuniformEXT(texture_index)], scene_samplers[nonuniformEXT(sampler_index)]),
         uv
     );
+#endif
 }

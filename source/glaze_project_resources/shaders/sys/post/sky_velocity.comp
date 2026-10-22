@@ -1,0 +1,34 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(set = 0, binding = 0) uniform sampler2D scene_depth;
+
+layout(set = 0, binding = 1, rg16f) uniform writeonly image2D velocity_target;
+
+layout(push_constant) uniform constants
+{
+    mat4 sky_reprojection;
+} pc;
+
+void main()
+{
+    ivec2 id   = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = textureSize(scene_depth, 0);
+
+    if (any(greaterThanEqual(id, size))) {
+        return;
+    }
+
+    if (texelFetch(scene_depth, id, 0).r > 0.0) {
+        return;
+    }
+
+    vec2 current_ndc = (vec2(id) + 0.5) / vec2(size) * 2.0 - 1.0;
+
+    vec4 previous_clip = pc.sky_reprojection * vec4(current_ndc, 0.0, 1.0);
+
+    vec2 previous_ndc = abs(previous_clip.w) > 0.0 ? previous_clip.xy / previous_clip.w : current_ndc;
+
+    imageStore(velocity_target, id, vec4((current_ndc - previous_ndc) * 0.5, 0.0, 0.0));
+}

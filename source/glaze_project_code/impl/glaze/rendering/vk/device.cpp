@@ -64,6 +64,9 @@ void create_device(const vkb::Instance& instance)
     features.shaderClipDistance = VK_TRUE;
     features.multiDrawIndirect = VK_TRUE;
     features.drawIndirectFirstInstance = VK_TRUE;
+    features.shaderStorageImageExtendedFormats = VK_TRUE;
+    features.shaderStorageImageReadWithoutFormat = VK_TRUE;
+    features.shaderStorageImageWriteWithoutFormat = VK_TRUE;
 
     vkb::PhysicalDeviceSelector phys_device_selector(instance);
 

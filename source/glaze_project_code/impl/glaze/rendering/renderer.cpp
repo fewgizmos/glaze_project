@@ -14,7 +14,7 @@
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 #include "glp/glaze/rendering/scene_render/shadows.h"
 #include "glp/glaze/rendering/scene_render/volumetric_fog.h"
-#include "glp/glaze/rendering/scene_render/taa.h"
+#include "glp/glaze/rendering/scene_render/fsr.h"
 
 #include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/device.h"
@@ -125,7 +125,7 @@ void begin_prepass_rendering()
     const image& normal   = scene_render::it::get_normal_image();
     const image& velocity = scene_render::it::get_velocity_image();
 
-    const VkExtent2D extent = vk::frame::get_swapchain().extent;
+    const VkExtent2D extent = scene_render::it::get_render_extent();
 
     transition_color_target(cmd, normal);
     transition_color_target(cmd, velocity);
@@ -179,7 +179,7 @@ void begin_scene_rendering()
     const image& hdr   = scene_render::it::get_hdr_image();
     const image& depth = scene_render::it::get_depth_image();
 
-    const VkExtent2D extent = vk::frame::get_swapchain().extent;
+    const VkExtent2D extent = scene_render::it::get_render_extent();
 
     transition_color_target(cmd, hdr);
 
@@ -320,9 +320,9 @@ void record_command_buffer()
 
     vk::profiler::mark(cmd, "scene");
 
-    scene_render::taa::dispatch();
+    scene_render::fsr::dispatch();
 
-    vk::profiler::mark(cmd, "taa");
+    vk::profiler::mark(cmd, "fsr");
 
     scene_render::light_shafts::dispatch();
 

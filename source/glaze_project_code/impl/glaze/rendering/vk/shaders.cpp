@@ -18,6 +18,8 @@ namespace glaze::rendering::vk::shaders
 namespace
 {
 
+constexpr const char* FRAGMENT_STAGE_DEFINE = "GLAZE_FRAGMENT_STAGE";
+
 shaderc_shader_kind get_shaderc_kind(shader_stage stage)
 {
     switch (stage) {
@@ -42,6 +44,25 @@ shader_stage get_stage_from_file(const std::string& file_name)
     return shader_stage::vertex;
 }
 
+std::string resolve_include(const std::string& requested_source, const std::string& requesting_source)
+{
+    std::filesystem::path directory = std::filesystem::path(requesting_source).parent_path();
+
+    while (true) {
+        const std::filesystem::path candidate = (directory / requested_source).lexically_normal();
+
+        if (std::filesystem::exists(std::filesystem::path(SHADERS_DIR) / candidate)) {
+            return candidate.generic_string();
+        }
+
+        if (directory.empty()) {
+            return requested_source;
+        }
+
+        directory = directory.parent_path();
+    }
+}
+
 struct include_data
 {
     shaderc_include_result result = {};
@@ -63,8 +84,8 @@ class shader_includer : public shaderc::CompileOptions::IncluderInterface
             std::unique_ptr<include_data> data = std::make_unique<include_data>();
 
             try {
-                data->content = utilities::file::read_raw(std::string(SHADERS_DIR) + requested_source);
-                data->name    = requested_source;
+                data->name    = resolve_include(requested_source, requesting_source);
+                data->content = utilities::file::read_raw(std::string(SHADERS_DIR) + data->name);
             }
 
             catch (const std::exception& error) {
@@ -103,7 +124,17 @@ std::vector<uint32_t> compile_glsl(const std::string& source, shader_stage stage
     shaderc::CompileOptions options;
 
     for (const std::string& define : defines) {
-        options.AddMacroDefinition(define);
+        const size_t separator = define.find('=');
+
+        if (separator == std::string::npos) {
+            options.AddMacroDefinition(define);
+        } else {
+            options.AddMacroDefinition(define.substr(0, separator), define.substr(separator + 1));
+        }
+    }
+
+    if (stage == shader_stage::fragment) {
+        options.AddMacroDefinition(FRAGMENT_STAGE_DEFINE);
     }
 
     options.SetSourceLanguage(shaderc_source_language_glsl);
@@ -322,7 +353,9 @@ pipeline create_compute_pipeline(const std::string& comp_file, const compute_pip
 {
     const vkb::DispatchTable& disp = device::get_disp();
 
-    VkShaderModule comp_module = load_module(comp_file);
+    const std::string comp_source = utilities::file::read_raw(std::string(SHADERS_DIR) + comp_file);
+
+    VkShaderModule comp_module = create_module(compile_glsl(comp_source, shader_stage::compute, comp_file, create_info.defines));
 
     VkPushConstantRange push_range = {};
     push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;

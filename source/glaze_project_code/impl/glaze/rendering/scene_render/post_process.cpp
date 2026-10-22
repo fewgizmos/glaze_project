@@ -123,7 +123,7 @@ void clean_all()
 
 void handle_all()
 {
-    const VkImageView hdr_view   = it::get_taa_output_image().view;
+    const VkImageView hdr_view   = it::get_output_image().view;
     const VkImageView bloom_view = bloom::get_output_view();
 
     if (hdr_view != m_written_view) {
