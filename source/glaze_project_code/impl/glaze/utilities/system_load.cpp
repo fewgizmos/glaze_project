@@ -8,6 +8,7 @@
 
 #include <windows.h>
 #include <pdh.h>
+#include <pdhmsg.h>
 #include <psapi.h>
 
 #include <cstring>
