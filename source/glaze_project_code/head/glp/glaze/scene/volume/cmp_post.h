@@ -77,6 +77,9 @@ public:
 
     rendering::scene_render::gpu_post get_post() override;
 
+    const post_create_info& get_create_info() const { return m_create_info; }
+    void set_create_info(const post_create_info& create_info) { m_create_info = create_info; }
+
 private:
     post_create_info m_create_info;
 };

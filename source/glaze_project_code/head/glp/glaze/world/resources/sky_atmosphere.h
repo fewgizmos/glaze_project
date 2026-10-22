@@ -103,6 +103,9 @@ public:
     void set_time_of_day(float time_of_day) { m_create_info.time_of_day = time_of_day; }
     float get_time_of_day() const           { return m_create_info.time_of_day; }
 
+    const atmosphere_create_info& get_create_info() const { return m_create_info; }
+    void set_create_info(const atmosphere_create_info& create_info) { m_create_info = create_info; }
+
 private:
     atmosphere_create_info m_create_info;
 

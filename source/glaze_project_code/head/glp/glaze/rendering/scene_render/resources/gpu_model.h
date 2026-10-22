@@ -6,6 +6,7 @@
 
 #include <glm/mat4x4.hpp>
 
+#include <cstdint>
 #include <vector>
 
 namespace glaze::rendering::scene_render
@@ -18,6 +19,8 @@ struct gpu_model_part
 
     glm::mat4 transform          = glm::mat4(1.0f);
     glm::mat4 previous_transform = glm::mat4(1.0f);
+
+    uint32_t entity_id = 0;
 };
 
 struct gpu_model

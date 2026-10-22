@@ -3,6 +3,7 @@
 #include "glp/glaze/rendering/scene_render/bloom.h"
 #include "glp/glaze/rendering/scene_render/exposure.h"
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
+#include "glp/glaze/rendering/scene_render/picking.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
 #include "glp/glaze/rendering/scene_render/resources/gpu_post.h"
@@ -35,7 +36,13 @@ struct tonemap_push
     float night_vision;
     float contrast;
     float saturation;
+    uint32_t selected_entity;
+    float outline_width;
 };
+
+constexpr float OUTLINE_WIDTH_PIXELS = 2.0f;
+
+uint32_t m_selected_entity = 0;
 
 VkDescriptorSetLayout m_set_layout = VK_NULL_HANDLE;
 VkDescriptorPool m_pool = VK_NULL_HANDLE;
@@ -46,6 +53,7 @@ VkSampler m_bloom_sampler = VK_NULL_HANDLE;
 
 VkImageView m_written_view = VK_NULL_HANDLE;
 VkImageView m_written_bloom_view = VK_NULL_HANDLE;
+VkImageView m_written_normal_view = VK_NULL_HANDLE;
 
 const shader* m_tonemap_shader = nullptr;
 
@@ -53,10 +61,11 @@ void create_set()
 {
     m_set_layout = vk::descriptors::create_set_layout({
         { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-        { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
+        { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+        { 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
     });
 
-    m_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 } });
+    m_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 } });
     m_set  = vk::descriptors::allocate_set(m_pool, m_set_layout);
 }
 
@@ -115,8 +124,11 @@ void clean_all()
     m_sampler       = VK_NULL_HANDLE;
     m_bloom_sampler = VK_NULL_HANDLE;
 
-    m_written_view       = VK_NULL_HANDLE;
-    m_written_bloom_view = VK_NULL_HANDLE;
+    m_written_view        = VK_NULL_HANDLE;
+    m_written_bloom_view  = VK_NULL_HANDLE;
+    m_written_normal_view = VK_NULL_HANDLE;
+
+    m_selected_entity = 0;
 
     m_tonemap_shader = nullptr;
 }
@@ -137,6 +149,14 @@ void handle_all()
 
         m_written_bloom_view = bloom_view;
     }
+
+    const VkImageView normal_view = it::get_normal_image().view;
+
+    if (normal_view != m_written_normal_view) {
+        vk::descriptors::write_image(m_set, 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, normal_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_sampler);
+
+        m_written_normal_view = normal_view;
+    }
 }
 
 void draw_all()
@@ -156,6 +176,8 @@ void draw_all()
     push.night_vision        = post.night_vision_intensity;
     push.contrast            = post.tonemap_contrast;
     push.saturation          = post.tonemap_saturation;
+    push.selected_entity     = m_selected_entity;
+    push.outline_width       = OUTLINE_WIDTH_PIXELS;
 
     disp.cmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_tonemap_shader->graphics.handle);
 
@@ -173,6 +195,11 @@ void draw_all()
     vk::commands::push_constants(cmd, m_tonemap_shader->graphics.layout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(push), &push);
 
     disp.cmdDraw(cmd, 3, 1, 0, 0);
+}
+
+void set_selected_entity(uint64_t entity_id)
+{
+    m_selected_entity = static_cast<uint32_t>(entity_id & picking::ENTITY_ID_MASK);
 }
 
 }

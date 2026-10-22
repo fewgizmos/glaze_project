@@ -44,7 +44,15 @@ public:
 
     void get_model(rendering::scene_render::gpu_model& out) override;
 
+    const textured_plane_create_info& get_create_info() const { return m_create_info; }
+    void set_create_info(const textured_plane_create_info& create_info);
+
 private:
+    void build();
+    void release();
+
+    textured_plane_create_info m_create_info;
+
     const rendering::scene_render::mesh* m_mesh = nullptr;
     const rendering::scene_render::material* m_material = nullptr;
 

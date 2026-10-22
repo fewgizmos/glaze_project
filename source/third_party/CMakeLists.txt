@@ -85,3 +85,26 @@ target_include_directories(imgui PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/imgui/backends
 )
 target_link_libraries(imgui PUBLIC SDL3::SDL3-static Vulkan::Vulkan)
+
+# imguizmo
+add_library(imguizmo STATIC
+    imguizmo/ImGuizmo.cpp
+)
+target_include_directories(imguizmo PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/imguizmo)
+target_link_libraries(imguizmo PUBLIC imgui)
+
+# imguifiledialog
+find_package(Threads REQUIRED)
+
+add_library(imguifiledialog STATIC
+    imguifiledialog/ImGuiFileDialog.cpp
+)
+target_include_directories(imguifiledialog
+    PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/imguifiledialog
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+)
+target_compile_definitions(imguifiledialog
+    PUBLIC  USE_STD_FILESYSTEM USE_THUMBNAILS
+    PRIVATE DONT_DEFINE_AGAIN__STB_IMAGE_IMPLEMENTATION
+)
+target_link_libraries(imguifiledialog PUBLIC imgui Threads::Threads)

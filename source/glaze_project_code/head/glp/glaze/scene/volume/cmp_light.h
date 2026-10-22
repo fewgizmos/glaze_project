@@ -43,6 +43,9 @@ public:
     void set_color(glm::vec3 color)     { m_create_info.color = color; }
     void set_intensity(float intensity) { m_create_info.intensity = intensity; }
 
+    const light_create_info& get_create_info() const { return m_create_info; }
+    void set_create_info(const light_create_info& create_info) { m_create_info = create_info; }
+
 private:
     light_create_info m_create_info;
 };

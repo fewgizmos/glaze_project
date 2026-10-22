@@ -1,7 +1,5 @@
 #include "glp/game/game_management/game_manager.h"
 
-#include "glp/glaze/runtime/engine.h"
-
 #include "glp/glaze/io/input.h"
 
 #include "glp/glaze/scene/scene.h"
@@ -96,10 +94,6 @@ void shutdown()
 
 void update_frame()
 {
-    if (glaze::io::input::key_is_pressed(glaze::io::input::keyboard_input_codes::esc)) {
-        glaze::runtime::engine::wants_stop = true;
-    }
-
     if (glaze::io::input::key_is_pressed(glaze::io::input::keyboard_input_codes::p)) {
         if (!m_is_session_started) {
             init_session();

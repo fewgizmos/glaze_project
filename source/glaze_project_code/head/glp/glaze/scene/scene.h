@@ -2,6 +2,10 @@
 
 #include "glp/glaze/scene/volume/volume.h"
 
+#include <glm/vec3.hpp>
+
+#include <atomic>
+#include <cstdint>
 #include <vector>
 #include <memory>
 #include <type_traits>
@@ -17,6 +21,23 @@ public:
 
     virtual void update() {}
 
+    uint64_t get_id() const { return d_id; }
+
+    glm::vec3 get_position() const { return d_scene_volume.w_pos; }
+    glm::vec3 get_rotation() const { return d_scene_volume.w_rot; }
+    glm::vec3 get_scale() const    { return d_scene_volume.w_scale; }
+
+    void set_transform(glm::vec3 position, glm::vec3 rotation, glm::vec3 scale)
+    {
+        d_scene_volume.w_pos   = position;
+        d_scene_volume.w_rot   = rotation;
+        d_scene_volume.w_scale = scale;
+
+        d_gizmo_scene_volume.w_pos   = position;
+        d_gizmo_scene_volume.w_rot   = rotation;
+        d_gizmo_scene_volume.w_scale = scale;
+    }
+
     const vol::scene_volume& scene_volume() const { return d_scene_volume; }
     const vol::scene_volume& scene_gizmo_volume() const { return d_gizmo_scene_volume; }
 
@@ -25,6 +46,10 @@ protected:
     vol::scene_volume& m_scene_gizmo_volume() { return d_gizmo_scene_volume; }
 
 private:
+    inline static std::atomic<uint64_t> d_next_id = 0;
+
+    uint64_t d_id = d_next_id.fetch_add(1, std::memory_order_relaxed) + 1;
+
     vol::scene_volume d_scene_volume;
     vol::scene_volume d_gizmo_scene_volume;
 };

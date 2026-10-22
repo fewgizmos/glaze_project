@@ -14,6 +14,9 @@ public:
 
     void update() override;
 
+    float get_speed() const     { return m_speed; }
+    void set_speed(float speed) { m_speed = speed; }
+
 private:
     float m_speed;
 };

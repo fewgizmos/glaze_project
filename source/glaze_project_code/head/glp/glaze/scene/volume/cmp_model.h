@@ -19,7 +19,14 @@ public:
 
     void get_model(rendering::scene_render::gpu_model& out) override;
 
+    const std::string& get_path() const { return m_path; }
+    void set_path(const std::string& gltf_path);
+
 private:
+    std::string m_path;
+
+    const rendering::scene_render::shader* m_shader = nullptr;
+
     rendering::scene_render::model_ref m_model;
 };
 

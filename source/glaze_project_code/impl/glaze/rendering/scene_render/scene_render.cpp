@@ -9,6 +9,7 @@
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 #include "glp/glaze/rendering/scene_render/fsr.h"
 #include "glp/glaze/rendering/scene_render/gtao.h"
+#include "glp/glaze/rendering/scene_render/picking.h"
 #include "glp/glaze/rendering/scene_render/post_process.h"
 #include "glp/glaze/rendering/scene_render/shadows.h"
 #include "glp/glaze/rendering/scene_render/volumetric_fog.h"
@@ -149,12 +150,12 @@ void create_render_targets()
     m_depth_image = vk::resources::create_image(
         { extent.width, extent.height, 1 },
         DEPTH_FORMAT,
-        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
         VK_IMAGE_ASPECT_DEPTH_BIT
     );
 
     m_hdr_image      = create_target(extent, HDR_FORMAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
-    m_normal_image   = create_target(extent, GBUFFER_NORMAL_FORMAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+    m_normal_image   = create_target(extent, GBUFFER_NORMAL_FORMAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
     m_velocity_image = create_target(extent, GBUFFER_VELOCITY_FORMAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
     m_gtao_image     = create_target(extent, GTAO_FORMAT, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 
@@ -479,6 +480,7 @@ void init()
     clouds::init_all();
 
     gtao::init_all();
+    picking::init_all();
     shadows::init_all();
     volumetric_fog::init_all();
     fsr::init_all();
@@ -501,6 +503,7 @@ void cleanup()
     fsr::clean_all();
     volumetric_fog::clean_all();
     shadows::clean_all();
+    picking::clean_all();
     gtao::clean_all();
 
     clouds::clean_all();

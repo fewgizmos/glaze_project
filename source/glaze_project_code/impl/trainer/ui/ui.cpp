@@ -1,7 +1,11 @@
 #ifndef NDEBUG
 
 #include "glp/trainer/ui/ui.h"
+#include "glp/trainer/ui/file_field.h"
 #include "glp/trainer/ui/metrics.h"
+#include "glp/trainer/ui/scene_objects.h"
+
+#include "glp/trainer/objects/selection.h"
 
 #include "glp/glaze/rendering/scene_render/resources/shaders.h"
 
@@ -96,6 +100,7 @@ void draw_time_of_day()
 
 void cleanup()
 {
+    file_field::cleanup();
     metrics::cleanup();
 }
 
@@ -103,9 +108,14 @@ void draw()
 {
     metrics::update();
 
+    objects::selection::update();
+
+    file_field::update();
+
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("View")) {
             metrics::draw_menu();
+            scene_objects::draw_menu();
             ImGui::MenuItem("World Settings", nullptr, &m_time_open);
 
             ImGui::EndMenu();
@@ -127,6 +137,10 @@ void draw()
     }
 
     metrics::draw();
+
+    scene_objects::draw();
+
+    objects::selection::draw();
 
     if (m_time_open) {
         draw_time_of_day();

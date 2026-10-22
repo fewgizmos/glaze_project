@@ -91,6 +91,11 @@ float m_delta_ms = 0.0f;
 
 bool m_is_load_initialized = false;
 
+ImVec2 m_minimized_position = ImVec2(0.0f, 0.0f);
+ImVec2 m_minimized_size     = ImVec2(0.0f, 0.0f);
+
+bool m_minimized_visible = false;
+
 bool m_master_open    = false;
 bool m_minimized_open = true;
 
@@ -584,6 +589,10 @@ void draw_minimized()
         ImGui::Dummy(ImVec2(extra_space, 0.0f));
     }
 
+    m_minimized_position = ImGui::GetWindowPos();
+    m_minimized_size     = ImGui::GetWindowSize();
+    m_minimized_visible  = true;
+
     ImGui::End();
 
     ImGui::PopStyleVar(3);
@@ -640,6 +649,8 @@ void draw_menu()
 
 void draw()
 {
+    m_minimized_visible = false;
+
     if (m_master_open) {
         draw_master();
     }
@@ -647,6 +658,14 @@ void draw()
     if (m_minimized_open) {
         draw_minimized();
     }
+}
+
+bool get_minimized_bounds(ImVec2& position, ImVec2& size)
+{
+    position = m_minimized_position;
+    size     = m_minimized_size;
+
+    return m_minimized_visible;
 }
 
 }

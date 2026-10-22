@@ -47,6 +47,7 @@ const shader* build_prepass(const std::string& name, VkCullModeFlags cull_mode)
     info.set_layouts          = { it::get_scene_set_layout() };
     info.push_constant_size   = sizeof(VkDeviceAddress);
     info.push_constant_stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    info.defines              = { "PREPASS" };
 
     return res::shaders::build(name, "materials/base_model.vert", "sys/frame/prepass.frag", "", info, {}, render_queue::opaque);
 }

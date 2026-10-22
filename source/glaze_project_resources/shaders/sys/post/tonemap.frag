@@ -1,7 +1,10 @@
 #version 450
 
+#include "head/gbuffer_encoding.glsl"
+
 layout(set = 0, binding = 0) uniform sampler2D hdr_image;
 layout(set = 0, binding = 1) uniform sampler2D bloom_image;
+layout(set = 0, binding = 2) uniform sampler2D gbuffer_normal;
 
 layout(push_constant) uniform constants
 {
@@ -13,6 +16,8 @@ layout(push_constant) uniform constants
     float night_vision;
     float contrast;
     float saturation;
+    uint selected_entity;
+    float outline_width;
 } pc;
 
 layout(location = 0) out vec4 out_color;
@@ -48,6 +53,17 @@ const float CAS_PEAK_SHARP = 5.0;
 const float CAS_EPSILON    = 0.0001;
 
 const float DITHER_LEVELS = 255.0;
+
+const uint NO_ENTITY = 0u;
+
+const vec3 OUTLINE_COLOR = vec3(1.0);
+
+const uint OUTLINE_DIRECTIONS = 8u;
+
+const vec2 OUTLINE_OFFSETS[OUTLINE_DIRECTIONS] = vec2[](
+    vec2( 1.0,  0.0), vec2(-1.0,  0.0), vec2( 0.0,  1.0), vec2( 0.0, -1.0),
+    vec2( 0.7071,  0.7071), vec2(-0.7071,  0.7071), vec2( 0.7071, -0.7071), vec2(-0.7071, -0.7071)
+);
 
 const float NIGHT_EPSILON          = 0.000000001;
 const float SCOTOPIC_LOG_LUMINANCE = -4.0;
@@ -196,9 +212,38 @@ float dither_noise(vec2 pixel)
     return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
 }
 
+uint entity_at(vec2 display_pixel)
+{
+    vec2 display_size = vec2(textureSize(hdr_image, 0));
+    ivec2 render_size = textureSize(gbuffer_normal, 0);
+
+    ivec2 coord = clamp(ivec2(display_pixel / display_size * vec2(render_size)), ivec2(0), render_size - 1);
+
+    return decode_entity_id(texelFetch(gbuffer_normal, coord, 0).ba);
+}
+
+bool is_outline(vec2 display_pixel)
+{
+    if (pc.selected_entity == NO_ENTITY || entity_at(display_pixel) == pc.selected_entity) {
+        return false;
+    }
+
+    for (uint i = 0u; i < OUTLINE_DIRECTIONS; i++) {
+        if (entity_at(display_pixel + OUTLINE_OFFSETS[i] * pc.outline_width) == pc.selected_entity) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void main()
 {
     vec3 color = linear_to_srgb(contrast_adaptive_sharpen(ivec2(gl_FragCoord.xy)));
+
+    if (is_outline(gl_FragCoord.xy)) {
+        color = linear_to_srgb(OUTLINE_COLOR);
+    }
 
     color += (dither_noise(gl_FragCoord.xy) - 0.5) / DITHER_LEVELS;
 

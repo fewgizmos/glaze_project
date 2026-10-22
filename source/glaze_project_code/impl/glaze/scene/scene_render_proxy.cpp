@@ -64,7 +64,7 @@ void proxy_camera()
     }
 }
 
-void proxy_volume_models(const vol::scene_volume& volume)
+void proxy_volume_models(const vol::scene_volume& volume, uint64_t entity_id)
 {
     const glm::mat4 world = vol::compose_transform(volume.w_pos, volume.w_rot, volume.w_scale);
 
@@ -84,6 +84,10 @@ void proxy_volume_models(const vol::scene_volume& volume)
         comp->get_model(m_model);
 
         util::apply_model_world(m_model, world, previous_world);
+
+        for (rendering::scene_render::gpu_model_part& part : m_model.parts) {
+            part.entity_id = static_cast<uint32_t>(entity_id);
+        }
 
         rendering::scene_render::frame_pipe::submit_model(m_model);
     }
@@ -168,8 +172,8 @@ void proxy_visibles()
             continue;
         }
 
-        proxy_volume_models(ent->scene_volume());
-        proxy_volume_models(ent->scene_gizmo_volume());
+        proxy_volume_models(ent->scene_volume(), ent->get_id());
+        proxy_volume_models(ent->scene_gizmo_volume(), ent->get_id());
 
         proxy_volume_lights(ent->scene_volume());
         proxy_volume_lights(ent->scene_gizmo_volume());

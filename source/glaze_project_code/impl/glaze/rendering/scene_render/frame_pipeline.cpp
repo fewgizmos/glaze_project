@@ -39,7 +39,7 @@ struct object_data
     uint32_t material_index;
     VkDeviceAddress indices;
     uint32_t index_count;
-    uint32_t padding0;
+    uint32_t entity_id;
 };
 
 constexpr uint32_t OBJECTS_START_CAPACITY   = 64;
@@ -405,7 +405,7 @@ void handle_buffers()
             target.target_material->index,
             target.target_mesh->index_buffer.address,
             target.target_mesh->index_count,
-            0
+            target.entity_id
         });
     }
 

@@ -10,6 +10,7 @@
 #include "glp/glaze/rendering/scene_render/exposure.h"
 #include "glp/glaze/rendering/scene_render/light_shafts.h"
 #include "glp/glaze/rendering/scene_render/gtao.h"
+#include "glp/glaze/rendering/scene_render/picking.h"
 #include "glp/glaze/rendering/scene_render/post_process.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 #include "glp/glaze/rendering/scene_render/shadows.h"
@@ -299,6 +300,8 @@ void record_command_buffer()
     scene_render::gtao::dispatch();
 
     vk::profiler::mark(cmd, "gtao");
+
+    scene_render::picking::dispatch();
 
     scene_render::shadows::dispatch();
 

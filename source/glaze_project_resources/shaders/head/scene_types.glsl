@@ -145,7 +145,7 @@ struct object_data
     uint material_index;
     index_buffer indices;
     uint index_count;
-    uint padding0;
+    uint entity_id;
 };
 
 layout(buffer_reference, std430) readonly buffer object_buffer

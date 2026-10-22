@@ -24,6 +24,8 @@ target_link_libraries(glaze_executable PRIVATE
     glm::glm
     fastgltf::fastgltf
     imgui
+    imguizmo
+    imguifiledialog
     shaderc
     stb
     GPUOpen::VulkanMemoryAllocator

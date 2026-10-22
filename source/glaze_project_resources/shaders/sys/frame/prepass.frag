@@ -2,6 +2,7 @@
 #extension GL_EXT_buffer_reference : require
 
 #include "head/scene.glsl"
+#include "head/gbuffer_encoding.glsl"
 
 layout(location = 1) in vec3 frag_normal;
 layout(location = 2) in vec2 frag_uv;
@@ -11,6 +12,8 @@ layout(location = 5) flat in uint frag_material_index;
 
 layout(location = 6) in vec4 frag_current_clip;
 layout(location = 7) in vec4 frag_previous_clip;
+
+layout(location = 8) flat in uint frag_entity_id;
 
 layout(location = 0) out vec4 out_normal;
 layout(location = 1) out vec2 out_velocity;
@@ -56,6 +59,6 @@ void main()
     vec2 current_ndc  = frag_current_clip.xy / frag_current_clip.w;
     vec2 previous_ndc = frag_previous_clip.xy / frag_previous_clip.w;
 
-    out_normal   = vec4(view_normal, 1.0);
+    out_normal   = vec4(encode_normal(view_normal), encode_entity_id(frag_entity_id));
     out_velocity = (current_ndc - previous_ndc) * 0.5;
 }

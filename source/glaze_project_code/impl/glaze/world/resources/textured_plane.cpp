@@ -203,9 +203,30 @@ void move_red_to_alpha(image_data& image)
 
 }
 
-cmp_textured_plane::cmp_textured_plane(const textured_plane_create_info& create_info)
+cmp_textured_plane::cmp_textured_plane(const textured_plane_create_info& create_info) : m_create_info(create_info)
 {
     set_flag(scene::vol::component_flags::modeled);
+
+    build();
+}
+
+cmp_textured_plane::~cmp_textured_plane()
+{
+    release();
+}
+
+void cmp_textured_plane::set_create_info(const textured_plane_create_info& create_info)
+{
+    release();
+
+    m_create_info = create_info;
+
+    build();
+}
+
+void cmp_textured_plane::build()
+{
+    const textured_plane_create_info& create_info = m_create_info;
 
     const pack_files files = create_info.pack_path.empty() ? pack_files{} : find_pack_files(create_info.pack_path);
 
@@ -306,7 +327,7 @@ cmp_textured_plane::cmp_textured_plane(const textured_plane_create_info& create_
     m_mesh = rendering::scene_render::res::meshes::build(vertices, indices);
 }
 
-cmp_textured_plane::~cmp_textured_plane()
+void cmp_textured_plane::release()
 {
     rendering::scene_render::res::materials::erase(m_material);
     rendering::scene_render::res::meshes::erase(m_mesh);
@@ -314,6 +335,11 @@ cmp_textured_plane::~cmp_textured_plane()
     for (const rendering::scene_render::texture* target : m_textures) {
         rendering::scene_render::res::textures::erase(target);
     }
+
+    m_material = nullptr;
+    m_mesh     = nullptr;
+
+    m_textures.clear();
 }
 
 void cmp_textured_plane::get_model(rendering::scene_render::gpu_model& out)
