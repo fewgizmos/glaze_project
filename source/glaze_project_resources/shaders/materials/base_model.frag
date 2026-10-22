@@ -36,24 +36,17 @@ const float MIN_N_DOT_V   = 0.0001;
 
 const float MIN_TANGENT_LENGTH2 = 0.000001;
 
-const float PARALLAX_MIN_LAYERS = 8.0;
+const float PARALLAX_MIN_LAYERS = 4.0;
 const float PARALLAX_MAX_LAYERS = 32.0;
 const float PARALLAX_MIN_VIEW_Z = 0.1;
 const float PARALLAX_EPSILON    = 0.00001;
 
+const float PARALLAX_LAYERS_PER_PIXEL  = 1.0;
+const float PARALLAX_MIN_TRAVEL_PIXELS = 0.5;
+const float PARALLAX_MIN_UV_AREA       = 1e-20;
+
 const float PARALLAX_SHADOW_SOFTNESS = 0.05;
 const float PARALLAX_PIVOT           = 0.5;
-
-const uint  SHADOW_SAMPLES           = 12u;
-const uint  MIN_SHADOW_SAMPLES       = 6u;
-const uint  SHADOW_FALLBACK_LEVELS   = 3u;
-const float SHADOW_DEPTH_BIAS_TEXELS = 1.0;
-const float SHADOW_DEPTH_ULPS        = 4.0;
-
-const float GOLDEN_ANGLE       = 2.39996323;
-const vec3  NOISE_MAGIC        = vec3(0.06711056, 0.00583715, 52.9829189);
-const float NOISE_FRAME_OFFSET = 5.588238;
-const uint  NOISE_FRAME_PERIOD = 64u;
 
 const float SHADOW_DEBUG_BLEND = 0.5;
 
@@ -179,6 +172,27 @@ float height_at(material_data material, vec2 uv, vec2 uv_dx, vec2 uv_dy)
     ).r;
 }
 
+float parallax_travel_pixels(vec2 offset)
+{
+    vec2 uv_dx = parallax_frag_uv_dx;
+    vec2 uv_dy = parallax_frag_uv_dy;
+
+    float area = uv_dx.x * uv_dy.y - uv_dx.y * uv_dy.x;
+
+    if (abs(area) < PARALLAX_MIN_UV_AREA) {
+        return PARALLAX_MAX_LAYERS;
+    }
+
+    vec2 pixels = vec2(uv_dy.y * offset.x - uv_dy.x * offset.y, uv_dx.x * offset.y - uv_dx.y * offset.x) / area;
+
+    return length(pixels);
+}
+
+float parallax_layers(float travel)
+{
+    return clamp(ceil(travel * PARALLAX_LAYERS_PER_PIXEL * pc.frame.quality), PARALLAX_MIN_LAYERS, PARALLAX_MAX_LAYERS);
+}
+
 vec2 parallax_uv(material_data material)
 {
     if (material.height_texture == NO_TEXTURE || material.height_scale <= 0.0) {
@@ -206,10 +220,16 @@ vec2 parallax_uv(material_data material)
     vec2 uv_dx = material_uv(material, TEXTURE_SLOT_BASE_COLOR, frag_uv + parallax_frag_uv_dx) - material_uv(material, TEXTURE_SLOT_BASE_COLOR, frag_uv);
     vec2 uv_dy = material_uv(material, TEXTURE_SLOT_BASE_COLOR, frag_uv + parallax_frag_uv_dy) - material_uv(material, TEXTURE_SLOT_BASE_COLOR, frag_uv);
 
-    float layer_count = max(floor(mix(PARALLAX_MAX_LAYERS, PARALLAX_MIN_LAYERS, view_tangent.z) * pc.frame.quality), PARALLAX_MIN_LAYERS);
-    float layer_depth = 1.0 / layer_count;
-
     float view_z = max(view_tangent.z, PARALLAX_MIN_VIEW_Z);
+
+    float travel = parallax_travel_pixels(view_tangent.xy / view_z * material.height_scale);
+
+    if (travel < PARALLAX_MIN_TRAVEL_PIXELS) {
+        return frag_uv;
+    }
+
+    float layer_count = parallax_layers(travel);
+    float layer_depth = 1.0 / layer_count;
 
     vec2 shift = view_tangent.xy / view_z * material.height_scale * layer_depth;
 
@@ -254,10 +274,18 @@ float parallax_shadow(material_data material, vec3 to_light)
         return 1.0;
     }
 
-    float layer_count = max(floor(mix(PARALLAX_MAX_LAYERS, PARALLAX_MIN_LAYERS, light_tangent.z) * pc.frame.quality), PARALLAX_MIN_LAYERS);
+    vec2 travel_offset = light_tangent.xy / max(light_tangent.z, PARALLAX_MIN_VIEW_Z) * material.height_scale * parallax_depth;
+
+    float travel = parallax_travel_pixels(travel_offset);
+
+    if (travel < PARALLAX_MIN_TRAVEL_PIXELS) {
+        return 1.0;
+    }
+
+    float layer_count = parallax_layers(travel);
     float layer_depth = parallax_depth / layer_count;
 
-    vec2 shift = light_tangent.xy / max(light_tangent.z, PARALLAX_MIN_VIEW_Z) * material.height_scale * layer_depth;
+    vec2 shift = travel_offset / layer_count;
 
     vec2  uv    = surface_uv;
     float depth = parallax_depth;
@@ -575,111 +603,6 @@ vec3 environment_contribution(surface_data surface)
     return color * pc.frame.environment_intensity;
 }
 
-float interleaved_noise(vec2 pixel, uint frame)
-{
-    pixel += NOISE_FRAME_OFFSET * float(frame % NOISE_FRAME_PERIOD);
-
-    return fract(NOISE_MAGIC.z * fract(dot(pixel, NOISE_MAGIC.xy)));
-}
-
-vec2 vogel_disk(uint index, uint count, float rotation)
-{
-    float radius = sqrt((float(index) + 0.5) / float(count));
-    float angle  = float(index) * GOLDEN_ANGLE + rotation;
-
-    return radius * vec2(cos(angle), sin(angle));
-}
-
-float shadow_bias_texel(vsm_params_buffer params, uint level)
-{
-    float quantum = SHADOW_DEPTH_ULPS * exp2(-24.0) / params.levels[level].depth_scale;
-
-    return max(vsm_texel_size(params, level), quantum);
-}
-
-bool shadow_depth(vsm_params_buffer params, uint level, vec2 light_xy, float base_bias, out float depth)
-{
-    for (uint i = 0u; i < SHADOW_FALLBACK_LEVELS && level + i < VSM_LEVELS; i++) {
-        ivec2 texel;
-        uint  state;
-
-        if (vsm_find_texel(params, level + i, light_xy, texel, state)) {
-            depth = vsm_depth_to_light(params, level + i, texelFetch(scene_shadow_pool, texel, 0).r);
-
-            if (i > 0u) {
-                depth += max(0.0, shadow_bias_texel(params, level + i) * SHADOW_DEPTH_BIAS_TEXELS - base_bias);
-            }
-
-            return true;
-        }
-    }
-
-    return false;
-}
-
-float directional_shadow(vec3 to_light, surface_data surface)
-{
-    vsm_params_buffer params = pc.frame.shadows;
-
-    float distance = length(frag_world_pos - pc.frame.camera_pos);
-
-    uint  level = vsm_select_level(params, distance, vsm_light_space(params, frag_world_pos).xy);
-    float texel = vsm_texel_size(params, level);
-    float bias_texel = shadow_bias_texel(params, level);
-
-    vec3 offset_normal = dot(surface.geometric_normal, to_light) >= 0.0 ? surface.geometric_normal : -surface.geometric_normal;
-
-    float light_along_normal = dot(to_light, offset_normal);
-
-    vec3 receiver_pos = light_along_normal > PARALLAX_MIN_VIEW_Z
-        ? shading_pos + to_light * (dot(frag_world_pos - shading_pos, offset_normal) / light_along_normal)
-        : frag_world_pos;
-
-    vec3 light_pos = vsm_light_space(params, receiver_pos + offset_normal * bias_texel * params.normal_bias);
-
-    float base_bias = bias_texel * SHADOW_DEPTH_BIAS_TEXELS;
-    float receiver  = light_pos.z - base_bias;
-    float radius   = vsm_search_radius(params, level);
-    float rotation = interleaved_noise(gl_FragCoord.xy, pc.frame.frame_index) * 2.0 * PI;
-
-    uint samples = max(MIN_SHADOW_SAMPLES, uint(float(SHADOW_SAMPLES) * pc.frame.quality + 0.5));
-
-    float blocker_sum   = 0.0;
-    float blocker_count = 0.0;
-
-    for (uint i = 0u; i < samples; i++) {
-        float depth;
-
-        if (shadow_depth(params, level, light_pos.xy + vogel_disk(i, samples, rotation) * radius, base_bias, depth) && depth < receiver) {
-            blocker_sum   += depth;
-            blocker_count += 1.0;
-        }
-    }
-
-    if (blocker_count == 0.0) {
-        return 1.0;
-    }
-
-    if (blocker_count >= float(samples)) {
-        return 0.0;
-    }
-
-    float penumbra = (receiver - blocker_sum / blocker_count) * params.tan_angular_radius * params.softness;
-    float kernel   = clamp(penumbra, texel, radius);
-
-    float lit = 0.0;
-
-    for (uint i = 0u; i < samples; i++) {
-        float depth;
-
-        if (!shadow_depth(params, level, light_pos.xy + vogel_disk(i, samples, rotation + PI) * kernel, base_bias, depth) || depth >= receiver) {
-            lit += 1.0;
-        }
-    }
-
-    return lit / float(samples);
-}
-
 vec3 shadow_debug_tint(vec3 color)
 {
     vsm_params_buffer params = pc.frame.shadows;
@@ -739,7 +662,7 @@ vec3 light_contribution(light_data light, surface_data surface, material_data ma
         float shadow = cloud_shadow(to_light);
 
         if (light.shadowed != 0u && pc.frame.has_shadows != 0u && shadow > 0.0) {
-            shadow *= min(directional_shadow(to_light, surface), texelFetch(scene_contact_shadow, ivec2(gl_FragCoord.xy), 0).r);
+            shadow *= texelFetch(scene_shadow_mask, ivec2(gl_FragCoord.xy), 0).r;
         }
 
         if (light.shadowed != 0u && shadow > 0.0) {

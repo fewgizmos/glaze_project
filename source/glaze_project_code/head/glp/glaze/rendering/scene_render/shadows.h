@@ -33,13 +33,14 @@ void clean_all();
 void handle_targets();
 void handle_all();
 void dispatch();
+void dispatch_mask();
 
 bool is_active();
 
 VkDeviceAddress get_params_address();
 
 const image& get_pool_image();
-const image& get_contact_image();
+const image& get_mask_image();
 
 const shadow_stats& get_stats();
 

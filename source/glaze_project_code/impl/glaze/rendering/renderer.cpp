@@ -304,6 +304,10 @@ void record_command_buffer()
 
     vk::profiler::mark(cmd, "shadows");
 
+    scene_render::shadows::dispatch_mask();
+
+    vk::profiler::mark(cmd, "shadow mask");
+
     scene_render::volumetric_fog::dispatch();
 
     vk::profiler::mark(cmd, "fog");

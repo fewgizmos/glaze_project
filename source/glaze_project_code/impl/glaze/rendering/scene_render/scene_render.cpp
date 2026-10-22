@@ -87,7 +87,7 @@ struct frame_scene_data
 constexpr uint32_t GTAO_BINDING         = 2;
 constexpr uint32_t SHADOW_BINDING       = 3;
 constexpr uint32_t CLOUD_SHADOW_BINDING = 4;
-constexpr uint32_t CONTACT_BINDING      = 5;
+constexpr uint32_t SHADOW_MASK_BINDING  = 5;
 constexpr uint32_t FOG_BINDING          = 6;
 
 constexpr uint32_t COMBINED_BINDINGS = 5;
@@ -121,7 +121,7 @@ uint32_t m_bound_samplers = 0;
 VkImageView m_written_gtao_view = VK_NULL_HANDLE;
 VkImageView m_written_shadow_view = VK_NULL_HANDLE;
 VkImageView m_written_cloud_shadow_view = VK_NULL_HANDLE;
-VkImageView m_written_contact_view = VK_NULL_HANDLE;
+VkImageView m_written_shadow_mask_view = VK_NULL_HANDLE;
 VkImageView m_written_fog_view = VK_NULL_HANDLE;
 
 VkSampler m_linear_sampler = VK_NULL_HANDLE;
@@ -213,7 +213,7 @@ void create_scene_set()
             { GTAO_BINDING,         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,            VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
             { SHADOW_BINDING,       VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,            VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
             { CLOUD_SHADOW_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,            VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-            { CONTACT_BINDING,      VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,            VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+            { SHADOW_MASK_BINDING,  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,            VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
             { FOG_BINDING,          VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1,            VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
         },
         { flags, flags, flags, flags, flags, flags, flags }
@@ -266,7 +266,7 @@ void destroy_scene_set()
     m_written_gtao_view         = VK_NULL_HANDLE;
     m_written_shadow_view       = VK_NULL_HANDLE;
     m_written_cloud_shadow_view = VK_NULL_HANDLE;
-    m_written_contact_view      = VK_NULL_HANDLE;
+    m_written_shadow_mask_view  = VK_NULL_HANDLE;
     m_written_fog_view          = VK_NULL_HANDLE;
 
     m_gtao_sampler   = VK_NULL_HANDLE;
@@ -342,19 +342,19 @@ void handle_scene_set()
         m_written_cloud_shadow_view = cloud_shadow.view;
     }
 
-    const image& contact = shadows::get_contact_image();
+    const image& shadow_mask = shadows::get_mask_image();
 
-    if (contact.view != m_written_contact_view) {
+    if (shadow_mask.view != m_written_shadow_mask_view) {
         vk::descriptors::write_image(
             m_scene_set,
-            CONTACT_BINDING,
+            SHADOW_MASK_BINDING,
             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            contact.view,
+            shadow_mask.view,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
             m_gtao_sampler
         );
 
-        m_written_contact_view = contact.view;
+        m_written_shadow_mask_view = shadow_mask.view;
     }
 
     const image& fog_volume = volumetric_fog::get_volume_image();

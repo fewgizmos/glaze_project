@@ -79,6 +79,21 @@ constexpr uint32_t START_CAPACITY = 64;
 
 constexpr uint32_t SETTLE_FRAMES = 3;
 
+constexpr uint32_t MASK_ACCUMULATION_FRAMES = 32;
+
+constexpr uint32_t MASK_DEPTH_BINDING  = 0;
+constexpr uint32_t MASK_TARGET_BINDING = 1;
+constexpr uint32_t MASK_POOL_BINDING   = 2;
+
+constexpr VkFormat MASK_FORMAT = VK_FORMAT_R16_SFLOAT;
+
+struct mask_push
+{
+    VkDeviceAddress frame;
+    uint32_t accumulated_frames;
+    uint32_t padding0;
+};
+
 struct params_data
 {
     glm::vec4 light_x;
@@ -191,16 +206,20 @@ VkDescriptorSetLayout m_mark_layout = VK_NULL_HANDLE;
 VkDescriptorPool m_mark_pool = VK_NULL_HANDLE;
 VkDescriptorSet m_mark_set = VK_NULL_HANDLE;
 
-VkDescriptorSetLayout m_contact_layout = VK_NULL_HANDLE;
-VkDescriptorPool m_contact_pool = VK_NULL_HANDLE;
-VkDescriptorSet m_contact_set = VK_NULL_HANDLE;
+VkDescriptorSetLayout m_mask_layout = VK_NULL_HANDLE;
+VkDescriptorPool m_mask_pool = VK_NULL_HANDLE;
+VkDescriptorSet m_mask_set = VK_NULL_HANDLE;
 
 VkSampler m_depth_sampler = VK_NULL_HANDLE;
 
 VkImageView m_written_depth_view = VK_NULL_HANDLE;
-VkImageView m_written_contact_depth_view = VK_NULL_HANDLE;
+VkImageView m_written_mask_depth_view = VK_NULL_HANDLE;
 
-image m_contact;
+image m_mask;
+
+uint32_t m_mask_frames = 0;
+
+bool m_mask_initialized = false;
 
 const shader* m_reset_shader = nullptr;
 const shader* m_invalidate_shader = nullptr;
@@ -213,7 +232,7 @@ const shader* m_cull_shader = nullptr;
 const shader* m_clear_shader = nullptr;
 const shader* m_depth_shader = nullptr;
 const shader* m_masked_shader = nullptr;
-const shader* m_contact_shader = nullptr;
+const shader* m_mask_shader = nullptr;
 
 std::vector<caster_data> m_casters;
 std::vector<box_data> m_boxes;
@@ -234,6 +253,7 @@ struct view_key
     float lod_bias;
     float softness;
     float normal_bias;
+    float contact_length;
 
     uint32_t width;
     uint32_t height;
@@ -531,19 +551,21 @@ void update_static_state()
 
     view_key key = {};
 
-    key.view_proj   = camera.view_proj;
-    key.camera      = camera.position;
-    key.lod_bias    = post.shadow_lod_bias;
-    key.softness    = post.shadow_softness;
-    key.normal_bias = post.shadow_normal_bias;
-    key.width       = extent.width;
-    key.height      = extent.height;
+    key.view_proj      = camera.view_proj;
+    key.camera         = camera.position;
+    key.lod_bias       = post.shadow_lod_bias;
+    key.softness       = post.shadow_softness;
+    key.normal_bias    = post.shadow_normal_bias;
+    key.contact_length = post.contact_shadow_length;
+    key.width          = extent.width;
+    key.height         = extent.height;
 
     const bool same_view = std::memcmp(&key.view_proj, &m_view_key.view_proj, sizeof(glm::mat4)) == 0
         && key.camera == m_view_key.camera
         && key.lod_bias == m_view_key.lod_bias
         && key.softness == m_view_key.softness
         && key.normal_bias == m_view_key.normal_bias
+        && key.contact_length == m_view_key.contact_length
         && key.width == m_view_key.width
         && key.height == m_view_key.height;
 
@@ -778,50 +800,65 @@ void render_pages(VkCommandBuffer cmd)
     );
 }
 
-void create_contact_image(VkExtent3D extent)
+void create_mask_image(VkExtent3D extent)
 {
-    m_contact = vk::resources::create_image(
+    m_mask = vk::resources::create_image(
         { extent.width, extent.height, 1 },
-        VK_FORMAT_R8_UNORM,
+        MASK_FORMAT,
         VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
         VK_IMAGE_ASPECT_COLOR_BIT
     );
 
-    vk::descriptors::write_image(m_contact_set, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, m_contact.view, VK_IMAGE_LAYOUT_GENERAL);
+    vk::descriptors::write_image(m_mask_set, MASK_TARGET_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, m_mask.view, VK_IMAGE_LAYOUT_GENERAL);
+
+    m_mask_frames      = 0;
+    m_mask_initialized = false;
 }
 
-void render_contact(VkCommandBuffer cmd)
+void render_mask(VkCommandBuffer cmd)
 {
     const vkb::DispatchTable& disp = vk::device::get_disp();
 
+    if (!m_pages_static) {
+        m_mask_frames = 0;
+    }
+
+    if (m_mask_frames >= MASK_ACCUMULATION_FRAMES) {
+        return;
+    }
+
     vk::commands::transition_image(
         cmd,
-        m_contact.handle,
-        VK_IMAGE_LAYOUT_UNDEFINED,
+        m_mask.handle,
+        m_mask_initialized ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_GENERAL,
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
         0,
         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-        VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
+        VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
     );
 
-    const VkDeviceAddress frame = it::get_frame_data_address();
+    mask_push push = {};
 
-    disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_contact_shader->compute.layout, 0, 1, &m_contact_set, 0, nullptr);
+    push.frame              = it::get_frame_data_address();
+    push.accumulated_frames = m_mask_initialized ? m_mask_frames : 0;
+    push.padding0           = 0;
+
+    disp.cmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, m_mask_shader->compute.layout, 0, 1, &m_mask_set, 0, nullptr);
 
     vk::commands::dispatch(
         cmd,
-        m_contact_shader->compute,
-        &frame,
-        sizeof(frame),
-        (m_contact.extent.width + MARK_GROUP_SIZE - 1) / MARK_GROUP_SIZE,
-        (m_contact.extent.height + MARK_GROUP_SIZE - 1) / MARK_GROUP_SIZE,
+        m_mask_shader->compute,
+        &push,
+        sizeof(push),
+        (m_mask.extent.width + MARK_GROUP_SIZE - 1) / MARK_GROUP_SIZE,
+        (m_mask.extent.height + MARK_GROUP_SIZE - 1) / MARK_GROUP_SIZE,
         1
     );
 
     vk::commands::transition_image(
         cmd,
-        m_contact.handle,
+        m_mask.handle,
         VK_IMAGE_LAYOUT_GENERAL,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
@@ -829,6 +866,12 @@ void render_contact(VkCommandBuffer cmd)
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
         VK_ACCESS_2_SHADER_SAMPLED_READ_BIT
     );
+
+    m_mask_initialized = true;
+
+    if (m_pages_static) {
+        m_mask_frames++;
+    }
 }
 
 void copy_stats(VkCommandBuffer cmd)
@@ -875,22 +918,25 @@ void init_all()
 
     m_depth_sampler = vk::samplers::get(vk::samplers::make(sampler_info));
 
-    m_contact_layout = vk::descriptors::create_set_layout({
-        { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
-        { 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr }
+    m_mask_layout = vk::descriptors::create_set_layout({
+        { MASK_DEPTH_BINDING,  VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
+        { MASK_TARGET_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr },
+        { MASK_POOL_BINDING,   VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr }
     });
 
-    m_contact_pool = vk::descriptors::create_pool(
+    m_mask_pool = vk::descriptors::create_pool(
         1,
         {
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 },
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          1 }
         }
     );
 
-    m_contact_set = vk::descriptors::allocate_set(m_contact_pool, m_contact_layout);
+    m_mask_set = vk::descriptors::allocate_set(m_mask_pool, m_mask_layout);
 
-    create_contact_image(it::get_depth_image().extent);
+    vk::descriptors::write_image(m_mask_set, MASK_POOL_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, m_pool.view, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL, m_depth_sampler);
+
+    create_mask_image(it::get_depth_image().extent);
 
     m_reset_shader      = build_compute("vsm_reset", "sys/shadows/vsm_reset.comp", VK_NULL_HANDLE);
     m_invalidate_shader = build_compute("vsm_invalidate", "sys/shadows/vsm_invalidate.comp", VK_NULL_HANDLE);
@@ -905,11 +951,11 @@ void init_all()
     m_depth_shader  = build_graphics("vsm_depth", "sys/shadows/vsm_depth.vert", "", VK_COMPARE_OP_LESS_OR_EQUAL, DEPTH_BIAS_SLOPE);
     m_masked_shader = build_graphics("vsm_masked", "sys/shadows/vsm_depth.vert", "sys/shadows/vsm_masked.frag", VK_COMPARE_OP_LESS_OR_EQUAL, DEPTH_BIAS_SLOPE);
 
-    compute_pipeline_create_info contact_info;
-    contact_info.set_layouts        = { m_contact_layout };
-    contact_info.push_constant_size = sizeof(VkDeviceAddress);
+    compute_pipeline_create_info mask_info;
+    mask_info.set_layouts        = { m_mask_layout };
+    mask_info.push_constant_size = sizeof(mask_push);
 
-    m_contact_shader = res::shaders::build("contact_shadows", "", "", "sys/shadows/contact_shadows.comp", {}, contact_info, render_queue::opaque);
+    m_mask_shader = res::shaders::build("shadow_mask", "", "", "sys/shadows/shadow_mask.comp", {}, mask_info, render_queue::opaque);
 
     m_needs_reset = true;
 }
@@ -923,18 +969,21 @@ void clean_all()
     m_mark_pool   = VK_NULL_HANDLE;
     m_mark_set    = VK_NULL_HANDLE;
 
-    vk::descriptors::destroy_pool(m_contact_pool);
-    vk::descriptors::destroy_set_layout(m_contact_layout);
+    vk::descriptors::destroy_pool(m_mask_pool);
+    vk::descriptors::destroy_set_layout(m_mask_layout);
 
-    m_contact_layout = VK_NULL_HANDLE;
-    m_contact_pool   = VK_NULL_HANDLE;
-    m_contact_set    = VK_NULL_HANDLE;
+    m_mask_layout = VK_NULL_HANDLE;
+    m_mask_pool   = VK_NULL_HANDLE;
+    m_mask_set    = VK_NULL_HANDLE;
 
-    vk::resources::destroy_image(m_contact);
+    vk::resources::destroy_image(m_mask);
 
-    m_depth_sampler              = VK_NULL_HANDLE;
-    m_written_depth_view         = VK_NULL_HANDLE;
-    m_written_contact_depth_view = VK_NULL_HANDLE;
+    m_mask_frames      = 0;
+    m_mask_initialized = false;
+
+    m_depth_sampler           = VK_NULL_HANDLE;
+    m_written_depth_view      = VK_NULL_HANDLE;
+    m_written_mask_depth_view = VK_NULL_HANDLE;
 
     destroy_resources();
 
@@ -954,18 +1003,18 @@ void handle_targets()
 {
     const image& depth = it::get_depth_image();
 
-    if (depth.extent.width != m_contact.extent.width || depth.extent.height != m_contact.extent.height) {
+    if (depth.extent.width != m_mask.extent.width || depth.extent.height != m_mask.extent.height) {
         vk::device::get_disp().deviceWaitIdle();
 
-        vk::resources::destroy_image(m_contact);
+        vk::resources::destroy_image(m_mask);
 
-        create_contact_image(depth.extent);
+        create_mask_image(depth.extent);
     }
 
-    if (depth.view != m_written_contact_depth_view) {
-        vk::descriptors::write_image(m_contact_set, 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, depth.view, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL, m_depth_sampler);
+    if (depth.view != m_written_mask_depth_view) {
+        vk::descriptors::write_image(m_mask_set, MASK_DEPTH_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, depth.view, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL, m_depth_sampler);
 
-        m_written_contact_depth_view = depth.view;
+        m_written_mask_depth_view = depth.view;
     }
 }
 
@@ -976,7 +1025,8 @@ void handle_all()
     m_active = frame_pipe::has_camera() && frame_pipe::has_shadow_light();
 
     if (!m_active) {
-        m_was_active = false;
+        m_was_active  = false;
+        m_mask_frames = 0;
         return;
     }
 
@@ -1023,7 +1073,6 @@ void dispatch()
     VkCommandBuffer cmd = vk::frame::get_current_frame().command_buffer;
 
     if (m_pages_static) {
-        render_contact(cmd);
         return;
     }
 
@@ -1087,9 +1136,16 @@ void dispatch()
 
     render_pages(cmd);
 
-    render_contact(cmd);
-
     copy_stats(cmd);
+}
+
+void dispatch_mask()
+{
+    if (!m_active) {
+        return;
+    }
+
+    render_mask(vk::frame::get_current_frame().command_buffer);
 }
 
 bool is_active() { return m_active; }
@@ -1101,7 +1157,7 @@ VkDeviceAddress get_params_address()
 
 const image& get_pool_image() { return m_pool; }
 
-const image& get_contact_image() { return m_contact; }
+const image& get_mask_image() { return m_mask; }
 
 const shadow_stats& get_stats() { return m_stats; }
 
