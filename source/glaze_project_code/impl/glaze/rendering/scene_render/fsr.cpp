@@ -184,7 +184,7 @@ constexpr float SECONDS_TO_MS = 1000.0f;
 
 constexpr float MIN_PROJECTION_VALUE = 0.0001f;
 
-constexpr float TEXTURE_LOD_BIAS_OFFSET = 1.0f;
+constexpr float TEXTURE_LOD_BIAS_OFFSET = 0.0f;
 
 constexpr float PI = 3.14159265359f;
 
@@ -930,10 +930,10 @@ void prepare_inputs(VkCommandBuffer cmd)
     vk::commands::transition_image(
         cmd,
         velocity.handle,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
         VK_IMAGE_LAYOUT_GENERAL,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
         VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
         VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT
     );

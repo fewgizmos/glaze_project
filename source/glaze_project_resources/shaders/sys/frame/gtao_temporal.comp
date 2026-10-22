@@ -1,0 +1,75 @@
+#version 450
+#extension GL_EXT_buffer_reference : require
+
+#include "head/scene_types.glsl"
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D depth_texture;
+layout(set = 0, binding = 1) uniform sampler2D velocity_texture;
+layout(set = 0, binding = 2, r32f) uniform readonly image2D raw_ao;
+layout(set = 0, binding = 3) uniform sampler2D history;
+layout(set = 0, binding = 4, rg16f) uniform writeonly image2D history_target;
+layout(set = 0, binding = 5, r32f) uniform writeonly image2D target;
+
+layout(push_constant) uniform constants
+{
+    frame_buffer frame;
+    uint reset;
+    uint padding0;
+} pc;
+
+const float STATIC_HISTORY_WEIGHT = 0.95;
+const float MOVING_HISTORY_WEIGHT = 0.85;
+const float MOTION_FADE_PIXELS    = 2.0;
+const float DEPTH_TOLERANCE       = 0.05;
+
+void main()
+{
+    ivec2 id   = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 size = imageSize(target);
+
+    if (any(greaterThanEqual(id, size))) {
+        return;
+    }
+
+    float depth = texelFetch(depth_texture, id, 0).r;
+
+    if (depth <= 0.0) {
+        imageStore(target, id, vec4(1.0));
+        imageStore(history_target, id, vec4(1.0, 0.0, 0.0, 0.0));
+        return;
+    }
+
+    float current = imageLoad(raw_ao, id).r;
+
+    vec2 uv = (vec2(id) + 0.5) / vec2(size);
+
+    vec4 world = pc.frame.inv_view_proj * vec4(uv * 2.0 - 1.0, depth, 1.0);
+
+    world /= world.w;
+
+    float view_depth = -(pc.frame.view * world).z;
+
+    float result = current;
+
+    if (pc.reset == 0u) {
+        vec2 velocity    = texelFetch(velocity_texture, id, 0).rg;
+        vec2 previous_uv = uv - velocity;
+
+        if (all(greaterThanEqual(previous_uv, vec2(0.0))) && all(lessThanEqual(previous_uv, vec2(1.0)))) {
+            vec2  previous = textureLod(history, previous_uv, 0.0).rg;
+            float expected = (pc.frame.previous_view_proj * world).w;
+
+            if (previous.g > 0.0 && abs(previous.g - expected) <= expected * DEPTH_TOLERANCE) {
+                float motion = length(velocity * vec2(size));
+                float weight = mix(STATIC_HISTORY_WEIGHT, MOVING_HISTORY_WEIGHT, clamp(motion / MOTION_FADE_PIXELS, 0.0, 1.0));
+
+                result = mix(current, previous.r, weight);
+            }
+        }
+    }
+
+    imageStore(target, id, vec4(result));
+    imageStore(history_target, id, vec4(result, view_depth, 0.0, 0.0));
+}
