@@ -93,6 +93,8 @@ struct surface_data
     vec3 diffuse_occlusion;
     vec3 specular_occlusion;
 
+    float micro_occlusion;
+
     float metallic;
     float roughness;
     float alpha;
@@ -367,6 +369,13 @@ float specular_anti_aliasing(vec3 normal, float roughness)
     float alpha2 = clamp(alpha * alpha + kernel, 0.0, 1.0);
 
     return sqrt(sqrt(alpha2));
+}
+
+float micro_shadow(float occlusion, vec3 normal, vec3 to_light)
+{
+    float aperture = 2.0 * occlusion * occlusion;
+
+    return clamp(abs(dot(to_light, normal)) + aperture - 1.0, 0.0, 1.0);
 }
 
 float specular_occlusion(float n_dot_v, float occlusion, float roughness)
@@ -669,6 +678,8 @@ vec3 light_contribution(light_data light, surface_data surface, material_data ma
             shadow *= parallax_shadow(material, to_light);
         }
 
+        shadow *= micro_shadow(surface.micro_occlusion, surface.normal, to_light);
+
         if (shadow <= 0.0) {
             return vec3(0.0);
         }
@@ -689,7 +700,7 @@ vec3 light_contribution(light_data light, surface_data surface, material_data ma
         float window      = clamp(1.0 - pow(distance / light.range, 4.0), 0.0, 1.0);
         float attenuation = window * window / (distance * distance + 1.0);
 
-        return light.color * brdf(surface, to_light, to_light) * attenuation * cone_factor(light, to_light);
+        return light.color * brdf(surface, to_light, to_light) * attenuation * cone_factor(light, to_light) * micro_shadow(surface.micro_occlusion, surface.normal, to_light);
     }
 
     if (light.type == LIGHT_TYPE_AMBIENT && pc.frame.has_environment == 0u) {
@@ -735,12 +746,15 @@ void main()
         roughness *= sampled.g;
     }
 
-    float occlusion = texelFetch(scene_gtao, ivec2(gl_FragCoord.xy), 0).r;
+    float occlusion          = texelFetch(scene_gtao, ivec2(gl_FragCoord.xy), 0).r;
+    float material_occlusion = 1.0;
 
     if (material.occlusion_texture != NO_TEXTURE) {
         float sampled = sample_material(material, material.occlusion_texture, material.occlusion_sampler, TEXTURE_SLOT_OCCLUSION).r;
 
-        occlusion *= 1.0 + material.occlusion_strength * (sampled - 1.0);
+        material_occlusion = 1.0 + material.occlusion_strength * (sampled - 1.0);
+
+        occlusion *= material_occlusion;
     }
 
     vec3 emissive = material.emissive * material.emissive_strength;
@@ -789,6 +803,8 @@ void main()
     data.diffuse_occlusion  = multi_bounce_occlusion(occlusion, data.albedo * (1.0 - data.metallic));
     data.specular_occlusion = multi_bounce_occlusion(specular_occlusion(data.n_dot_v, occlusion, data.roughness), data.f0)
                             * horizon_occlusion(data.reflected, data.geometric_normal);
+
+    data.micro_occlusion = material_occlusion;
 
     data.dfg = texture(env_brdf_lut, vec2(data.n_dot_v, data.roughness)).rg;
 
