@@ -4,6 +4,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <cstring>
 #include <utility>
 #include <vector>
@@ -30,10 +31,20 @@ void register_panel(panel_registration entry)
 
 void draw_menu_items(const char* menu)
 {
+    std::vector<const panel_registration*> matched;
+
     for (const panel_registration& entry : registry()) {
         if (std::strcmp(entry.menu, menu) == 0) {
-            ImGui::MenuItem(entry.label, nullptr, entry.open);
+            matched.push_back(&entry);
         }
+    }
+
+    std::stable_sort(matched.begin(), matched.end(), [](const panel_registration* left, const panel_registration* right) {
+        return left->order < right->order;
+    });
+
+    for (const panel_registration* entry : matched) {
+        ImGui::MenuItem(entry->label, nullptr, entry->open);
     }
 }
 

@@ -600,13 +600,13 @@ void draw_minimized()
     ImGui::PopStyleVar(3);
 }
 
-const bool registered_master = [] {
-    panels::register_panel({ "Metrics", "Metrics Master", &m_master_open, draw_master });
+const bool registered_minimized = [] {
+    panels::register_panel({ "Metrics", "Show Minimized", &m_minimized_open, draw_minimized, 1 });
     return true;
 }();
 
-const bool registered_minimized = [] {
-    panels::register_panel({ "Metrics", "Show Minimized", &m_minimized_open, draw_minimized });
+const bool registered_master = [] {
+    panels::register_panel({ "Metrics", "Metrics Master", &m_master_open, draw_master, 2 });
     return true;
 }();
 

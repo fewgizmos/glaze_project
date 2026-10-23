@@ -13,6 +13,7 @@ struct panel_registration
     const char* label;
     bool* open;
     std::function<void()> draw;
+    int order = 0;
 };
 
 void register_panel(panel_registration entry);

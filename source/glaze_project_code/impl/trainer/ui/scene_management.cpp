@@ -127,7 +127,7 @@ void draw_window()
 }
 
 const bool registered = [] {
-    panels::register_panel({ "Scene", MANAGEMENT_TITLE, &m_open, draw_window });
+    panels::register_panel({ "Scene", MANAGEMENT_TITLE, &m_open, draw_window, 3 });
     return true;
 }();
 
