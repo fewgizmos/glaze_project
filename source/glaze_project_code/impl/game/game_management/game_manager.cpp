@@ -4,15 +4,12 @@
 
 #include "glp/glaze/scene/scene.h"
 #include "glp/glaze/scene/objects/post_object.h"
-#include "glp/glaze/scene/objects/static_camera_object.h"
 #include "glp/glaze/scene/objects/static_object.h"
 
 #include "glp/glaze/world/resources/sky_atmosphere.h"
 #include "glp/glaze/world/resources/textured_plane.h"
 
-#ifndef NDEBUG
 #include "glp/trainer/scene/debug_camera.h"
-#endif
 
 #include <glm/vec3.hpp>
 
@@ -125,13 +122,7 @@ void init_session()
         glaze::scene::it::create_entity<glaze::scene::obj::post_object_prim>(POST_SETTINGS);
 
         if (glaze::scene::it::get_player_entity() == nullptr) {
-#ifndef NDEBUG
             glaze::scene::it::set_player_entity(glaze::scene::it::create_entity<trainer::scene::debug_camera_player_obj>());
-#else
-            glaze::scene::it::set_player_entity(
-                glaze::scene::it::create_entity<glaze::scene::obj::static_camera_object_prim>(glm::vec3(5.828f, 7.727f, 18.457f), glm::vec3(-14.000f, -35.000f, 0.000f))
-            );
-#endif
         }
     }
 }

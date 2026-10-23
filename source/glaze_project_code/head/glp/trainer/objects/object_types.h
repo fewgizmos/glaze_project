@@ -15,7 +15,8 @@ namespace trainer::objects
 
 struct object_type
 {
-    const char* name = "";
+    const char* name  = "";
+    const char* label = "";
 
     bool has_transform     = true;
     bool is_creatable      = false;

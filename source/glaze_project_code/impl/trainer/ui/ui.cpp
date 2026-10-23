@@ -30,6 +30,8 @@ constexpr float MAX_TIME_OF_DAY = 24.0f;
 
 constexpr float MINUTES_PER_HOUR = 60.0f;
 
+constexpr const char* TOOLKIT_LABEL = "DEVELOPER TOOLKIT      DEBUG INTERNAL BUILD";
+
 const ImVec2 TIME_WINDOW_SIZE = ImVec2(360.0f, 90.0f);
 
 bool m_time_open = false;
@@ -49,6 +51,14 @@ void print_camera()
     std::printf("camera pos: glm::vec3(%.3ff, %.3ff, %.3ff)\n", pos.x, pos.y, pos.z);
     std::printf("camera rot: glm::vec3(%.3ff, %.3ff, %.3ff)\n", rot.x, rot.y, rot.z);
     std::fflush(stdout);
+}
+
+void draw_toolkit_label()
+{
+    const float label_width = ImGui::CalcTextSize(TOOLKIT_LABEL).x;
+
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - label_width - ImGui::GetStyle().WindowPadding.x - 12);
+    ImGui::TextDisabled("%s", TOOLKIT_LABEL);
 }
 
 void draw_time_of_day()
@@ -116,7 +126,11 @@ void draw()
         if (ImGui::BeginMenu("View")) {
             metrics::draw_menu();
             scene_objects::draw_menu();
-            ImGui::MenuItem("World Settings", nullptr, &m_time_open);
+
+            if (ImGui::BeginMenu("World")) {
+                ImGui::MenuItem("World Settings", nullptr, &m_time_open);
+                ImGui::EndMenu();
+            }
 
             ImGui::EndMenu();
         }
@@ -132,6 +146,8 @@ void draw()
 
             ImGui::EndMenu();
         }
+
+        draw_toolkit_label();
 
         ImGui::EndMainMenuBar();
     }

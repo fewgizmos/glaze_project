@@ -54,10 +54,13 @@ constexpr float MIN_SCALE = 0.0001f;
 
 constexpr float MIN_PANEL_MARGIN_Y = 0.02f;
 constexpr float MIN_PANEL_MARGIN_X = 0.012f;
+constexpr float PANEL_OFFSET_Y = 0.005f;
+constexpr float PANEL_BG_ALPHA = 0.7f;
 
 const glm::vec2 SCREEN_CENTER = glm::vec2(0.5f);
 
 uint64_t m_selected = NO_ENTITY;
+uint64_t m_spawned  = NO_ENTITY;
 
 gizmo_mode m_mode = gizmo_mode::move;
 
@@ -120,7 +123,7 @@ void handle_results()
 
         if (result.request == m_spawn_request && m_spawn_create) {
             if (glaze::scene::scene_entity* created = m_spawn_create(world_from_pick(result))) {
-                m_selected = created->get_id();
+                m_spawned = created->get_id();
             }
 
             m_spawn_create = nullptr;
@@ -234,7 +237,10 @@ void draw_mode_panel()
         position = ImVec2(metrics_position.x - gap, metrics_position.y);
     }
 
+    position.y += viewport->WorkSize.y * PANEL_OFFSET_Y;
+
     ImGui::SetNextWindowPos(position, ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(PANEL_BG_ALPHA);
 
     const ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoDecoration
@@ -271,6 +277,11 @@ void update()
     handle_results();
     handle_input();
 
+    if (m_spawned != NO_ENTITY && find_entity(m_spawned) != nullptr) {
+        m_selected = m_spawned;
+        m_spawned  = NO_ENTITY;
+    }
+
     if (m_selected != NO_ENTITY && find_entity(m_selected) == nullptr) {
         m_selected = NO_ENTITY;
     }
@@ -299,11 +310,13 @@ void draw()
 void select(uint64_t entity_id)
 {
     m_selected = entity_id;
+    m_spawned  = NO_ENTITY;
 }
 
 void clear()
 {
     m_selected = NO_ENTITY;
+    m_spawned  = NO_ENTITY;
 }
 
 glaze::scene::scene_entity* get_selected()

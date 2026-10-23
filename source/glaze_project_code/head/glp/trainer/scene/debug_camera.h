@@ -1,7 +1,5 @@
 #pragma once
 
-#ifndef NDEBUG
-
 #include "glp/glaze/scene/scene.h"
 
 namespace trainer::scene
@@ -22,5 +20,3 @@ private:
 };
 
 }
-
-#endif

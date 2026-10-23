@@ -5,6 +5,7 @@
 #include "glp/trainer/scene/debug_camera.h"
 #include "glp/trainer/scene/debug_grid.h"
 #include "glp/trainer/ui/file_field.h"
+#include "glp/trainer/ui/property.h"
 
 #include "glp/glaze/scene/objects/light_object.h"
 #include "glp/glaze/scene/objects/post_object.h"
@@ -25,8 +26,12 @@
 #include <array>
 #include <cctype>
 #include <cfloat>
+#include <cstring>
 #include <exception>
 #include <filesystem>
+#include <functional>
+#include <string>
+#include <vector>
 
 namespace trainer::objects
 {
@@ -127,27 +132,32 @@ void report(const std::string& error)
 
 bool edit_float(const char* label, float& value, float speed, float min = 0.0f, float max = 0.0f)
 {
-    return ImGui::DragFloat(label, &value, speed, min, max);
+    return ImGui::DragFloat(ui::property::begin_row(label).c_str(), &value, speed, min, max);
 }
 
 bool edit_vec2(const char* label, glm::vec2& value, float speed)
 {
-    return ImGui::DragFloat2(label, &value.x, speed);
+    return ImGui::DragFloat2(ui::property::begin_row(label).c_str(), &value.x, speed);
 }
 
 bool edit_vec3(const char* label, glm::vec3& value, float speed)
 {
-    return ImGui::DragFloat3(label, &value.x, speed, 0.0f, 0.0f, "%.6f");
+    return ImGui::DragFloat3(ui::property::begin_row(label).c_str(), &value.x, speed, 0.0f, 0.0f, "%.6f");
 }
 
 bool edit_color(const char* label, glm::vec3& value)
 {
-    return ImGui::ColorEdit3(label, &value.x, ImGuiColorEditFlags_Float);
+    return ImGui::ColorEdit3(ui::property::begin_row(label).c_str(), &value.x, ImGuiColorEditFlags_Float);
 }
 
 bool edit_uint(const char* label, uint32_t& value, uint32_t min, uint32_t max)
 {
-    return ImGui::DragScalar(label, ImGuiDataType_U32, &value, 1.0f, &min, &max);
+    return ImGui::DragScalar(ui::property::begin_row(label).c_str(), ImGuiDataType_U32, &value, 1.0f, &min, &max);
+}
+
+bool edit_bool(const char* label, bool& value)
+{
+    return ImGui::Checkbox(ui::property::begin_row(label).c_str(), &value);
 }
 
 template<typename enum_type, size_t count>
@@ -155,13 +165,112 @@ bool edit_enum(const char* label, enum_type& value, const std::array<const char*
 {
     int index = static_cast<int>(value);
 
-    if (!ImGui::Combo(label, &index, names.data(), static_cast<int>(count))) {
+    if (!ImGui::Combo(ui::property::begin_row(label).c_str(), &index, names.data(), static_cast<int>(count))) {
         return false;
     }
 
     value = static_cast<enum_type>(index);
 
     return true;
+}
+
+template<typename info_type>
+struct info_field
+{
+    const char* name;
+    std::function<bool(const char*, info_type&)> edit;
+};
+
+#define INFO_FIELD(member, editor) { #member, [edit = editor](const char* label, auto& info) { return edit(label, info.member); } }
+
+auto float_editor(float speed, float min = 0.0f, float max = 0.0f)
+{
+    return [=](const char* label, float& value) { return edit_float(label, value, speed, min, max); };
+}
+
+auto vec3_editor(float speed)
+{
+    return [=](const char* label, glm::vec3& value) { return edit_vec3(label, value, speed); };
+}
+
+auto color_editor()
+{
+    return [](const char* label, glm::vec3& value) { return edit_color(label, value); };
+}
+
+auto uint_editor(uint32_t min, uint32_t max)
+{
+    return [=](const char* label, uint32_t& value) { return edit_uint(label, value, min, max); };
+}
+
+auto bool_editor()
+{
+    return [](const char* label, bool& value) { return edit_bool(label, value); };
+}
+
+template<size_t count>
+auto enum_editor(const std::array<const char*, count>& names)
+{
+    return [&names](const char* label, auto& value) { return edit_enum(label, value, names); };
+}
+
+std::string first_word(const char* name)
+{
+    const char* end = std::strchr(name, '_');
+
+    return end != nullptr ? std::string(name, end) : std::string(name);
+}
+
+template<typename info_type>
+bool edit_fields(const std::vector<info_field<info_type>>& fields, info_type& info)
+{
+    std::vector<std::string> groups;
+
+    for (const info_field<info_type>& field : fields) {
+        groups.push_back(first_word(field.name));
+    }
+
+    for (std::string& group : groups) {
+        for (const info_field<info_type>& field : fields) {
+            const std::string word = first_word(field.name);
+
+            if (word.size() < group.size() && group.starts_with(word)) {
+                group = word;
+            }
+        }
+    }
+
+    std::vector<std::string> categories;
+
+    for (const std::string& group : groups) {
+        const bool is_shared = std::count(groups.begin(), groups.end(), group) > 1;
+
+        if (is_shared && std::find(categories.begin(), categories.end(), group) == categories.end()) {
+            categories.push_back(group);
+        }
+    }
+
+    bool changed = false;
+
+    for (size_t i = 0; i < fields.size(); i++) {
+        if (std::find(categories.begin(), categories.end(), groups[i]) == categories.end()) {
+            changed |= fields[i].edit(fields[i].name, info);
+        }
+    }
+
+    for (const std::string& category : categories) {
+        if (!ui::property::begin_category(category.c_str())) {
+            continue;
+        }
+
+        for (size_t i = 0; i < fields.size(); i++) {
+            if (groups[i] == category) {
+                changed |= fields[i].edit(fields[i].name, info);
+            }
+        }
+    }
+
+    return changed;
 }
 
 bool edit_light(component::light_create_info& info)
@@ -180,134 +289,118 @@ bool edit_light(component::light_create_info& info)
     return changed;
 }
 
+const std::vector<info_field<component::post_create_info>>& post_fields()
+{
+    static const std::vector<info_field<component::post_create_info>> fields = {
+        INFO_FIELD(ev100, float_editor(SPEED_SMALL)),
+        INFO_FIELD(auto_exposure, bool_editor()),
+        INFO_FIELD(exposure_compensation, float_editor(SPEED_SMALL)),
+        INFO_FIELD(min_ev100, float_editor(SPEED_SMALL)),
+        INFO_FIELD(max_ev100, float_editor(SPEED_SMALL)),
+        INFO_FIELD(exposure_speed_up, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(exposure_speed_down, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(exposure_night_darkening, float_editor(SPEED_SMALL, 0.0f, 1.0f)),
+        INFO_FIELD(exposure_center_weight, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(exposure_incident_metering, bool_editor()),
+        INFO_FIELD(tonemapper, enum_editor(TONEMAPPERS)),
+        INFO_FIELD(tonemap_contrast, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(tonemap_saturation, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(sharpen, float_editor(SPEED_SMALL, 0.0f, 1.0f)),
+        INFO_FIELD(bloom_intensity, float_editor(SPEED_FINE, 0.0f, FLT_MAX)),
+        INFO_FIELD(light_shafts_intensity, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(sun_glare_intensity, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(night_vision_intensity, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(gtao_radius, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(gtao_intensity, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(gtao_directions, uint_editor(1, MAX_GTAO_DIRECTIONS)),
+        INFO_FIELD(gtao_steps, uint_editor(1, MAX_GTAO_STEPS)),
+        INFO_FIELD(upscale_mode, enum_editor(UPSCALE_MODES)),
+        INFO_FIELD(gpu_budget_fraction, float_editor(SPEED_SMALL, 0.0f, 1.0f)),
+        INFO_FIELD(shadows_enabled, bool_editor()),
+        INFO_FIELD(shadow_lod_bias, float_editor(SPEED_SMALL)),
+        INFO_FIELD(shadow_softness, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(shadow_normal_bias, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(contact_shadow_length, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(volumetric_fog_enabled, bool_editor()),
+        INFO_FIELD(volumetric_fog_distance, float_editor(SPEED_LARGE, 0.0f, FLT_MAX))
+    };
+
+    return fields;
+}
+
 bool edit_post(component::post_create_info& info)
 {
-    bool changed = false;
-
-    ImGui::SeparatorText("exposure");
-
-    changed |= edit_float("ev100", info.ev100, SPEED_SMALL);
-    changed |= ImGui::Checkbox("auto exposure", &info.auto_exposure);
-    changed |= edit_float("compensation", info.exposure_compensation, SPEED_SMALL);
-    changed |= edit_float("min ev100", info.min_ev100, SPEED_SMALL);
-    changed |= edit_float("max ev100", info.max_ev100, SPEED_SMALL);
-    changed |= edit_float("speed up", info.exposure_speed_up, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("speed down", info.exposure_speed_down, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("night darkening", info.exposure_night_darkening, SPEED_SMALL, 0.0f, 1.0f);
-    changed |= edit_float("center weight", info.exposure_center_weight, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= ImGui::Checkbox("incident metering", &info.exposure_incident_metering);
-
-    ImGui::SeparatorText("tonemap");
-
-    changed |= edit_enum("tonemapper", info.tonemapper, TONEMAPPERS);
-    changed |= edit_float("contrast", info.tonemap_contrast, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("saturation", info.tonemap_saturation, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("sharpen", info.sharpen, SPEED_SMALL, 0.0f, 1.0f);
-
-    ImGui::SeparatorText("effects");
-
-    changed |= edit_float("bloom", info.bloom_intensity, SPEED_FINE, 0.0f, FLT_MAX);
-    changed |= edit_float("light shafts", info.light_shafts_intensity, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("sun glare", info.sun_glare_intensity, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("night vision", info.night_vision_intensity, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("gtao radius", info.gtao_radius, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("gtao intensity", info.gtao_intensity, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_uint("gtao directions", info.gtao_directions, 1, MAX_GTAO_DIRECTIONS);
-    changed |= edit_uint("gtao steps", info.gtao_steps, 1, MAX_GTAO_STEPS);
-
-    ImGui::SeparatorText("rendering");
-
-    changed |= edit_enum("upscale", info.upscale_mode, UPSCALE_MODES);
-    changed |= edit_float("gpu budget", info.gpu_budget_fraction, SPEED_SMALL, 0.0f, 1.0f);
-    changed |= ImGui::Checkbox("shadows", &info.shadows_enabled);
-    changed |= edit_float("shadow lod bias", info.shadow_lod_bias, SPEED_SMALL);
-    changed |= edit_float("shadow softness", info.shadow_softness, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("shadow normal bias", info.shadow_normal_bias, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("contact shadows", info.contact_shadow_length, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= ImGui::Checkbox("volumetric fog", &info.volumetric_fog_enabled);
-    changed |= edit_float("fog distance", info.volumetric_fog_distance, SPEED_LARGE, 0.0f, FLT_MAX);
-
-    return changed;
+    return edit_fields(post_fields(), info);
 }
+
+const std::vector<info_field<glaze::world::res::atmosphere_create_info>>& atmosphere_fields()
+{
+    static const std::vector<info_field<glaze::world::res::atmosphere_create_info>> fields = {
+        INFO_FIELD(time_of_day, float_editor(SPEED_SMALL, 0.0f, MAX_HOURS)),
+        INFO_FIELD(sun_max_elevation, float_editor(SPEED_MEDIUM, 0.0f, MAX_ELEVATION)),
+        INFO_FIELD(sun_illuminance, float_editor(SPEED_HUGE, 0.0f, FLT_MAX)),
+        INFO_FIELD(sun_angular_radius, float_editor(SPEED_FINE, 0.0f, MAX_ELEVATION)),
+        INFO_FIELD(sun_light_scale, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(sun_temperature, float_editor(SPEED_HUGE, 0.0f, FLT_MAX)),
+        INFO_FIELD(horizon_light_fade, float_editor(SPEED_MEDIUM, 0.0f, FLT_MAX)),
+        INFO_FIELD(horizon_light_twilight, float_editor(SPEED_MEDIUM, 0.0f, FLT_MAX)),
+        INFO_FIELD(horizon_light_desaturation, float_editor(SPEED_SMALL, 0.0f, 1.0f)),
+        INFO_FIELD(evening_sun_pink, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(evening_halo_pink, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(moon_illuminance, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(moon_angular_radius, float_editor(SPEED_FINE, 0.0f, MAX_ELEVATION)),
+        INFO_FIELD(moon_light_scale, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(moon_overlap_hours, float_editor(SPEED_SMALL, 0.0f, MAX_HOURS)),
+        INFO_FIELD(moon_color, color_editor()),
+        INFO_FIELD(moon_flare_size, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(moon_flare_falloff, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(moon_flare_multiplier, float_editor(SPEED_FINE, 0.0f, FLT_MAX)),
+        INFO_FIELD(moon_flare_tint, color_editor()),
+        INFO_FIELD(night_ambient_scale, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(day_sky_scale, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(twilight_desaturation, float_editor(SPEED_SMALL, 0.0f, 1.0f)),
+        INFO_FIELD(night_sky_luminance, float_editor(SPEED_FINE, 0.0f, FLT_MAX)),
+        INFO_FIELD(star_intensity, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(star_twinkle, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(fog_day_density, float_editor(SPEED_FINE, 0.0f, FLT_MAX)),
+        INFO_FIELD(fog_night_density, float_editor(SPEED_FINE, 0.0f, FLT_MAX)),
+        INFO_FIELD(fog_height_falloff, float_editor(SPEED_FINE, 0.0f, FLT_MAX)),
+        INFO_FIELD(fog_base_height, float_editor(SPEED_MEDIUM)),
+        INFO_FIELD(fog_anisotropy, float_editor(SPEED_SMALL, -1.0f, 1.0f)),
+        INFO_FIELD(fog_max_distance, float_editor(SPEED_HUGE, 0.0f, FLT_MAX)),
+        INFO_FIELD(fog_color, color_editor()),
+        INFO_FIELD(bottom_radius, float_editor(SPEED_LARGE, 0.0f, FLT_MAX)),
+        INFO_FIELD(top_radius, float_editor(SPEED_LARGE, 0.0f, FLT_MAX)),
+        INFO_FIELD(rayleigh_scattering, vec3_editor(SPEED_FINE)),
+        INFO_FIELD(rayleigh_scale_height, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(mie_scattering, vec3_editor(SPEED_FINE)),
+        INFO_FIELD(mie_absorption, vec3_editor(SPEED_FINE)),
+        INFO_FIELD(mie_scale_height, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(mie_anisotropy, float_editor(SPEED_SMALL, -1.0f, 1.0f)),
+        INFO_FIELD(evening_aerosol, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(ozone_absorption, vec3_editor(SPEED_FINE)),
+        INFO_FIELD(ozone_center, float_editor(SPEED_MEDIUM, 0.0f, FLT_MAX)),
+        INFO_FIELD(ozone_width, float_editor(SPEED_MEDIUM, 0.0f, FLT_MAX)),
+        INFO_FIELD(ground_albedo, color_editor()),
+        INFO_FIELD(aerial_max_distance, float_editor(SPEED_MEDIUM, 0.0f, FLT_MAX)),
+        INFO_FIELD(clouds_enabled, bool_editor()),
+        INFO_FIELD(cloud_bottom, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(cloud_thickness, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(cloud_coverage, float_editor(SPEED_SMALL, 0.0f, 1.0f)),
+        INFO_FIELD(cloud_density, float_editor(SPEED_SMALL, 0.0f, FLT_MAX)),
+        INFO_FIELD(cloud_type, float_editor(SPEED_SMALL, 0.0f, 1.0f)),
+        INFO_FIELD(cloud_multi_scattering, float_editor(SPEED_SMALL, 0.0f, 1.0f)),
+        INFO_FIELD(cloud_powder, float_editor(SPEED_SMALL, 0.0f, FLT_MAX))
+    };
+
+    return fields;
+}
+
+#undef INFO_FIELD
 
 bool edit_atmosphere(glaze::world::res::atmosphere_create_info& info)
 {
-    bool changed = false;
-
-    ImGui::SeparatorText("sun");
-
-    changed |= edit_float("time of day", info.time_of_day, SPEED_SMALL, 0.0f, MAX_HOURS);
-    changed |= edit_float("max elevation", info.sun_max_elevation, SPEED_MEDIUM, 0.0f, MAX_ELEVATION);
-    changed |= edit_float("sun illuminance", info.sun_illuminance, SPEED_HUGE, 0.0f, FLT_MAX);
-    changed |= edit_float("sun angular radius", info.sun_angular_radius, SPEED_FINE, 0.0f, MAX_ELEVATION);
-    changed |= edit_float("sun light scale", info.sun_light_scale, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("sun temperature", info.sun_temperature, SPEED_HUGE, 0.0f, FLT_MAX);
-    changed |= edit_float("horizon fade", info.horizon_light_fade, SPEED_MEDIUM, 0.0f, FLT_MAX);
-    changed |= edit_float("horizon twilight", info.horizon_light_twilight, SPEED_MEDIUM, 0.0f, FLT_MAX);
-    changed |= edit_float("horizon desaturation", info.horizon_light_desaturation, SPEED_SMALL, 0.0f, 1.0f);
-    changed |= edit_float("evening sun pink", info.evening_sun_pink, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("evening halo pink", info.evening_halo_pink, SPEED_SMALL, 0.0f, FLT_MAX);
-
-    ImGui::SeparatorText("moon");
-
-    changed |= edit_float("moon illuminance", info.moon_illuminance, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("moon angular radius", info.moon_angular_radius, SPEED_FINE, 0.0f, MAX_ELEVATION);
-    changed |= edit_float("moon light scale", info.moon_light_scale, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("moon overlap hours", info.moon_overlap_hours, SPEED_SMALL, 0.0f, MAX_HOURS);
-    changed |= edit_color("moon color", info.moon_color);
-    changed |= edit_float("moon flare size", info.moon_flare_size, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("moon flare falloff", info.moon_flare_falloff, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("moon flare multiplier", info.moon_flare_multiplier, SPEED_FINE, 0.0f, FLT_MAX);
-    changed |= edit_color("moon flare tint", info.moon_flare_tint);
-
-    ImGui::SeparatorText("sky");
-
-    changed |= edit_float("night ambient scale", info.night_ambient_scale, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("day sky scale", info.day_sky_scale, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("twilight desaturation", info.twilight_desaturation, SPEED_SMALL, 0.0f, 1.0f);
-    changed |= edit_float("night sky luminance", info.night_sky_luminance, SPEED_FINE, 0.0f, FLT_MAX);
-    changed |= edit_float("star intensity", info.star_intensity, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("star twinkle", info.star_twinkle, SPEED_SMALL, 0.0f, FLT_MAX);
-
-    ImGui::SeparatorText("fog");
-
-    changed |= edit_float("fog day density", info.fog_day_density, SPEED_FINE, 0.0f, FLT_MAX);
-    changed |= edit_float("fog night density", info.fog_night_density, SPEED_FINE, 0.0f, FLT_MAX);
-    changed |= edit_float("fog height falloff", info.fog_height_falloff, SPEED_FINE, 0.0f, FLT_MAX);
-    changed |= edit_float("fog base height", info.fog_base_height, SPEED_MEDIUM);
-    changed |= edit_float("fog anisotropy", info.fog_anisotropy, SPEED_SMALL, -1.0f, 1.0f);
-    changed |= edit_float("fog max distance", info.fog_max_distance, SPEED_HUGE, 0.0f, FLT_MAX);
-    changed |= edit_color("fog color", info.fog_color);
-
-    ImGui::SeparatorText("atmosphere");
-
-    changed |= edit_float("bottom radius", info.bottom_radius, SPEED_LARGE, 0.0f, FLT_MAX);
-    changed |= edit_float("top radius", info.top_radius, SPEED_LARGE, 0.0f, FLT_MAX);
-    changed |= edit_vec3("rayleigh scattering", info.rayleigh_scattering, SPEED_FINE);
-    changed |= edit_float("rayleigh scale height", info.rayleigh_scale_height, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_vec3("mie scattering", info.mie_scattering, SPEED_FINE);
-    changed |= edit_vec3("mie absorption", info.mie_absorption, SPEED_FINE);
-    changed |= edit_float("mie scale height", info.mie_scale_height, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("mie anisotropy", info.mie_anisotropy, SPEED_SMALL, -1.0f, 1.0f);
-    changed |= edit_float("evening aerosol", info.evening_aerosol, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_vec3("ozone absorption", info.ozone_absorption, SPEED_FINE);
-    changed |= edit_float("ozone center", info.ozone_center, SPEED_MEDIUM, 0.0f, FLT_MAX);
-    changed |= edit_float("ozone width", info.ozone_width, SPEED_MEDIUM, 0.0f, FLT_MAX);
-    changed |= edit_color("ground albedo", info.ground_albedo);
-    changed |= edit_float("aerial max distance", info.aerial_max_distance, SPEED_MEDIUM, 0.0f, FLT_MAX);
-
-    ImGui::SeparatorText("clouds");
-
-    changed |= ImGui::Checkbox("clouds", &info.clouds_enabled);
-    changed |= edit_float("cloud bottom", info.cloud_bottom, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("cloud thickness", info.cloud_thickness, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("cloud coverage", info.cloud_coverage, SPEED_SMALL, 0.0f, 1.0f);
-    changed |= edit_float("cloud density", info.cloud_density, SPEED_SMALL, 0.0f, FLT_MAX);
-    changed |= edit_float("cloud type", info.cloud_type, SPEED_SMALL, 0.0f, 1.0f);
-    changed |= edit_float("cloud multi scattering", info.cloud_multi_scattering, SPEED_SMALL, 0.0f, 1.0f);
-    changed |= edit_float("cloud powder", info.cloud_powder, SPEED_SMALL, 0.0f, FLT_MAX);
-
-    return changed;
+    return edit_fields(atmosphere_fields(), info);
 }
 
 std::string find_base_color(const std::string& pack_path)
@@ -346,7 +439,7 @@ bool edit_plane(glaze::world::res::textured_plane_create_info& info, const char*
     edit_vec2("tile size", info.tile_size, SPEED_SMALL);
     committed |= ImGui::IsItemDeactivatedAfterEdit();
 
-    committed |= ImGui::Checkbox("flip normal y", &info.flip_normal_y);
+    committed |= edit_bool("flip normal y", info.flip_normal_y);
 
     edit_float("transmission", info.transmission_factor, SPEED_SMALL, 0.0f, 1.0f);
     committed |= ImGui::IsItemDeactivatedAfterEdit();
@@ -477,10 +570,6 @@ void draw_camera_fields(scene_entity* entity)
     }
 }
 
-void draw_nothing(scene_entity*)
-{
-}
-
 scene_entity* create_model(glm::vec3 position)
 {
     if (!is_model_path(m_model_draft)) {
@@ -524,6 +613,7 @@ std::vector<object_type> build_types()
 
     object_type model;
     model.name          = "static_object_model_prim";
+    model.label         = "Static Mesh";
     model.is_creatable  = true;
     model.matches       = is_type<glaze::scene::obj::static_object_model_prim>;
     model.draw_fields   = draw_model_fields;
@@ -533,6 +623,7 @@ std::vector<object_type> build_types()
 
     object_type plane;
     plane.name         = "textured_plane";
+    plane.label        = "Textured Plane";
     plane.is_creatable = true;
     plane.matches      = is_type<glaze::world::res::textured_plane>;
     plane.draw_fields  = draw_plane_fields;
@@ -542,6 +633,7 @@ std::vector<object_type> build_types()
 
     object_type light;
     light.name         = "light_object_prim";
+    light.label        = "Light";
     light.is_creatable = true;
     light.matches      = is_type<glaze::scene::obj::light_object_prim>;
     light.draw_fields  = draw_light_fields;
@@ -553,6 +645,7 @@ std::vector<object_type> build_types()
 
     object_type sky;
     sky.name          = "sky_atmosphere";
+    sky.label         = "Sky Atmosphere";
     sky.has_transform     = false;
     sky.is_creatable      = true;
     sky.only_first_active = true;
@@ -566,6 +659,7 @@ std::vector<object_type> build_types()
 
     object_type post;
     post.name          = "post_object_prim";
+    post.label         = "Post Process";
     post.has_transform     = false;
     post.is_creatable      = true;
     post.only_first_active = true;
@@ -579,28 +673,29 @@ std::vector<object_type> build_types()
 
     object_type debug_camera;
     debug_camera.name        = "debug_camera_player_obj";
+    debug_camera.label       = "Debug Camera";
     debug_camera.matches     = is_type<scene::debug_camera_player_obj>;
     debug_camera.draw_fields = draw_camera_fields;
     types.push_back(debug_camera);
 
     object_type static_camera;
     static_camera.name        = "static_camera_object_prim";
+    static_camera.label       = "Static Camera";
     static_camera.matches     = is_type<glaze::scene::obj::static_camera_object_prim>;
-    static_camera.draw_fields = draw_nothing;
     types.push_back(static_camera);
 
     object_type debug_grid;
     debug_grid.name          = "debug_grid_object";
+    debug_grid.label         = "Debug Grid";
     debug_grid.has_transform = false;
     debug_grid.matches       = is_type<scene::debug_grid_object>;
-    debug_grid.draw_fields   = draw_nothing;
     types.push_back(debug_grid);
 
     object_type skybox;
     skybox.name          = "skybox";
+    skybox.label         = "Skybox";
     skybox.has_transform = false;
     skybox.matches       = is_type<glaze::world::res::skybox>;
-    skybox.draw_fields   = draw_nothing;
     types.push_back(skybox);
 
     return types;

@@ -1,6 +1,7 @@
 #ifndef NDEBUG
 
 #include "glp/trainer/ui/file_field.h"
+#include "glp/trainer/ui/property.h"
 
 #include "glp/glaze/rendering/scene_render/resources/textures.h"
 
@@ -159,6 +160,8 @@ bool draw(const char* label, std::string& path, const char* filters, pick_mode m
 
     bool committed = false;
 
+    property::begin_row(label);
+
     ImGui::PushID(label);
 
     const float browse_width = ImGui::CalcTextSize(BROWSE_LABEL).x + ImGui::GetStyle().FramePadding.x * 2.0f;
@@ -166,7 +169,7 @@ bool draw(const char* label, std::string& path, const char* filters, pick_mode m
     std::array<char, MAX_PATH_LENGTH> buffer = {};
     std::strncpy(buffer.data(), path.c_str(), buffer.size() - 1);
 
-    ImGui::SetNextItemWidth(ImGui::CalcItemWidth() - browse_width - ImGui::GetStyle().ItemInnerSpacing.x);
+    ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - browse_width - ImGui::GetStyle().ItemInnerSpacing.x);
 
     if (ImGui::InputText("##path", buffer.data(), buffer.size())) {
         path = buffer.data();
@@ -190,8 +193,6 @@ bool draw(const char* label, std::string& path, const char* filters, pick_mode m
         dialog.OpenDialog(key, label, mode == pick_mode::folder ? nullptr : filters, config);
     }
 
-    ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-    ImGui::TextUnformatted(label);
 
     if (dialog.IsOpened(key)) {
         m_dialog_drawn = true;

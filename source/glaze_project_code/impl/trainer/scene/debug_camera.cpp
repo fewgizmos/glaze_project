@@ -1,5 +1,3 @@
-#ifndef NDEBUG
-
 #include "glp/trainer/scene/debug_camera.h"
 
 #include "glp/glaze/scene/volume/volume.h"
@@ -91,4 +89,3 @@ void debug_camera_player_obj::update()
 
 }
 
-#endif
