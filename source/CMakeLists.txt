@@ -9,6 +9,11 @@ file(GLOB_RECURSE GIZMOX_HEADERS CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/glaze_project_code/head/*.hpp
 )
 
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/glaze_project_code/head/glp/glaze/runtime/config.h.in
+    ${CMAKE_CURRENT_SOURCE_DIR}/glaze_project_code/head/glp/glaze/runtime/config.h
+)
+
 add_executable(glaze_executable
     ${GIZMOX_SOURCES}
     ${GIZMOX_HEADERS}

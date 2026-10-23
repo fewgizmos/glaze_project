@@ -1,6 +1,8 @@
-#ifndef NDEBUG
-
 #include "glp/trainer/ui/metrics.h"
+
+#include "glp/glaze/runtime/config.h"
+
+#ifdef DEV_BUILD
 
 #include "glp/trainer/ui/panels.h"
 

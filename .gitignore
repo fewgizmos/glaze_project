@@ -5,6 +5,7 @@ build/
 # cmake generated files
 CMakeFiles/
 compile_commands.json
+/source/glaze_project_code/head/glp/glaze/runtime/config.h
 
 # third patry cache
 /.cache

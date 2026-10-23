@@ -1,6 +1,8 @@
-#ifndef NDEBUG
-
 #include "glp/trainer/ui/property.h"
+
+#include "glp/glaze/runtime/config.h"
+
+#ifdef DEV_BUILD
 
 #include <imgui.h>
 

@@ -1,6 +1,8 @@
 #pragma once
 
-#ifndef NDEBUG
+#include "glp/glaze/runtime/config.h"
+
+#ifdef DEV_BUILD
 
 #include "glp/glaze/scene/scene.h"
 #include "glp/glaze/scene/volume/volume.h"

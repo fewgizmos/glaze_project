@@ -5,6 +5,7 @@ Set-Location $ROOT_DIR
 
 $build_type = "release"
 $run_after  = $false
+$dev_build  = $false
 
 function usage {
     Write-Host "Usage: $PSCommandPath [options]"
@@ -12,11 +13,12 @@ function usage {
     Write-Host "Builds the project for Windows with MinGW (release by default)."
     Write-Host
     Write-Host "Options:"
-    Write-Host "  -d, --debug  build in debug mode instead of release"
-    Write-Host "  -r, --run    run the executable after a successful build"
-    Write-Host "  -h, --help   show this help and exit"
+    Write-Host "  -d, --debug      build in debug mode instead of release"
+    Write-Host "  -i, --dev-build  compile the in-engine trainer (DEV_BUILD=ON)"
+    Write-Host "  -r, --run        run the executable after a successful build"
+    Write-Host "  -h, --help       show this help and exit"
     Write-Host
-    Write-Host "Short options can be combined, e.g. -dr"
+    Write-Host "Short options can be combined, e.g. -dir"
 }
 
 function bad_arg($arg) {
@@ -26,14 +28,16 @@ function bad_arg($arg) {
 
 foreach ($arg in $args) {
     switch -CaseSensitive -Regex ($arg) {
-        "^--debug$" { $build_type = "debug"; break }
-        "^--run$"   { $run_after = $true; break }
-        "^--help$"  { usage; exit 0 }
-        "^--"       { bad_arg $arg }
+        "^--debug$"     { $build_type = "debug"; break }
+        "^--dev-build$" { $dev_build = $true; break }
+        "^--run$"       { $run_after = $true; break }
+        "^--help$"      { usage; exit 0 }
+        "^--"           { bad_arg $arg }
         "^-.+" {
             foreach ($flag in $arg.Substring(1).ToCharArray()) {
                 switch -CaseSensitive ($flag) {
                     "d" { $build_type = "debug" }
+                    "i" { $dev_build = $true }
                     "r" { $run_after = $true }
                     "h" { usage; exit 0 }
                     default { bad_arg "-$flag" }
@@ -57,9 +61,11 @@ $toolchain_bin = "$msys2_root\ucrt64\bin"
 $env:PATH = "$toolchain_bin;$env:PATH"
 
 $cmake_build_type = if ($build_type -eq "debug") { "Debug" } else { "Release" }
+$dev_build_flag   = if ($dev_build) { "ON" } else { "OFF" }
 
 cmake -G Ninja -B ".cmake_build/$build_type" -S . `
     "-DCMAKE_BUILD_TYPE=$cmake_build_type" `
+    "-DDEV_BUILD=$dev_build_flag" `
     "-DCMAKE_C_COMPILER=gcc" `
     "-DCMAKE_CXX_COMPILER=g++" `
     "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++"

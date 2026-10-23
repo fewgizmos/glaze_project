@@ -1,6 +1,9 @@
-#ifndef NDEBUG
-
 #include "glp/trainer/ui/world_settings.h"
+
+#include "glp/glaze/runtime/config.h"
+
+#ifdef DEV_BUILD
+
 #include "glp/trainer/ui/panels.h"
 
 #include "glp/glaze/scene/scene.h"

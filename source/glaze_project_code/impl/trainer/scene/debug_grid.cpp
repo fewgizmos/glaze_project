@@ -1,6 +1,8 @@
-#ifndef NDEBUG
-
 #include "glp/trainer/scene/debug_grid.h"
+
+#include "glp/glaze/runtime/config.h"
+
+#ifdef DEV_BUILD
 
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 

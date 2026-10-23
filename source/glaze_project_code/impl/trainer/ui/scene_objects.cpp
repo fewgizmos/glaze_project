@@ -1,6 +1,8 @@
-#ifndef NDEBUG
-
 #include "glp/trainer/ui/scene_objects.h"
+
+#include "glp/glaze/runtime/config.h"
+
+#ifdef DEV_BUILD
 
 #include "glp/trainer/objects/object_types.h"
 #include "glp/trainer/objects/selection.h"

@@ -1,6 +1,8 @@
 #pragma once
 
-#ifndef NDEBUG
+#include "glp/glaze/runtime/config.h"
+
+#ifdef DEV_BUILD
 
 #include "glp/trainer/ui/property.h"
 

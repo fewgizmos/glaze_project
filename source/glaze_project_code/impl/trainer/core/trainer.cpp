@@ -1,6 +1,8 @@
-#ifndef NDEBUG
-
 #include "glp/trainer/core/trainer.h"
+
+#include "glp/glaze/runtime/config.h"
+
+#ifdef DEV_BUILD
 
 #include "glp/trainer/scene/debug_grid.h"
 #include "glp/trainer/ui/ui.h"

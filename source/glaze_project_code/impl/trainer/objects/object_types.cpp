@@ -1,6 +1,8 @@
-#ifndef NDEBUG
-
 #include "glp/trainer/objects/object_types.h"
+
+#include "glp/glaze/runtime/config.h"
+
+#ifdef DEV_BUILD
 
 #include <string>
 #include <utility>

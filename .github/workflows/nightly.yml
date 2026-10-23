@@ -21,11 +21,17 @@ jobs:
       - name: Prepare environment
         run: bash scripts/prepare_env_lin.sh
 
-      - name: Build debug
-        run: bash scripts/builder_lin.sh -d
-
       - name: Build release
         run: bash scripts/builder_lin.sh
+
+      - name: Stash release binary
+        run: cp "build/$glaze_build_id/linux/release/$glaze_bin_name" "$RUNNER_TEMP/${glaze_bin_name}_lin"
+
+      - name: Build dev
+        run: bash scripts/builder_lin.sh -i
+
+      - name: Stash dev binary
+        run: cp "build/$glaze_build_id/linux/release/$glaze_bin_name" "$RUNNER_TEMP/${glaze_bin_name}_internal_lin"
 
       - name: Package
         run: |
@@ -38,17 +44,16 @@ jobs:
 
           public="$RUNNER_TEMP/public_test_lin_gl"
           stage_common "$public"
-          cp "build/$glaze_build_id/linux/release/$glaze_bin_name" "$public/"
+          cp "$RUNNER_TEMP/${glaze_bin_name}_lin" "$public/${glaze_bin_name}_lin"
           (cd "$public" && zip -r -q "$GITHUB_WORKSPACE/public_test_lin_gl.zip" .)
 
           internal="$RUNNER_TEMP/internal_test_lin_gl"
           stage_common "$internal"
-          cp "build/$glaze_build_id/linux/debug/$glaze_bin_name" "$internal/"
-          cp "build/$glaze_build_id/linux/release/$glaze_bin_name" "$internal/${glaze_bin_name}_release"
+          cp "$RUNNER_TEMP/${glaze_bin_name}_internal_lin" "$internal/${glaze_bin_name}_internal_lin"
           (cd "$internal" && zip -r -q "$GITHUB_WORKSPACE/internal_test_lin_gl.zip" .)
 
-          cp "build/$glaze_build_id/linux/debug/$glaze_bin_name" "${glaze_bin_name}_debug_lin"
-          cp "build/$glaze_build_id/linux/release/$glaze_bin_name" "${glaze_bin_name}_release_lin"
+          cp "$RUNNER_TEMP/${glaze_bin_name}_lin" "${glaze_bin_name}_lin"
+          cp "$RUNNER_TEMP/${glaze_bin_name}_internal_lin" "${glaze_bin_name}_internal_lin"
 
           zip -r -q resources.zip source/glaze_project_resources
 
@@ -58,8 +63,8 @@ jobs:
           path: |
             public_test_lin_gl.zip
             internal_test_lin_gl.zip
-            ${{ env.glaze_bin_name }}_debug_lin
-            ${{ env.glaze_bin_name }}_release_lin
+            ${{ env.glaze_bin_name }}_lin
+            ${{ env.glaze_bin_name }}_internal_lin
             resources.zip
           retention-days: 1
 
@@ -72,13 +77,29 @@ jobs:
         shell: pwsh
         run: ./scripts/prepare_env_win.ps1
 
-      - name: Build debug
-        shell: pwsh
-        run: ./scripts/builder_win.ps1 -d
-
       - name: Build release
         shell: pwsh
         run: ./scripts/builder_win.ps1
+
+      - name: Stash release build
+        shell: pwsh
+        run: |
+          $stage = "$env:RUNNER_TEMP/win_release"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "build/$env:glaze_build_id/windows/release/*" $stage -Recurse -Force
+          Rename-Item "$stage/$env:glaze_bin_name.exe" "$($env:glaze_bin_name)_win.exe"
+
+      - name: Build dev
+        shell: pwsh
+        run: ./scripts/builder_win.ps1 -i
+
+      - name: Stash dev build
+        shell: pwsh
+        run: |
+          $stage = "$env:RUNNER_TEMP/win_dev"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "build/$env:glaze_build_id/windows/release/*" $stage -Recurse -Force
+          Rename-Item "$stage/$env:glaze_bin_name.exe" "$($env:glaze_bin_name)_internal_win.exe"
 
       - name: Package
         shell: pwsh
@@ -92,18 +113,16 @@ jobs:
 
           $public = "$env:RUNNER_TEMP/public_test_win_gl"
           Stage-Common $public
-          Copy-Item "build/$env:glaze_build_id/windows/release/*" $public -Recurse
+          Copy-Item "$env:RUNNER_TEMP/win_release/*" $public -Recurse -Force
           Compress-Archive -Path "$public/*" -DestinationPath public_test_win_gl.zip -Force
 
           $internal = "$env:RUNNER_TEMP/internal_test_win_gl"
           Stage-Common $internal
-          Copy-Item "build/$env:glaze_build_id/windows/debug/*" $internal -Recurse
-          Copy-Item "build/$env:glaze_build_id/windows/release/*.dll" $internal -Force
-          Copy-Item "build/$env:glaze_build_id/windows/release/$env:glaze_bin_name.exe" "$internal/$($env:glaze_bin_name)_release.exe"
+          Copy-Item "$env:RUNNER_TEMP/win_dev/*" $internal -Recurse -Force
           Compress-Archive -Path "$internal/*" -DestinationPath internal_test_win_gl.zip -Force
 
-          Copy-Item "build/$env:glaze_build_id/windows/debug/$env:glaze_bin_name.exe" "$($env:glaze_bin_name)_debug_win.exe"
-          Copy-Item "build/$env:glaze_build_id/windows/release/$env:glaze_bin_name.exe" "$($env:glaze_bin_name)_release_win.exe"
+          Copy-Item "$env:RUNNER_TEMP/win_release/$($env:glaze_bin_name)_win.exe" "$($env:glaze_bin_name)_win.exe"
+          Copy-Item "$env:RUNNER_TEMP/win_dev/$($env:glaze_bin_name)_internal_win.exe" "$($env:glaze_bin_name)_internal_win.exe"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -111,8 +130,8 @@ jobs:
           path: |
             public_test_win_gl.zip
             internal_test_win_gl.zip
-            ${{ env.glaze_bin_name }}_debug_win.exe
-            ${{ env.glaze_bin_name }}_release_win.exe
+            ${{ env.glaze_bin_name }}_win.exe
+            ${{ env.glaze_bin_name }}_internal_win.exe
           retention-days: 1
 
   release:
@@ -136,7 +155,7 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "$RELEASE_TITLE" \
-            --notes "Debug and release builds of ${GITHUB_SHA::7}" \
+            --notes "Release and dev builds of ${GITHUB_SHA::7}" \
             --prerelease
 
           assets=(
@@ -144,10 +163,10 @@ jobs:
             internal_test_win_gl.zip
             public_test_lin_gl.zip
             public_test_win_gl.zip
-            "${glaze_bin_name}_debug_lin"
-            "${glaze_bin_name}_debug_win.exe"
-            "${glaze_bin_name}_release_lin"
-            "${glaze_bin_name}_release_win.exe"
+            "${glaze_bin_name}_internal_lin"
+            "${glaze_bin_name}_internal_win.exe"
+            "${glaze_bin_name}_lin"
+            "${glaze_bin_name}_win.exe"
             resources.zip
           )
 

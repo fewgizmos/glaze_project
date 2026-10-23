@@ -1,5 +1,7 @@
 #include "glp/glaze/runtime/engine.h"
 
+#include "glp/glaze/runtime/config.h"
+
 #include "glp/glaze/utilities/core/timer.h"
 
 #include "glp/glaze/platform/app.h"
@@ -10,7 +12,7 @@
 
 #include "glp/game/game_management/game_manager.h"
 
-#ifndef NDEBUG
+#ifdef DEV_BUILD
 #include "glp/trainer/core/trainer.h"
 #endif
 
@@ -58,14 +60,14 @@ void startup()
     game::game_management::it::startup();
     game::game_management::it::init_session();
 
-#ifndef NDEBUG
+#ifdef DEV_BUILD
     trainer::core::it::startup();
 #endif
 }
 
 void cleanup()
 {
-#ifndef NDEBUG
+#ifdef DEV_BUILD
     trainer::core::it::cleanup();
 #endif
 
@@ -96,7 +98,7 @@ void tick_frame()
 
     game::game_management::it::update_frame();
 
-#ifndef NDEBUG
+#ifdef DEV_BUILD
     trainer::core::it::frame_update();
 #endif
 

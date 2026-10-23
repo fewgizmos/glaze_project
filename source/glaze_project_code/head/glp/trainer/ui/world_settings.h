@@ -1,6 +1,8 @@
 #pragma once
 
-#ifndef NDEBUG
+#include "glp/glaze/runtime/config.h"
+
+#ifdef DEV_BUILD
 
 namespace trainer::ui::world_settings
 {
