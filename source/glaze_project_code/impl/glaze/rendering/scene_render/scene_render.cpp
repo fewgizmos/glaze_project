@@ -1,5 +1,7 @@
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
+#include "glp/glaze/runtime/config.h"
+
 #include "glp/glaze/rendering/scene_render/atmosphere.h"
 #include "glp/glaze/rendering/scene_render/bloom.h"
 #include "glp/glaze/rendering/scene_render/clouds.h"
@@ -9,6 +11,11 @@
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 #include "glp/glaze/rendering/scene_render/fsr.h"
 #include "glp/glaze/rendering/scene_render/gtao.h"
+
+#ifdef DEV_BUILD
+#include "glp/glaze/rendering/scene_render/outline_mask.h"
+#endif
+
 #include "glp/glaze/rendering/scene_render/picking.h"
 #include "glp/glaze/rendering/scene_render/post_process.h"
 #include "glp/glaze/rendering/scene_render/shadows.h"
@@ -489,12 +496,20 @@ void init()
     exposure::init_all();
     bloom::init_all();
 
+#ifdef DEV_BUILD
+    outline_mask::init_all();
+#endif
+
     post_process::init_all();
 }
 
 void cleanup()
 {
     post_process::clean_all();
+
+#ifdef DEV_BUILD
+    outline_mask::clean_all();
+#endif
 
     bloom::clean_all();
     exposure::clean_all();
@@ -550,6 +565,10 @@ void handle_all()
     light_shafts::handle_all();
     exposure::handle_all();
     bloom::handle_all();
+
+#ifdef DEV_BUILD
+    outline_mask::handle_all();
+#endif
 
     post_process::handle_all();
 

@@ -6,6 +6,10 @@ layout(set = 0, binding = 0) uniform sampler2D hdr_image;
 layout(set = 0, binding = 1) uniform sampler2D bloom_image;
 layout(set = 0, binding = 2) uniform sampler2D gbuffer_normal;
 
+#ifdef DEV_BUILD
+layout(set = 0, binding = 3) uniform sampler2D outline_mask;
+#endif
+
 layout(push_constant) uniform constants
 {
     uint tonemapper;
@@ -212,38 +216,45 @@ float dither_noise(vec2 pixel)
     return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
 }
 
-uint entity_at(vec2 display_pixel)
+#ifdef DEV_BUILD
+float mask_at(vec2 display_pixel)
 {
     vec2 display_size = vec2(textureSize(hdr_image, 0));
-    ivec2 render_size = textureSize(gbuffer_normal, 0);
 
-    ivec2 coord = clamp(ivec2(display_pixel / display_size * vec2(render_size)), ivec2(0), render_size - 1);
+    vec2 uv = display_pixel / display_size;
 
-    return decode_entity_id(texelFetch(gbuffer_normal, coord, 0).ba);
+    return texture(outline_mask, uv).r;
 }
 
-bool is_outline(vec2 display_pixel)
+float outline_alpha(vec2 display_pixel)
 {
-    if (pc.selected_entity == NO_ENTITY || entity_at(display_pixel) == pc.selected_entity) {
-        return false;
+    if (pc.selected_entity == NO_ENTITY) {
+        return 0.0;
     }
+
+    float self = mask_at(display_pixel);
+
+    float max_neighbor = 0.0;
 
     for (uint i = 0u; i < OUTLINE_DIRECTIONS; i++) {
-        if (entity_at(display_pixel + OUTLINE_OFFSETS[i] * pc.outline_width) == pc.selected_entity) {
-            return true;
-        }
+        max_neighbor = max(max_neighbor, mask_at(display_pixel + OUTLINE_OFFSETS[i] * pc.outline_width));
     }
 
-    return false;
+    return clamp(max_neighbor - self, 0.0, 1.0);
 }
+#endif
 
 void main()
 {
     vec3 color = linear_to_srgb(contrast_adaptive_sharpen(ivec2(gl_FragCoord.xy)));
 
-    if (is_outline(gl_FragCoord.xy)) {
-        color = linear_to_srgb(OUTLINE_COLOR);
+#ifdef DEV_BUILD
+    float outline = outline_alpha(gl_FragCoord.xy);
+
+    if (outline > 0.0) {
+        color = mix(color, linear_to_srgb(OUTLINE_COLOR), outline);
     }
+#endif
 
     color += (dither_noise(gl_FragCoord.xy) - 0.5) / DITHER_LEVELS;
 

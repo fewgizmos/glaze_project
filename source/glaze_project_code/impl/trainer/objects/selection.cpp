@@ -28,7 +28,11 @@
 #include <glm/vec4.hpp>
 
 #include <algorithm>
+#include <array>
+#include <cfloat>
 #include <cmath>
+#include <cstddef>
+#include <cstdio>
 #include <memory>
 
 namespace trainer::objects::selection
@@ -56,20 +60,47 @@ constexpr float MIN_SCALE = 0.0001f;
 
 constexpr float MIN_PANEL_MARGIN_Y = 0.02f;
 constexpr float MIN_PANEL_MARGIN_X = 0.012f;
-constexpr float PANEL_OFFSET_Y = 0.005f;
-constexpr float PANEL_BG_ALPHA = 0.7f;
+
+constexpr float PREFS_STEP_WIDTH   = 90.0f;
+constexpr float PREFS_STEP_DRAG    = 0.01f;
+constexpr float PREFS_MIN_STEP     = 0.0001f;
+constexpr float PREFS_PRESET_WIDTH = 32.0f;
+
+constexpr float DEFAULT_STEP = 0.5f;
 
 const glm::vec2 SCREEN_CENTER = glm::vec2(0.5f);
+
+constexpr std::size_t PRESET_COUNT = 4;
+
+constexpr std::array<float, PRESET_COUNT> MOVE_PRESETS   = { 0.1f, 0.5f, 1.0f, 5.0f };
+constexpr std::array<float, PRESET_COUNT> ROTATE_PRESETS = { 1.0f, 5.0f, 15.0f, 45.0f };
+constexpr std::array<float, PRESET_COUNT> SCALE_PRESETS  = { 0.1f, 0.5f, 1.0f, 2.0f };
 
 uint64_t m_selected = NO_ENTITY;
 uint64_t m_spawned  = NO_ENTITY;
 
 gizmo_mode m_mode = gizmo_mode::move;
 
+transform_axis_prefs m_move_prefs   = { DEFAULT_STEP, true };
+transform_axis_prefs m_rotate_prefs = { DEFAULT_STEP, true };
+transform_axis_prefs m_scale_prefs  = { DEFAULT_STEP, true };
+
+ImVec2 m_prefs_panel_right_bottom = ImVec2(0.0f, 0.0f);
+
 uint64_t m_click_request = 0;
 uint64_t m_spawn_request = 0;
 
 std::function<glaze::scene::scene_entity*(glm::vec3)> m_spawn_create;
+
+transform_axis_prefs& prefs_for(gizmo_mode mode)
+{
+    switch (mode) {
+        case gizmo_mode::rotate: return m_rotate_prefs;
+        case gizmo_mode::scale:  return m_scale_prefs;
+        case gizmo_mode::move:
+        default:                 return m_move_prefs;
+    }
+}
 
 glaze::scene::scene_entity* find_entity(uint64_t entity_id)
 {
@@ -216,33 +247,24 @@ void draw_gizmo(glaze::scene::scene_entity* entity)
 
     const ImGuizmo::MODE space = m_mode == gizmo_mode::scale ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
 
-    if (ImGuizmo::Manipulate(glm::value_ptr(camera.view), glm::value_ptr(projection), gizmo_operation(), space, glm::value_ptr(matrix))) {
+    const transform_axis_prefs& prefs = prefs_for(m_mode);
+
+    const float snap_values[3] = { prefs.step, prefs.step, prefs.step };
+    const float* snap_ptr      = (prefs.snap && prefs.step > 0.0f) ? snap_values : nullptr;
+
+    if (ImGuizmo::Manipulate(glm::value_ptr(camera.view), glm::value_ptr(projection), gizmo_operation(), space, glm::value_ptr(matrix), nullptr, snap_ptr)) {
         apply_matrix(entity, matrix);
     }
 }
 
 void draw_mode_panel()
 {
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const float gap = ImGui::GetStyle().ItemSpacing.y;
 
-    ImVec2 metrics_position;
-    ImVec2 metrics_size;
-
-    const float gap = ImGui::GetStyle().ItemSpacing.x;
-
-    ImVec2 position(
-        viewport->WorkPos.x + viewport->WorkSize.x * (1.0f - MIN_PANEL_MARGIN_X),
-        viewport->WorkPos.y + viewport->WorkSize.y * MIN_PANEL_MARGIN_Y
-    );
-
-    if (ui::metrics::get_minimized_bounds(metrics_position, metrics_size)) {
-        position = ImVec2(metrics_position.x - gap, metrics_position.y);
-    }
-
-    position.y += viewport->WorkSize.y * PANEL_OFFSET_Y;
+    const ImVec2 position(m_prefs_panel_right_bottom.x, m_prefs_panel_right_bottom.y + gap);
 
     ImGui::SetNextWindowPos(position, ImGuiCond_Always, ImVec2(1.0f, 0.0f));
-    ImGui::SetNextWindowBgAlpha(PANEL_BG_ALPHA);
+    ImGui::SetNextWindowBgAlpha(0.7f);
 
     const ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoDecoration
@@ -270,7 +292,124 @@ void draw_mode_panel()
     ImGui::End();
 }
 
+const char* mode_label(gizmo_mode mode)
+{
+    switch (mode) {
+        case gizmo_mode::rotate: return "rotate";
+        case gizmo_mode::scale:  return "scale";
+        case gizmo_mode::move:
+        default:                 return "move";
+    }
 }
+
+const char* mode_unit(gizmo_mode mode)
+{
+    switch (mode) {
+        case gizmo_mode::rotate: return "°";
+        case gizmo_mode::move:   return "m";
+        case gizmo_mode::scale:
+        default:                 return "";
+    }
+}
+
+const std::array<float, PRESET_COUNT>& mode_presets(gizmo_mode mode)
+{
+    switch (mode) {
+        case gizmo_mode::rotate: return ROTATE_PRESETS;
+        case gizmo_mode::scale:  return SCALE_PRESETS;
+        case gizmo_mode::move:
+        default:                 return MOVE_PRESETS;
+    }
+}
+
+void draw_prefs_panel()
+{
+    transform_axis_prefs& prefs = prefs_for(m_mode);
+
+    const char* label = mode_label(m_mode);
+    const char* unit  = mode_unit(m_mode);
+
+    const std::array<float, PRESET_COUNT>& presets = mode_presets(m_mode);
+
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+    ImVec2 metrics_position;
+    ImVec2 metrics_size;
+
+    const float gap = ImGui::GetStyle().ItemSpacing.x;
+
+    ImVec2 position(
+        viewport->WorkPos.x + viewport->WorkSize.x * (1.0f - MIN_PANEL_MARGIN_X),
+        viewport->WorkPos.y + viewport->WorkSize.y * MIN_PANEL_MARGIN_Y
+    );
+
+    if (ui::metrics::get_minimized_bounds(metrics_position, metrics_size)) {
+        position = ImVec2(metrics_position.x - gap, metrics_position.y);
+    }
+
+    ImGui::SetNextWindowPos(position, ImGuiCond_Always, ImVec2(1.0f, 0.0f));
+    ImGui::SetNextWindowBgAlpha(0.7f);
+
+    const ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoDecoration
+        | ImGuiWindowFlags_AlwaysAutoResize
+        | ImGuiWindowFlags_NoSavedSettings
+        | ImGuiWindowFlags_NoFocusOnAppearing
+        | ImGuiWindowFlags_NoNav
+        | ImGuiWindowFlags_NoMove;
+
+    if (!ImGui::Begin("##gizmo_prefs", nullptr, flags)) {
+        ImGui::End();
+        return;
+    }
+
+    ImGui::TextDisabled("%s snap", label);
+    ImGui::SameLine();
+    ImGui::Checkbox("##snap", &prefs.snap);
+
+    ImGui::BeginDisabled(!prefs.snap);
+
+    char fmt[32];
+    std::snprintf(fmt, sizeof(fmt), "%%.3f %s", unit);
+
+    ImGui::SetNextItemWidth(PREFS_STEP_WIDTH);
+    ImGui::DragFloat("##step", &prefs.step, PREFS_STEP_DRAG, PREFS_MIN_STEP, FLT_MAX, fmt);
+
+    const ImVec4& active   = ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive);
+    const ImVec4& inactive = ImGui::GetStyleColorVec4(ImGuiCol_Button);
+
+    for (std::size_t i = 0; i < presets.size(); i++) {
+        ImGui::SameLine();
+
+        char preset_label[16];
+        std::snprintf(preset_label, sizeof(preset_label), "%g", presets[i]);
+
+        const bool selected = std::abs(prefs.step - presets[i]) < 0.0001f;
+
+        ImGui::PushStyleColor(ImGuiCol_Button, selected ? active : inactive);
+
+        if (ImGui::Button(preset_label, ImVec2(PREFS_PRESET_WIDTH, 0.0f))) {
+            prefs.step = presets[i];
+        }
+
+        ImGui::PopStyleColor();
+    }
+
+    ImGui::EndDisabled();
+
+    const ImVec2 pos  = ImGui::GetWindowPos();
+    const ImVec2 size = ImGui::GetWindowSize();
+
+    m_prefs_panel_right_bottom = ImVec2(pos.x + size.x, pos.y + size.y);
+
+    ImGui::End();
+}
+
+}
+
+transform_axis_prefs get_move_prefs()   { return m_move_prefs; }
+transform_axis_prefs get_rotate_prefs() { return m_rotate_prefs; }
+transform_axis_prefs get_scale_prefs()  { return m_scale_prefs; }
 
 void update()
 {
@@ -305,6 +444,7 @@ void draw()
         return;
     }
 
+    draw_prefs_panel();
     draw_mode_panel();
     draw_gizmo(selected);
 }

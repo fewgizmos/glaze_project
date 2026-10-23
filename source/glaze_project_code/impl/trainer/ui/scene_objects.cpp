@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <cctype>
 #include <memory>
@@ -47,9 +48,9 @@ constexpr uint64_t NO_ENTITY = 0;
 
 constexpr int NO_CREATE_TYPE = -1;
 
-constexpr float TRANSFORM_SPEED = 0.05f;
-constexpr float ROTATION_SPEED  = 0.5f;
-constexpr float SCALE_SPEED     = 0.01f;
+constexpr float MOVE_DRAG_SPEED   = 0.05f;
+constexpr float ROTATE_DRAG_SPEED = 0.5f;
+constexpr float SCALE_DRAG_SPEED  = 0.01f;
 
 constexpr float PANEL_MARGIN_X = 0.006f;
 constexpr float PANEL_MARGIN_Y = 0.01f;
@@ -578,7 +579,7 @@ void draw_browser()
     ImGui::End();
 }
 
-bool edit_axes(const char* label, glm::vec3& value, float speed, float reset_value)
+bool edit_axes(const char* label, glm::vec3& value, float drag_speed, const objects::selection::transform_axis_prefs& prefs, float reset_value)
 {
     bool changed = false;
 
@@ -622,7 +623,13 @@ bool edit_axes(const char* label, glm::vec3& value, float speed, float reset_val
         ImGui::SameLine();
         ImGui::SetNextItemWidth(field_width);
 
-        changed |= ImGui::DragFloat("##value", &value[axis], speed, 0.0f, 0.0f, "%.3f");
+        if (ImGui::DragFloat("##value", &value[axis], drag_speed, 0.0f, 0.0f, "%.3f")) {
+            if (prefs.snap && prefs.step > 0.0f) {
+                value[axis] = std::round(value[axis] / prefs.step) * prefs.step;
+            }
+
+            changed = true;
+        }
 
         ImGui::PopID();
     }
@@ -653,9 +660,9 @@ void draw_transform(glaze::scene::scene_entity* entity)
 
     bool changed = false;
 
-    changed |= edit_axes("Location", position, TRANSFORM_SPEED, 0.0f);
-    changed |= edit_axes("Rotation", rotation, ROTATION_SPEED, 0.0f);
-    changed |= edit_axes("Scale", scale, SCALE_SPEED, 1.0f);
+    changed |= edit_axes("Location", position, MOVE_DRAG_SPEED,   objects::selection::get_move_prefs(),   0.0f);
+    changed |= edit_axes("Rotation", rotation, ROTATE_DRAG_SPEED, objects::selection::get_rotate_prefs(), 0.0f);
+    changed |= edit_axes("Scale",    scale,    SCALE_DRAG_SPEED,  objects::selection::get_scale_prefs(),  1.0f);
 
     ImGui::EndTable();
 

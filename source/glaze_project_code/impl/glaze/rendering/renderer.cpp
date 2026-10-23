@@ -1,5 +1,7 @@
 #include "glp/glaze/rendering/renderer.h"
 
+#include "glp/glaze/runtime/config.h"
+
 #include "glp/glaze/rendering/queue_deletor.h"
 
 #include "glp/glaze/rendering/imgui_render/imgui_render.h"
@@ -10,6 +12,11 @@
 #include "glp/glaze/rendering/scene_render/exposure.h"
 #include "glp/glaze/rendering/scene_render/light_shafts.h"
 #include "glp/glaze/rendering/scene_render/gtao.h"
+
+#ifdef DEV_BUILD
+#include "glp/glaze/rendering/scene_render/outline_mask.h"
+#endif
+
 #include "glp/glaze/rendering/scene_render/picking.h"
 #include "glp/glaze/rendering/scene_render/post_process.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
@@ -338,6 +345,11 @@ void record_command_buffer()
     scene_render::bloom::dispatch();
 
     vk::profiler::mark(cmd, "bloom");
+
+#ifdef DEV_BUILD
+    scene_render::outline_mask::dispatch();
+    vk::profiler::mark(cmd, "outline mask");
+#endif
 
     begin_post_rendering();
 

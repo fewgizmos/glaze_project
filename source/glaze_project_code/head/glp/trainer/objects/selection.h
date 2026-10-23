@@ -14,6 +14,16 @@
 namespace trainer::objects::selection
 {
 
+struct transform_axis_prefs
+{
+    float step;
+    bool  snap;
+};
+
+transform_axis_prefs get_move_prefs();
+transform_axis_prefs get_rotate_prefs();
+transform_axis_prefs get_scale_prefs();
+
 void update();
 void draw();
 

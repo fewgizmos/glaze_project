@@ -1,8 +1,15 @@
 #include "glp/glaze/rendering/scene_render/post_process.h"
 
+#include "glp/glaze/runtime/config.h"
+
 #include "glp/glaze/rendering/scene_render/bloom.h"
 #include "glp/glaze/rendering/scene_render/exposure.h"
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
+
+#ifdef DEV_BUILD
+#include "glp/glaze/rendering/scene_render/outline_mask.h"
+#endif
+
 #include "glp/glaze/rendering/scene_render/picking.h"
 #include "glp/glaze/rendering/scene_render/scene_render.h"
 
@@ -55,6 +62,11 @@ VkImageView m_written_view = VK_NULL_HANDLE;
 VkImageView m_written_bloom_view = VK_NULL_HANDLE;
 VkImageView m_written_normal_view = VK_NULL_HANDLE;
 
+#ifdef DEV_BUILD
+VkSampler m_outline_sampler = VK_NULL_HANDLE;
+VkImageView m_written_outline_view = VK_NULL_HANDLE;
+#endif
+
 const shader* m_tonemap_shader = nullptr;
 
 void create_set()
@@ -62,10 +74,19 @@ void create_set()
     m_set_layout = vk::descriptors::create_set_layout({
         { 0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
         { 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
-        { 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr }
+        { 2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+#ifdef DEV_BUILD
+        { 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr },
+#endif
     });
 
-    m_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 } });
+#ifdef DEV_BUILD
+    constexpr uint32_t SAMPLER_COUNT = 4;
+#else
+    constexpr uint32_t SAMPLER_COUNT = 3;
+#endif
+
+    m_pool = vk::descriptors::create_pool(1, { { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, SAMPLER_COUNT } });
     m_set  = vk::descriptors::allocate_set(m_pool, m_set_layout);
 }
 
@@ -86,6 +107,10 @@ void create_sampler()
     sampler_info.min_filter = VK_FILTER_LINEAR;
 
     m_bloom_sampler = vk::samplers::get(vk::samplers::make(sampler_info));
+
+#ifdef DEV_BUILD
+    m_outline_sampler = m_bloom_sampler;
+#endif
 }
 
 void create_tonemap_shader()
@@ -97,6 +122,10 @@ void create_tonemap_shader()
     info.set_layouts          = { m_set_layout };
     info.push_constant_size   = sizeof(tonemap_push);
     info.push_constant_stages = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+#ifdef DEV_BUILD
+    info.defines = { "DEV_BUILD" };
+#endif
 
     m_tonemap_shader = res::shaders::build("tonemap", "sys/post/tonemap.vert", "sys/post/tonemap.frag", "", info, {}, render_queue::opaque);
 }
@@ -128,6 +157,11 @@ void clean_all()
     m_written_bloom_view  = VK_NULL_HANDLE;
     m_written_normal_view = VK_NULL_HANDLE;
 
+#ifdef DEV_BUILD
+    m_outline_sampler      = VK_NULL_HANDLE;
+    m_written_outline_view = VK_NULL_HANDLE;
+#endif
+
     m_selected_entity = 0;
 
     m_tonemap_shader = nullptr;
@@ -157,6 +191,16 @@ void handle_all()
 
         m_written_normal_view = normal_view;
     }
+
+#ifdef DEV_BUILD
+    const VkImageView outline_view = outline_mask::get_mask_image().view;
+
+    if (outline_view != m_written_outline_view) {
+        vk::descriptors::write_image(m_set, 3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, outline_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, m_outline_sampler);
+
+        m_written_outline_view = outline_view;
+    }
+#endif
 }
 
 void draw_all()
@@ -200,6 +244,10 @@ void draw_all()
 void set_selected_entity(uint64_t entity_id)
 {
     m_selected_entity = static_cast<uint32_t>(entity_id & picking::ENTITY_ID_MASK);
+
+#ifdef DEV_BUILD
+    outline_mask::set_entity(m_selected_entity);
+#endif
 }
 
 }
