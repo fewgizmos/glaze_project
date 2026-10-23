@@ -133,13 +133,24 @@ jobs:
       - name: Publish nightly
         run: |
           gh release create "$RELEASE_TAG" \
-            public_test_lin_gl.zip public_test_win_gl.zip \
-            internal_test_lin_gl.zip internal_test_win_gl.zip \
-            "${glaze_bin_name}_debug_lin" "${glaze_bin_name}_debug_win.exe" \
-            "${glaze_bin_name}_release_lin" "${glaze_bin_name}_release_win.exe" \
-            resources.zip \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "$RELEASE_TITLE" \
             --notes "Debug and release builds of ${GITHUB_SHA::7}" \
             --prerelease
+
+          assets=(
+            internal_test_lin_gl.zip
+            internal_test_win_gl.zip
+            public_test_lin_gl.zip
+            public_test_win_gl.zip
+            "${glaze_bin_name}_debug_lin"
+            "${glaze_bin_name}_debug_win.exe"
+            "${glaze_bin_name}_release_lin"
+            "${glaze_bin_name}_release_win.exe"
+            resources.zip
+          )
+
+          for asset in "${assets[@]}"; do
+            gh release upload "$RELEASE_TAG" "$asset" --repo "$GITHUB_REPOSITORY"
+          done
