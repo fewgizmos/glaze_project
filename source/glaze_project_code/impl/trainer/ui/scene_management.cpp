@@ -3,6 +3,7 @@
 #include "glp/trainer/ui/scene_management.h"
 
 #include "glp/trainer/objects/object_types.h"
+#include "glp/trainer/ui/panels.h"
 
 #include "glp/glaze/scene/scene.h"
 
@@ -125,18 +126,11 @@ void draw_window()
     ImGui::End();
 }
 
-}
+const bool registered = [] {
+    panels::register_panel({ "Scene", MANAGEMENT_TITLE, &m_open, draw_window });
+    return true;
+}();
 
-void draw_scene_menu_items()
-{
-    ImGui::MenuItem(MANAGEMENT_TITLE, nullptr, &m_open);
-}
-
-void draw()
-{
-    if (m_open) {
-        draw_window();
-    }
 }
 
 }

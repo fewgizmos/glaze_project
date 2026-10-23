@@ -4,6 +4,7 @@
 
 #include "glp/trainer/objects/object_types.h"
 #include "glp/trainer/objects/selection.h"
+#include "glp/trainer/ui/panels.h"
 
 #include "glp/glaze/rendering/scene_render/frame_pipeline.h"
 
@@ -814,26 +815,21 @@ void draw_details()
     ImGui::End();
 }
 
+const bool registered_browser = [] {
+    panels::register_panel({ "Scene", BROWSER_TITLE, &m_browser_open, draw_browser });
+    return true;
+}();
+
+const bool registered_details = [] {
+    panels::register_panel({ "Scene", DETAILS_TITLE, &m_details_open, draw_details });
+    return true;
+}();
+
 }
 
-void draw_scene_menu_items()
-{
-    ImGui::MenuItem(BROWSER_TITLE, nullptr, &m_browser_open);
-    ImGui::MenuItem(DETAILS_TITLE, nullptr, &m_details_open);
-}
-
-void draw()
+void update()
 {
     track_selection();
-
-    if (m_browser_open) {
-        draw_browser();
-    }
-
-    if (m_details_open) {
-        draw_details();
-    }
-
 }
 
 }

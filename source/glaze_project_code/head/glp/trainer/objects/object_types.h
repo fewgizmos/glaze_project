@@ -29,12 +29,15 @@ struct object_type
     std::function<glaze::scene::scene_entity*(glm::vec3)> create;
 };
 
+void register_type(object_type type);
+
 const std::vector<object_type>& get_types();
 
 const object_type* find_type(glaze::scene::scene_entity* entity);
 
 std::string get_entity_name(glaze::scene::scene_entity* entity);
 
+void report_error(std::string text);
 const std::string& get_last_error();
 void clear_last_error();
 

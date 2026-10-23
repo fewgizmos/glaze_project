@@ -2,6 +2,8 @@
 
 #include "glp/trainer/ui/metrics.h"
 
+#include "glp/trainer/ui/panels.h"
+
 #include "glp/glaze/rendering/scene_render/shadows.h"
 #include "glp/glaze/rendering/vk/device.h"
 #include "glp/glaze/rendering/vk/profiler.h"
@@ -598,10 +600,22 @@ void draw_minimized()
     ImGui::PopStyleVar(3);
 }
 
+const bool registered_master = [] {
+    panels::register_panel({ "Metrics", "Metrics Master", &m_master_open, draw_master });
+    return true;
+}();
+
+const bool registered_minimized = [] {
+    panels::register_panel({ "Metrics", "Show Minimized", &m_minimized_open, draw_minimized });
+    return true;
+}();
+
 }
 
 void update()
 {
+    m_minimized_visible = false;
+
     if (!m_is_load_initialized) {
         init_load();
     }
@@ -636,28 +650,6 @@ void cleanup()
     }
 
     m_is_load_initialized = false;
-}
-
-void draw_menu()
-{
-    if (ImGui::BeginMenu("Metrics")) {
-        ImGui::MenuItem("Metrics Master", nullptr, &m_master_open);
-        ImGui::MenuItem("Show Minimized", nullptr, &m_minimized_open);
-        ImGui::EndMenu();
-    }
-}
-
-void draw()
-{
-    m_minimized_visible = false;
-
-    if (m_master_open) {
-        draw_master();
-    }
-
-    if (m_minimized_open) {
-        draw_minimized();
-    }
 }
 
 bool get_minimized_bounds(ImVec2& position, ImVec2& size)
