@@ -3,6 +3,7 @@
 #include "glp/trainer/ui/ui.h"
 #include "glp/trainer/ui/file_field.h"
 #include "glp/trainer/ui/metrics.h"
+#include "glp/trainer/ui/scene_management.h"
 #include "glp/trainer/ui/scene_objects.h"
 
 #include "glp/trainer/objects/selection.h"
@@ -30,7 +31,7 @@ constexpr float MAX_TIME_OF_DAY = 24.0f;
 
 constexpr float MINUTES_PER_HOUR = 60.0f;
 
-constexpr const char* TOOLKIT_LABEL = "DEVELOPER TOOLKIT      DEBUG INTERNAL BUILD";
+constexpr const char* TOOLKIT_LABEL = "INTERNAL DEVELOPER TOOLKIT";
 
 const ImVec2 TIME_WINDOW_SIZE = ImVec2(360.0f, 90.0f);
 
@@ -57,7 +58,7 @@ void draw_toolkit_label()
 {
     const float label_width = ImGui::CalcTextSize(TOOLKIT_LABEL).x;
 
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - label_width - ImGui::GetStyle().WindowPadding.x - 12);
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - label_width - ImGui::GetStyle().WindowPadding.x);
     ImGui::TextDisabled("%s", TOOLKIT_LABEL);
 }
 
@@ -125,7 +126,12 @@ void draw()
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("View")) {
             metrics::draw_menu();
-            scene_objects::draw_menu();
+
+            if (ImGui::BeginMenu("Scene")) {
+                scene_objects::draw_scene_menu_items();
+                scene_management::draw_scene_menu_items();
+                ImGui::EndMenu();
+            }
 
             if (ImGui::BeginMenu("World")) {
                 ImGui::MenuItem("World Settings", nullptr, &m_time_open);
@@ -155,6 +161,7 @@ void draw()
     metrics::draw();
 
     scene_objects::draw();
+    scene_management::draw();
 
     objects::selection::draw();
 

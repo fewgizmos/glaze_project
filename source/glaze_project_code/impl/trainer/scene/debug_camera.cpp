@@ -1,5 +1,6 @@
 #include "glp/trainer/scene/debug_camera.h"
 
+#include "glp/glaze/scene/scene.h"
 #include "glp/glaze/scene/volume/volume.h"
 #include "glp/glaze/scene/volume/cmp_camera.h"
 
@@ -42,6 +43,10 @@ debug_camera_player_obj::debug_camera_player_obj() : m_speed(START_SPEED)
 
 void debug_camera_player_obj::update()
 {
+    if (glaze::scene::it::get_player_entity() != this) {
+        return;
+    }
+
     const glaze::io::input::mouse& mouse = glaze::io::input::get_mouse();
 
     glaze::scene::vol::scene_volume& volume = m_scene_volume();

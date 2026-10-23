@@ -816,13 +816,10 @@ void draw_details()
 
 }
 
-void draw_menu()
+void draw_scene_menu_items()
 {
-    if (ImGui::BeginMenu("Scene")) {
-        ImGui::MenuItem(BROWSER_TITLE, nullptr, &m_browser_open);
-        ImGui::MenuItem(DETAILS_TITLE, nullptr, &m_details_open);
-        ImGui::EndMenu();
-    }
+    ImGui::MenuItem(BROWSER_TITLE, nullptr, &m_browser_open);
+    ImGui::MenuItem(DETAILS_TITLE, nullptr, &m_details_open);
 }
 
 void draw()

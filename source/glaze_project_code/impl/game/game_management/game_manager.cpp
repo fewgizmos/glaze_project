@@ -121,6 +121,8 @@ void init_session()
 
         glaze::scene::it::create_entity<glaze::scene::obj::post_object_prim>(POST_SETTINGS);
 
+        glaze::scene::it::create_entity<trainer::scene::debug_camera_player_obj>();
+
         if (glaze::scene::it::get_player_entity() == nullptr) {
             glaze::scene::it::set_player_entity(glaze::scene::it::create_entity<trainer::scene::debug_camera_player_obj>());
         }
