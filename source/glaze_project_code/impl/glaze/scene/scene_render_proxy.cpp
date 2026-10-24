@@ -173,21 +173,19 @@ void proxy_visibles()
         }
 
         proxy_volume_models(ent->scene_volume(), ent->get_id());
-        proxy_volume_models(ent->scene_gizmo_volume(), ent->get_id());
 
         proxy_volume_lights(ent->scene_volume());
-        proxy_volume_lights(ent->scene_gizmo_volume());
 
         if (!has_post) {
-            has_post = proxy_volume_post(ent->scene_volume()) || proxy_volume_post(ent->scene_gizmo_volume());
+            has_post = proxy_volume_post(ent->scene_volume());
         }
 
         if (!has_environment) {
-            has_environment = proxy_volume_environment(ent->scene_volume()) || proxy_volume_environment(ent->scene_gizmo_volume());
+            has_environment = proxy_volume_environment(ent->scene_volume());
         }
 
         if (!has_atmosphere) {
-            has_atmosphere = proxy_volume_atmosphere(ent->scene_volume()) || proxy_volume_atmosphere(ent->scene_gizmo_volume());
+            has_atmosphere = proxy_volume_atmosphere(ent->scene_volume());
         }
     }
 

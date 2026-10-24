@@ -112,7 +112,6 @@ void update_entities()
         }
 
         update_volume(ent->scene_volume());
-        update_volume(ent->scene_gizmo_volume());
     }
 }
 

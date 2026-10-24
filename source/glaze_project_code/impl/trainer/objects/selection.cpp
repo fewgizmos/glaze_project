@@ -295,10 +295,10 @@ void draw_mode_panel()
 const char* mode_label(gizmo_mode mode)
 {
     switch (mode) {
-        case gizmo_mode::rotate: return "rotate";
-        case gizmo_mode::scale:  return "scale";
+        case gizmo_mode::rotate: return "Rotate";
+        case gizmo_mode::scale:  return "Scale";
         case gizmo_mode::move:
-        default:                 return "move";
+        default:                 return "Move";
     }
 }
 
@@ -344,7 +344,7 @@ void draw_prefs_panel()
     );
 
     if (ui::metrics::get_minimized_bounds(metrics_position, metrics_size)) {
-        position = ImVec2(metrics_position.x - gap, metrics_position.y);
+        position = ImVec2(metrics_position.x - gap, metrics_position.y - ImGui::GetStyle().ItemSpacing.y);
     }
 
     ImGui::SetNextWindowPos(position, ImGuiCond_Always, ImVec2(1.0f, 0.0f));
@@ -363,7 +363,7 @@ void draw_prefs_panel()
         return;
     }
 
-    ImGui::TextDisabled("%s snap", label);
+    ImGui::Text("%s Snap", label);
     ImGui::SameLine();
     ImGui::Checkbox("##snap", &prefs.snap);
 

@@ -36,7 +36,7 @@ void draw_menu_items(const char* menu)
     std::vector<const panel_registration*> matched;
 
     for (const panel_registration& entry : registry()) {
-        if (std::strcmp(entry.menu, menu) == 0) {
+        if (!entry.hidden_in_menu && std::strcmp(entry.menu, menu) == 0) {
             matched.push_back(&entry);
         }
     }

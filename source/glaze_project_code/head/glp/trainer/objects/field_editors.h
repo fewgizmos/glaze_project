@@ -29,13 +29,9 @@ namespace trainer::objects
 template<typename component_type>
 component_type* find_component(glaze::scene::scene_entity* entity)
 {
-    const glaze::scene::vol::scene_volume* volumes[] = { &entity->scene_volume(), &entity->scene_gizmo_volume() };
-
-    for (const glaze::scene::vol::scene_volume* volume : volumes) {
-        for (const std::unique_ptr<glaze::scene::vol::volume_component>& target : volume->components) {
-            if (component_type* found = dynamic_cast<component_type*>(target.get())) {
-                return found;
-            }
+    for (const std::unique_ptr<glaze::scene::vol::volume_component>& target : entity->scene_volume().components) {
+        if (component_type* found = dynamic_cast<component_type*>(target.get())) {
+            return found;
         }
     }
 

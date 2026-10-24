@@ -13,9 +13,6 @@ static_camera_object_prim::static_camera_object_prim(glm::vec3 pos, glm::vec3 ro
     m_scene_volume().w_pos = pos;
     m_scene_volume().w_rot = rot;
 
-    m_scene_gizmo_volume().w_pos = pos;
-    m_scene_gizmo_volume().w_rot = rot;
-
     m_scene_volume().components.push_back(std::make_unique<vol::component::camera>());
 }
 

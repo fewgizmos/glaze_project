@@ -27,8 +27,13 @@ void draw_toolkit_label()
 {
     const float label_width = ImGui::CalcTextSize(TOOLKIT_LABEL).x;
 
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - label_width - ImGui::GetStyle().WindowPadding.x);
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - label_width - ImGui::GetStyle().WindowPadding.x - 1.0f);
     ImGui::TextDisabled("%s", TOOLKIT_LABEL);
+
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const ImU32  col = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+
+    ImGui::GetWindowDrawList()->AddText(ImVec2(min.x + 1.0f, min.y), col, TOOLKIT_LABEL);
 }
 
 }

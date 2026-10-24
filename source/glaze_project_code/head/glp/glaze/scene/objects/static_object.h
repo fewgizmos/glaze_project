@@ -17,7 +17,7 @@ class static_object : public scene_entity
 class static_object_model_prim : public static_object
 {
 public:
-    static_object_model_prim(glm::vec3 pos, glm::vec3 rot, glm::vec3 scale, const std::string& gltf_path, bool is_gizmo = false);
+    static_object_model_prim(glm::vec3 pos, glm::vec3 rot, glm::vec3 scale, const std::string& gltf_path);
 };
 
 }

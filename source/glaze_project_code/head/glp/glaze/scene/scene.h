@@ -32,18 +32,12 @@ public:
         d_scene_volume.w_pos   = position;
         d_scene_volume.w_rot   = rotation;
         d_scene_volume.w_scale = scale;
-
-        d_gizmo_scene_volume.w_pos   = position;
-        d_gizmo_scene_volume.w_rot   = rotation;
-        d_gizmo_scene_volume.w_scale = scale;
     }
 
     const vol::scene_volume& scene_volume() const { return d_scene_volume; }
-    const vol::scene_volume& scene_gizmo_volume() const { return d_gizmo_scene_volume; }
 
 protected:
     vol::scene_volume& m_scene_volume() { return d_scene_volume; }
-    vol::scene_volume& m_scene_gizmo_volume() { return d_gizmo_scene_volume; }
 
 private:
     inline static std::atomic<uint64_t> d_next_id = 0;
@@ -51,7 +45,6 @@ private:
     uint64_t d_id = d_next_id.fetch_add(1, std::memory_order_relaxed) + 1;
 
     vol::scene_volume d_scene_volume;
-    vol::scene_volume d_gizmo_scene_volume;
 };
 
 namespace it

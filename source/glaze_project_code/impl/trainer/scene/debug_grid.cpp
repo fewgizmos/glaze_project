@@ -71,7 +71,7 @@ void cmp_debug_grid::get_model(glaze::rendering::scene_render::gpu_model& out)
 
 debug_grid_object::debug_grid_object()
 {
-    m_scene_gizmo_volume().components.push_back(std::make_unique<cmp_debug_grid>());
+    m_scene_volume().components.push_back(std::make_unique<cmp_debug_grid>());
 }
 
 }

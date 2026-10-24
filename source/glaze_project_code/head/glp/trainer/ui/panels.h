@@ -16,6 +16,7 @@ struct panel_registration
     bool* open;
     std::function<void()> draw;
     int order = 0;
+    bool hidden_in_menu = false;
 };
 
 void register_panel(panel_registration entry);

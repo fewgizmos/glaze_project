@@ -204,6 +204,7 @@ bool draw(const char* label, std::string& path, const char* filters, pick_mode m
 
         ImGui::SetNextWindowSize(DIALOG_SIZE, ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSizeConstraints(DIALOG_MIN_SIZE, DIALOG_MAX_SIZE);
+        ImGui::SetNextWindowBgAlpha(0.85f);
 
         const std::string title = std::string(label) + DIALOG_WINDOW_ID;
 

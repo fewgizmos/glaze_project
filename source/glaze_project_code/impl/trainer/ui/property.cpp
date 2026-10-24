@@ -5,19 +5,13 @@
 #ifdef DEV_BUILD
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <cctype>
 #include <cfloat>
 
 namespace trainer::ui::property
 {
-
-namespace
-{
-
-constexpr float LABEL_SHARE = 0.4f;
-
-}
 
 std::string display_name(const char* label)
 {
@@ -42,19 +36,19 @@ std::string display_name(const char* label)
 
 std::string begin_row(const char* label)
 {
-    const float start_x = ImGui::GetCursorPosX();
-    const float width   = ImGui::GetContentRegionAvail().x;
-
     const std::string name = display_name(label);
+
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
 
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(name.c_str());
 
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip) && ImGui::GetItemRectSize().x > width * LABEL_SHARE) {
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip) && ImGui::GetItemRectSize().x > ImGui::GetColumnWidth()) {
         ImGui::SetTooltip("%s", name.c_str());
     }
 
-    ImGui::SameLine(start_x + width * LABEL_SHARE);
+    ImGui::TableNextColumn();
     ImGui::SetNextItemWidth(-FLT_MIN);
 
     return std::string("##") + label;
@@ -62,7 +56,14 @@ std::string begin_row(const char* label)
 
 bool begin_category(const char* name)
 {
-    const ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_SpanAvailWidth;
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+
+    const ImGuiTreeNodeFlags flags =
+        ImGuiTreeNodeFlags_DefaultOpen
+        | ImGuiTreeNodeFlags_NoTreePushOnOpen
+        | ImGuiTreeNodeFlags_Framed
+        | ImGuiTreeNodeFlags_SpanAllColumns;
 
     return ImGui::TreeNodeEx(name, flags, "%s", display_name(name).c_str());
 }
