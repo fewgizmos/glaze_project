@@ -624,11 +624,12 @@ bool edit_axes(const char* label, glm::vec3& value, float drag_speed, const obje
         ImGui::SetNextItemWidth(field_width);
 
         if (ImGui::DragFloat("##value", &value[axis], drag_speed, 0.0f, 0.0f, "%.3f")) {
-            if (prefs.snap && prefs.step > 0.0f) {
-                value[axis] = std::round(value[axis] / prefs.step) * prefs.step;
-            }
-
             changed = true;
+        }
+
+        if (prefs.snap && prefs.step > 0.0f && ImGui::IsItemDeactivatedAfterEdit()) {
+            value[axis] = std::round(value[axis] / prefs.step) * prefs.step;
+            changed     = true;
         }
 
         ImGui::PopID();
