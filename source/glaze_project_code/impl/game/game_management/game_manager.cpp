@@ -72,6 +72,7 @@ const glaze::world::res::atmosphere_create_info ATMOSPHERE = {
 const glaze::scene::vol::component::post_create_info POST_SETTINGS = {
     .ev100                  = 13.5f,
     .exposure_compensation  = 1.0f,
+    .max_ev100              = 15.6f,
     .exposure_speed_up      = 1.0f,
     .bloom_intensity        = 0.08f,
     .light_shafts_intensity = 2.0f
