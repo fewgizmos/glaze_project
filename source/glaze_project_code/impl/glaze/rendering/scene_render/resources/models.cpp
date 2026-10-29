@@ -1,6 +1,6 @@
 #include "glp/glaze/rendering/scene_render/resources/models.h"
 
-#include "glp/glaze/rendering/scene_render/resources/shaders_stdlib.h"
+#include "glp/glaze/rendering/scene_render/resources/shaders.h"
 
 #include "glp/glaze/rendering/vk/samplers.h"
 #include "glp/glaze/rendering/defines.h"
@@ -467,7 +467,7 @@ std::unique_ptr<model> build_gltf(const std::string& gltf_path, const shader* ta
     for (const fastgltf::Material& source : asset.materials) {
         material_create_info create_info;
 
-        create_info.target_shader = source.doubleSided ? std_base_model_double_sided_shader() : target_shader;
+        create_info.target_shader = source.doubleSided ? res::shaders::stdlib::base_model_double_sided_shader() : target_shader;
         create_info.double_sided  = source.doubleSided;
 
         create_info.base_color = glm::vec4(
@@ -488,12 +488,12 @@ std::unique_ptr<model> build_gltf(const std::string& gltf_path, const shader* ta
             ? material_alpha_mode::opaque
             : material_alpha_mode::mask;
 
-        if (create_info.alpha_mode == material_alpha_mode::mask && create_info.target_shader == std_base_model_shader()) {
-            create_info.target_shader = std_base_model_masked_shader();
+        if (create_info.alpha_mode == material_alpha_mode::mask && create_info.target_shader == res::shaders::stdlib::base_model_shader()) {
+            create_info.target_shader = res::shaders::stdlib::base_model_masked_shader();
         }
 
-        if (create_info.alpha_mode == material_alpha_mode::mask && create_info.target_shader == std_base_model_double_sided_shader()) {
-            create_info.target_shader = std_base_model_masked_double_sided_shader();
+        if (create_info.alpha_mode == material_alpha_mode::mask && create_info.target_shader == res::shaders::stdlib::base_model_double_sided_shader()) {
+            create_info.target_shader = res::shaders::stdlib::base_model_masked_double_sided_shader();
         }
 
         create_info.ior               = source.ior;

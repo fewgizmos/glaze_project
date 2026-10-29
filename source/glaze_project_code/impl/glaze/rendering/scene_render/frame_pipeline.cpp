@@ -6,7 +6,6 @@
 #include "glp/glaze/rendering/scene_render/resources/materials.h"
 #include "glp/glaze/rendering/scene_render/resources/meshes.h"
 #include "glp/glaze/rendering/scene_render/resources/shaders.h"
-#include "glp/glaze/rendering/scene_render/resources/shaders_stdlib.h"
 
 #include "glp/glaze/rendering/vk/commands.h"
 #include "glp/glaze/rendering/vk/device.h"
@@ -646,7 +645,7 @@ void draw_prepass()
             continue;
         }
 
-        const shader* target_shader = target.target_material->double_sided ? std_prepass_double_sided_shader() : std_prepass_shader();
+        const shader* target_shader = target.target_material->double_sided ? res::shaders::stdlib::prepass_double_sided_shader() : res::shaders::stdlib::prepass_shader();
 
         if (target_shader != bound_shader) {
             bound_shader = target_shader;

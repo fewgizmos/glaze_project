@@ -52,3 +52,17 @@ void erase_all();
 void destroy_replaced();
 
 }
+
+namespace glaze::rendering::scene_render::res::shaders::stdlib
+{
+
+const shader* base_model_shader();
+const shader* base_model_double_sided_shader();
+
+const shader* base_model_masked_shader();
+const shader* base_model_masked_double_sided_shader();
+
+const shader* prepass_shader();
+const shader* prepass_double_sided_shader();
+
+}

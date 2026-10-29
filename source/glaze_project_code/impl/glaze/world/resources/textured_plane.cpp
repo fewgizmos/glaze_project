@@ -1,6 +1,6 @@
 #include "glp/glaze/world/resources/textured_plane.h"
 
-#include "glp/glaze/rendering/scene_render/resources/shaders_stdlib.h"
+#include "glp/glaze/rendering/scene_render/resources/shaders.h"
 
 #include "glp/glaze/rendering/vk/samplers.h"
 
@@ -242,7 +242,7 @@ void cmp_textured_plane::build()
     const uint32_t sampler = rendering::vk::samplers::make(rendering::sampler_create_info{});
 
     rendering::scene_render::material_create_info material_info;
-    material_info.target_shader = rendering::scene_render::std_base_model_shader();
+    material_info.target_shader = rendering::scene_render::res::shaders::stdlib::base_model_shader();
     material_info.metallic      = 0.0f;
     material_info.roughness     = DEFAULT_ROUGHNESS;
 
