@@ -13,6 +13,7 @@ namespace glaze::platform::wm
 struct window_create_info
 {
     std::string title = "Glaze";
+    std::string icon_path;
 
     int width  = 1280;
     int height = 720;

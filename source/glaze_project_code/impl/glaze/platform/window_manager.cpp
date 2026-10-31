@@ -4,6 +4,9 @@
 #include "glp/glaze/utilities/core/assert.h"
 
 #include <SDL3/SDL_error.h>
+#include <SDL3/SDL_surface.h>
+
+#include <stb_image.h>
 
 #include <algorithm>
 #include <memory>
@@ -13,6 +16,32 @@ namespace glaze::platform::wm
 {
 
 std::vector<std::unique_ptr<window>> m_windows;
+
+void set_icon(SDL_Window* handle, const std::string& path)
+{
+    int width    = 0;
+    int height   = 0;
+    int channels = 0;
+
+    stbi_uc* pixels = stbi_load(path.c_str(), &width, &height, &channels, 4);
+
+    GLAZE_ASSERT(pixels == nullptr, "failed to load window icon: " + path);
+
+    SDL_Surface* surface = SDL_CreateSurfaceFrom(width, height, SDL_PIXELFORMAT_RGBA32, pixels, width * 4);
+
+    if (surface == nullptr) {
+        stbi_image_free(pixels);
+    }
+
+    GLAZE_ASSERT(surface == nullptr, SDL_GetError());
+
+    const bool applied = SDL_SetWindowIcon(handle, surface);
+
+    SDL_DestroySurface(surface);
+    stbi_image_free(pixels);
+
+    GLAZE_ASSERT(!applied, SDL_GetError());
+}
 
 window* create_window(const window_create_info& create_info)
 {
@@ -30,6 +59,10 @@ window* create_window(const window_create_info& create_info)
     );
 
     GLAZE_ASSERT(handle == nullptr, SDL_GetError());
+
+    if (!create_info.icon_path.empty()) {
+        set_icon(handle, create_info.icon_path);
+    }
 
     SDL_SetWindowPosition(handle, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 

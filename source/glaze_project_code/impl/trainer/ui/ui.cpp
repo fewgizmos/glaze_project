@@ -21,7 +21,7 @@ namespace trainer::ui::it
 namespace
 {
 
-constexpr const char* TOOLKIT_LABEL = "INTERNAL DEVELOPER TOOLKIT";
+constexpr const char* TOOLKIT_LABEL = "glaze TRAINER";
 
 void draw_toolkit_label()
 {

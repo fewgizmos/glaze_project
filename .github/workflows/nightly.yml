@@ -7,8 +7,10 @@ permissions:
   contents: write
 
 env:
-  glaze_build_id: public_test
-  glaze_bin_name: glazetest
+  glaze_build_id: dev
+  glaze_bin_name: glaze_game
+  rt_glaze_window_name: "glaze game"
+  rt_glaze_window_logo: "source/glaze_project_resources/textures/logo.png"
   RELEASE_TAG: action-nightly
   RELEASE_TITLE: "[Action] Nightly"
 
@@ -42,15 +44,15 @@ jobs:
               cp -r docs/readme/assets "$1/docs/readme/"
           }
 
-          public="$RUNNER_TEMP/public_test_lin_gl"
+          public="$RUNNER_TEMP/${glaze_bin_name}_public_lin_gl"
           stage_common "$public"
           cp "$RUNNER_TEMP/${glaze_bin_name}_lin" "$public/${glaze_bin_name}_lin"
-          (cd "$public" && zip -r -q "$GITHUB_WORKSPACE/public_test_lin_gl.zip" .)
+          (cd "$public" && zip -r -q "$GITHUB_WORKSPACE/${glaze_bin_name}_public_lin_gl.zip" .)
 
-          internal="$RUNNER_TEMP/internal_test_lin_gl"
+          internal="$RUNNER_TEMP/${glaze_bin_name}_internal_lin_gl"
           stage_common "$internal"
           cp "$RUNNER_TEMP/${glaze_bin_name}_internal_lin" "$internal/${glaze_bin_name}_internal_lin"
-          (cd "$internal" && zip -r -q "$GITHUB_WORKSPACE/internal_test_lin_gl.zip" .)
+          (cd "$internal" && zip -r -q "$GITHUB_WORKSPACE/${glaze_bin_name}_internal_lin_gl.zip" .)
 
           cp "$RUNNER_TEMP/${glaze_bin_name}_lin" "${glaze_bin_name}_lin"
           cp "$RUNNER_TEMP/${glaze_bin_name}_internal_lin" "${glaze_bin_name}_internal_lin"
@@ -59,10 +61,10 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: test_lin_gl
+          name: ${{ env.glaze_bin_name }}_lin_gl
           path: |
-            public_test_lin_gl.zip
-            internal_test_lin_gl.zip
+            ${{ env.glaze_bin_name }}_public_lin_gl.zip
+            ${{ env.glaze_bin_name }}_internal_lin_gl.zip
             ${{ env.glaze_bin_name }}_lin
             ${{ env.glaze_bin_name }}_internal_lin
             resources.zip
@@ -111,25 +113,25 @@ jobs:
               Copy-Item docs/readme/assets "$stage/docs/readme/" -Recurse
           }
 
-          $public = "$env:RUNNER_TEMP/public_test_win_gl"
+          $public = "$env:RUNNER_TEMP/$($env:glaze_bin_name)_public_win_gl"
           Stage-Common $public
           Copy-Item "$env:RUNNER_TEMP/win_release/*" $public -Recurse -Force
-          Compress-Archive -Path "$public/*" -DestinationPath public_test_win_gl.zip -Force
+          Compress-Archive -Path "$public/*" -DestinationPath "$($env:glaze_bin_name)_public_win_gl.zip" -Force
 
-          $internal = "$env:RUNNER_TEMP/internal_test_win_gl"
+          $internal = "$env:RUNNER_TEMP/$($env:glaze_bin_name)_internal_win_gl"
           Stage-Common $internal
           Copy-Item "$env:RUNNER_TEMP/win_dev/*" $internal -Recurse -Force
-          Compress-Archive -Path "$internal/*" -DestinationPath internal_test_win_gl.zip -Force
+          Compress-Archive -Path "$internal/*" -DestinationPath "$($env:glaze_bin_name)_internal_win_gl.zip" -Force
 
           Copy-Item "$env:RUNNER_TEMP/win_release/$($env:glaze_bin_name)_win.exe" "$($env:glaze_bin_name)_win.exe"
           Copy-Item "$env:RUNNER_TEMP/win_dev/$($env:glaze_bin_name)_internal_win.exe" "$($env:glaze_bin_name)_internal_win.exe"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: test_win_gl
+          name: ${{ env.glaze_bin_name }}_win_gl
           path: |
-            public_test_win_gl.zip
-            internal_test_win_gl.zip
+            ${{ env.glaze_bin_name }}_public_win_gl.zip
+            ${{ env.glaze_bin_name }}_internal_win_gl.zip
             ${{ env.glaze_bin_name }}_win.exe
             ${{ env.glaze_bin_name }}_internal_win.exe
           retention-days: 1
@@ -159,10 +161,10 @@ jobs:
             --prerelease
 
           assets=(
-            internal_test_lin_gl.zip
-            internal_test_win_gl.zip
-            public_test_lin_gl.zip
-            public_test_win_gl.zip
+            ${{ env.glaze_bin_name }}_internal_lin_gl.zip
+            ${{ env.glaze_bin_name }}_internal_win_gl.zip
+            ${{ env.glaze_bin_name }}_public_lin_gl.zip
+            ${{ env.glaze_bin_name }}_public_win_gl.zip
             "${glaze_bin_name}_internal_lin"
             "${glaze_bin_name}_internal_win.exe"
             "${glaze_bin_name}_lin"

@@ -1,2 +1,6 @@
 export glaze_build_id="dev"
-export glaze_bin_name="glazebin"
+export glaze_bin_name="glaze_game"
+
+# runtime
+export rt_glaze_window_name="glaze game"
+export rt_glaze_window_logo="source/glaze_project_resources/textures/logo.png"

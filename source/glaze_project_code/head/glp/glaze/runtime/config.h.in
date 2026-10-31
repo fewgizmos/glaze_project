@@ -1,3 +1,6 @@
 #pragma once
 
 #cmakedefine DEV_BUILD
+
+#define RT_GLAZE_WINDOW_NAME "@RT_GLAZE_WINDOW_NAME@"
+#define RT_GLAZE_WINDOW_LOGO "@RT_GLAZE_WINDOW_LOGO@"

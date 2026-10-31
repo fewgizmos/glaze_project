@@ -9,6 +9,14 @@ file(GLOB_RECURSE GIZMOX_HEADERS CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/glaze_project_code/head/*.hpp
 )
 
+if(DEFINED ENV{rt_glaze_window_name} AND NOT "$ENV{rt_glaze_window_name}" STREQUAL "")
+    set(RT_GLAZE_WINDOW_NAME "$ENV{rt_glaze_window_name}")
+else()
+    set(RT_GLAZE_WINDOW_NAME "glazeproject")
+endif()
+
+set(RT_GLAZE_WINDOW_LOGO "$ENV{rt_glaze_window_logo}")
+
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/glaze_project_code/head/glp/glaze/runtime/config.h.in
     ${CMAKE_CURRENT_SOURCE_DIR}/glaze_project_code/head/glp/glaze/runtime/config.h
